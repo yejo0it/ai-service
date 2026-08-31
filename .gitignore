@@ -7,3 +7,11 @@ db.sqlite3
 node_modules/
 dist/
 .DS_Store
+
+# Vite
+# 사전 번들링 캐시. 보통 node_modules/.vite 지만, 루트 탐색이 실패한 재시작에서는
+# <project>/.vite 로 떨어지므로 두 위치 모두 무시한다.
+.vite/
+# Windows에서 config를 읽을 때 생기는 임시 파일
+vite.config.*.timestamp-*
+*.local
