@@ -17,6 +17,21 @@ def _jsonify(value):
     return value
 
 
+class DestinationSerializer(serializers.Serializer):
+    """Trip.destinations(JSONField)의 각 여행지 항목을 검증한다."""
+
+    city = serializers.CharField(max_length=100)
+    city_code = serializers.CharField(
+        max_length=8, required=False, allow_blank=True, default=""
+    )
+
+    def validate_city(self, value):
+        return value.strip()
+
+    def validate_city_code(self, value):
+        return value.strip().upper()
+
+
 class FlightInfoSerializer(serializers.Serializer):
     """Trip.flight_info(JSONField)에 저장될 payload의 형태를 검증한다."""
 
@@ -110,6 +125,9 @@ class TripSerializer(serializers.ModelSerializer):
 
     hotels = NestedHotelSerializer(many=True, required=False)
     flight_info = FlightInfoSerializer(required=False, allow_null=True)
+    # 여행지는 1개 이상. partial update(PATCH)에서는 DRF가 required를 자동 해제한다.
+    destinations = DestinationSerializer(many=True, allow_empty=False)
+    destination_label = serializers.CharField(read_only=True)
     nights = serializers.IntegerField(read_only=True)
     has_flight = serializers.BooleanField(read_only=True)
 
@@ -117,8 +135,8 @@ class TripSerializer(serializers.ModelSerializer):
         model = Trip
         fields = (
             "id",
-            "destination",
-            "destination_code",
+            "destinations",
+            "destination_label",
             "start_date",
             "end_date",
             "date_source",
@@ -129,7 +147,14 @@ class TripSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "has_flight", "nights", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "destination_label",
+            "has_flight",
+            "nights",
+            "created_at",
+            "updated_at",
+        )
         extra_kwargs = {
             # 항공권에서 날짜를 추론할 수 있으므로 필수 해제 후 validate에서 확인한다.
             "start_date": {"required": False},
@@ -140,6 +165,10 @@ class TripSerializer(serializers.ModelSerializer):
         instance = self.instance
         start = attrs.get("start_date") or getattr(instance, "start_date", None)
         end = attrs.get("end_date") or getattr(instance, "end_date", None)
+
+        if "destinations" in attrs:
+            # OrderedDict -> 순수 list[dict]로 변환해 JSONField에 저장한다.
+            attrs["destinations"] = [_jsonify(dict(entry)) for entry in attrs["destinations"]]
 
         if "flight_info" in attrs:
             flight = attrs["flight_info"]  # 검증 통과한 dict(datetime 포함) 또는 None
@@ -189,6 +218,11 @@ class TripSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # 중첩 hotels가 전달되면 전체 교체한다(부분 수정은 /hotels/ 엔드포인트 사용).
         hotels = validated_data.pop("hotels", None)
+        # destinations/flight_info는 JSONField이지만 중첩 Serializer로 검증하므로
+        # ModelSerializer.update()의 nested-write 검사에 걸린다. 직접 대입 후 저장한다.
+        for json_field in ("destinations", "flight_info"):
+            if json_field in validated_data:
+                setattr(instance, json_field, validated_data.pop(json_field))
         trip = super().update(instance, validated_data)
         if hotels is not None:
             trip.hotels.all().delete()

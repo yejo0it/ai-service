@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { createTrip, toErrorMessage } from "../api/client";
+import { findCityByName, searchCities } from "./cities";
 
 /* ------------------------------------------------------------------ *
  * 온보딩 상태 (Step 1~3 입력값 누적)
@@ -7,10 +8,20 @@ import { createTrip, toErrorMessage } from "../api/client";
 
 const TOTAL_STEPS = 3;
 
+/**
+ * Step 1의 여행지 한 줄. 도시 이동 순서대로 배열에 쌓인다.
+ * id는 행 삭제 시 React key가 밀리지 않게 하기 위한 값으로, 전송 payload에는 포함되지 않는다.
+ */
+let destinationSeq = 0;
+const emptyDestination = () => ({
+  id: `destination-${(destinationSeq += 1)}`,
+  city: "",
+  city_code: "",
+});
+
 const INITIAL_DATA = {
   // Step 1
-  destination: "",
-  destinationCode: "",
+  destinations: [emptyDestination()],
   // Step 2
   dateMode: "flight", // "flight" | "dates"
   airline: "",
@@ -45,8 +56,13 @@ const toDate = (value) => (value ? value.slice(0, 10) : "");
 export function buildTripPayload(data) {
   const usesFlight = data.dateMode === "flight";
   const payload = {
-    destination: data.destination.trim(),
-    destination_code: data.destinationCode.trim(),
+    // 빈 줄은 제외하고 [{city, city_code}] 형태로 보낸다.
+    destinations: data.destinations
+      .map(({ city, city_code }) => ({
+        city: city.trim(),
+        city_code: (city_code || "").trim(),
+      }))
+      .filter((dest) => dest.city),
     start_date: usesFlight ? toDate(data.departureAt) : data.startDate,
     end_date: usesFlight ? toDate(data.returnArrivalAt) : data.endDate,
     date_source: usesFlight ? "flight" : "manual",
@@ -76,8 +92,8 @@ export function buildTripPayload(data) {
 /** 각 단계의 진행 가능 여부 */
 function validateStep(step, data) {
   const errors = {};
-  if (step === 1 && !data.destination.trim()) {
-    errors.destination = "목적지를 입력해 주세요.";
+  if (step === 1 && !data.destinations.some((dest) => dest.city.trim())) {
+    errors.destinations = "목적지를 입력해 주세요.";
   }
   if (step === 2) {
     if (data.dateMode === "flight") {
@@ -170,59 +186,202 @@ function TextInput({ error, ...props }) {
  * Step 1 — 목적지
  * ------------------------------------------------------------------ */
 
-const POPULAR_CITIES = [
-  { name: "도쿄", code: "TYO" },
-  { name: "오사카", code: "OSA" },
-  { name: "후쿠오카", code: "FUK" },
-  { name: "방콕", code: "BKK" },
-  { name: "다낭", code: "DAD" },
-  { name: "파리", code: "PAR" },
-];
+/** 타임라인 노드. 입력된 행은 채워진 핀, 빈 행은 흐린 핀으로 표시한다. */
+function TimelineNode({ filled }) {
+  return (
+    <span
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] transition-colors ${
+        filled
+          ? "border-indigo-500 bg-indigo-500 text-white"
+          : "border-indigo-200 bg-white text-indigo-300"
+      }`}
+    >
+      <i className="fas fa-map-pin" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** 여행지 한 줄: 타임라인 노드 + 도시 자동완성 입력 + 삭제 버튼. */
+function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+
+  const suggestions = useMemo(() => searchCities(dest.city), [dest.city]);
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+  const listId = `${dest.id}-listbox`;
+
+  const pick = (city) => {
+    onChange({ city: city.city, city_code: city.city_code });
+    setOpen(false);
+  };
+
+  const handleChange = (value) => {
+    // 목록에 없는 도시도 그대로 입력할 수 있다. 이름이 정확히 맞으면 코드를 채워준다.
+    onChange({ city: value, city_code: findCityByName(value)?.city_code ?? "" });
+    setHighlight(0);
+    setOpen(true);
+  };
+
+  const handleKeyDown = (event) => {
+    if (suggestions.length === 0) return;
+    if (!open) {
+      // 포커스만으로는 열지 않으므로, ↓ 키로 명시적으로 열 수 있게 해준다.
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlight(0);
+        setOpen(true);
+      }
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlight((current) => (current + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlight((current) => (current - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === "Enter") {
+      // 폼 제출(다음 단계)보다 목록 선택이 우선이다.
+      event.preventDefault();
+      pick(suggestions[Math.min(highlight, suggestions.length - 1)]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2">
+      {/* 첫 행 위/마지막 행 아래로는 선이 뻗지 않는다. */}
+      <div className="flex w-6 shrink-0 flex-col items-center" aria-hidden="true">
+        <span className={`w-px flex-1 ${isFirst ? "bg-transparent" : "bg-indigo-200"}`} />
+        <TimelineNode filled={Boolean(dest.city.trim())} />
+        <span className={`w-px flex-1 ${isLast ? "bg-transparent" : "bg-indigo-200"}`} />
+      </div>
+
+      <div className="flex flex-1 items-center gap-2 py-1">
+        <div className="relative flex-1">
+          <TextInput
+            value={dest.city}
+            error={error}
+            onChange={(event) => handleChange(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setOpen(false)}
+            placeholder={"도시"}
+            autoFocus={isFirst}
+            aria-label={`여행지 ${index + 1}`}
+            role="combobox"
+            aria-expanded={open && suggestions.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            autoComplete="off"
+          />
+
+          {open && suggestions.length > 0 && (
+            <ul
+              id={listId}
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {suggestions.map((city, position) => (
+                <li key={city.city_code} role="option" aria-selected={position === highlight}>
+                  <button
+                    type="button"
+                    // onBlur보다 먼저 실행되어 목록이 닫히는 것을 막는다.
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => pick(city)}
+                    onMouseEnter={() => setHighlight(position)}
+                    className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
+                      position === highlight
+                        ? "bg-indigo-50 text-indigo-700"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    <span>{city.city}</span>
+                    <span className="text-xs tabular-nums text-slate-400">
+                      {city.city_code}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {total > 1 && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`여행지 ${index + 1} 삭제`}
+            title="삭제"
+            className="shrink-0 rounded-xl border border-slate-200 px-3 py-3 text-slate-400 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+          >
+            <i className="fas fa-trash" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function StepDestination() {
   const { data, update, errors } = useOnboarding();
+  const destinations = data.destinations;
+
+  const setDestination = (index, patch) =>
+    update({
+      destinations: destinations.map((dest, position) =>
+        position === index ? { ...dest, ...patch } : dest,
+      ),
+    });
+
+  const addDestination = () =>
+    update({ destinations: [...destinations, emptyDestination()] });
+
+  const removeDestination = (index) =>
+    update({
+      destinations: destinations.filter((_, position) => position !== index),
+    });
 
   return (
     <div className="space-y-5">
       <header>
         <h2 className="text-xl font-bold text-slate-900">어디로 떠나시나요?</h2>
-        <p className="mt-1 text-sm text-slate-500">도시를 정하면 동선을 짜드릴게요.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          여러 도시를 이동한다면 순서대로 추가해 주세요.
+        </p>
       </header>
 
-      <Field label="목적지 도시" error={errors.destination}>
-        <TextInput
-          value={data.destination}
-          error={errors.destination}
-          onChange={(event) =>
-            update({ destination: event.target.value, destinationCode: "" })
-          }
-          placeholder="예) 도쿄"
-          autoFocus
-        />
-      </Field>
-
       <div>
-        <p className="mb-2 text-xs font-medium text-slate-500">인기 도시</p>
-        <div className="flex flex-wrap gap-2">
-          {POPULAR_CITIES.map((city) => {
-            const selected = data.destination === city.name;
-            return (
-              <button
-                key={city.code}
-                type="button"
-                onClick={() =>
-                  update({ destination: city.name, destinationCode: city.code })
-                }
-                className={`rounded-full border px-3.5 py-2 text-sm transition-colors ${
-                  selected
-                    ? "border-indigo-600 bg-indigo-600 text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:text-indigo-600"
-                }`}
-              >
-                {city.name}
-              </button>
-            );
-          })}
+        <span className="mb-1.5 block text-sm font-medium text-slate-700">여행지</span>
+        {/* 도시 이동 순서를 왼쪽 세로 타임라인으로 표현한다.
+            행 사이 여백을 안쪽 래퍼(py-1)에 두어 레일의 선이 끊기지 않게 한다. */}
+        <div>
+          {destinations.map((dest, index) => (
+            <DestinationRow
+              key={dest.id}
+              dest={dest}
+              index={index}
+              total={destinations.length}
+              error={errors.destinations}
+              onChange={(patch) => setDestination(index, patch)}
+              onRemove={() => removeDestination(index)}
+            />
+          ))}
+        </div>
+        {errors.destinations && (
+          // 타임라인 레일(w-6) + gap(2) 만큼 들여써 입력칸과 좌측을 맞춘다.
+          <span className="mt-1 block pl-8 text-xs text-rose-600">
+            {errors.destinations}
+          </span>
+        )}
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={addDestination}
+            className="rounded-xl border border-dashed border-indigo-300 px-3.5 py-2 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-500 hover:bg-indigo-50"
+          >
+            + 여행지 추가
+          </button>
         </div>
       </div>
     </div>
