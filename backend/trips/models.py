@@ -9,7 +9,6 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
-
 class Trip(TimeStampedModel):
     """온보딩 Step 1(목적지) + Step 2(항공권/날짜)의 결과물."""
 
@@ -17,9 +16,13 @@ class Trip(TimeStampedModel):
         FLIGHT = "flight", "항공권 기반"
         MANUAL = "manual", "날짜만 등록"
 
-    destination = models.CharField("목적지 도시", max_length=120)
-    destination_code = models.CharField(
-        "도시/공항 코드", max_length=8, blank=True, default=""
+    # [{"city": "도쿄", "city_code": "TYO"}, {"city": "오사카", "city_code": "OSA"}]
+    # 도시 이동 순서를 그대로 유지하므로 list 순서가 곧 여행 동선이다.
+    destinations = models.JSONField(
+        "여행지",
+        default=list,
+        blank=True,
+        help_text='[{"city": "도시명", "city_code": "도시코드"}] 형태의 목록',
     )
     start_date = models.DateField("여행 시작일")
     end_date = models.DateField("여행 종료일")
@@ -43,7 +46,21 @@ class Trip(TimeStampedModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.destination} ({self.start_date} ~ {self.end_date})"
+        return f"{self.destination_label} ({self.start_date} ~ {self.end_date})"
+
+    @property
+    def city_names(self) -> list[str]:
+        """destinations에서 도시명만 순서대로 뽑아낸다."""
+        return [
+            entry["city"]
+            for entry in (self.destinations or [])
+            if isinstance(entry, dict) and entry.get("city")
+        ]
+
+    @property
+    def destination_label(self) -> str:
+        """`도쿄 → 나고야 → 오사카` 형태의 사람이 읽는 동선 표기."""
+        return " → ".join(self.city_names) or "목적지 미정"
 
     @property
     def nights(self) -> int:
@@ -76,7 +93,7 @@ class Hotel(TimeStampedModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.name} @ {self.trip.destination}"
+        return f"{self.name} @ {self.trip.destination_label}"
 
     @property
     def nights(self):

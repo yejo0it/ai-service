@@ -10,10 +10,19 @@ class HotelInline(admin.TabularInline):
 
 @admin.register(Trip)
 class TripAdmin(admin.ModelAdmin):
-    list_display = ("destination", "start_date", "end_date", "date_source", "created_at")
+    list_display = (
+        "destination_label",
+        "start_date",
+        "end_date",
+        "date_source",
+        "created_at",
+    )
     list_filter = ("date_source",)
-    search_fields = ("destination", "destination_code")
     inlines = [HotelInline]
+
+    @admin.display(description="여행지")
+    def destination_label(self, obj):
+        return obj.destination_label
 
 
 @admin.register(Hotel)

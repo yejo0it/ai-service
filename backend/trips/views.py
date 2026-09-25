@@ -1,3 +1,5 @@
+from django.db.models import TextField
+from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -25,7 +27,11 @@ class TripViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         destination = self.request.query_params.get("destination")
         if destination:
-            queryset = queryset.filter(destination__icontains=destination)
+            # destinations는 JSONField(list)이므로 text로 캐스팅해 부분 검색한다.
+            # 도시명("도쿄")과 도시코드("TYO") 모두로 찾을 수 있다.
+            queryset = queryset.annotate(
+                destinations_text=Cast("destinations", TextField())
+            ).filter(destinations_text__icontains=destination)
         return queryset
 
     @action(detail=True, methods=["get", "post"], url_path="hotels")

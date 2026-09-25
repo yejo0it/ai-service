@@ -12,7 +12,7 @@ function TripCreated() {
     <div className="flex min-h-screen justify-center bg-slate-50 px-4 py-8 sm:items-center">
       <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-sm ring-1 ring-slate-100">
         <h1 className="text-xl font-bold text-slate-900">
-          {trip.destination} 여행이 만들어졌어요
+          {trip.destination_label} 여행이 만들어졌어요
         </h1>
         <p className="mt-1 text-sm text-slate-500">
           {trip.start_date} ~ {trip.end_date} · {trip.nights}박
