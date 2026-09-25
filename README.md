@@ -12,7 +12,7 @@ frontend/   React 18 + Tailwind CSS 4 + Vite
 
 | Step | 입력 | 저장 위치 |
 | --- | --- | --- |
-| 1 | 목적지 도시 | `Trip.destination`, `Trip.destination_code` |
+| 1 | 여행지 | `Trip.destinations` |
 | 2 | 항공권 정보 **또는** 날짜만 등록 | `Trip.flight_info` / `Trip.start_date`, `end_date`, `date_source` |
 | 3 | 호텔 (Skip 가능) | `Hotel` (Trip 당 0개 이상) |
 
@@ -23,7 +23,7 @@ frontend/   React 18 + Tailwind CSS 4 + Vite
 
 | Method | URL | 설명 |
 | --- | --- | --- |
-| GET/POST | `/api/v1/trips/` | 여행 목록 / 생성 (`hotels: [...]` 중첩 생성 지원, `?destination=` 검색) |
+| GET/POST | `/api/v1/trips/` | 여행 목록 / 생성 (`hotels: [...]` 중첩 생성 지원, `?destination=` 로 도시명·도시코드 부분 검색) |
 | GET/PATCH/DELETE | `/api/v1/trips/{id}/` | 여행 상세 / 부분 수정 / 삭제 |
 | GET/POST | `/api/v1/trips/{id}/hotels/` | 해당 여행의 숙소 목록 / 추가 (배열도 허용) |
 | GET/POST | `/api/v1/hotels/` | 숙소 전체 / 생성 (`?trip={id}` 필터) |
@@ -37,8 +37,12 @@ frontend/   React 18 + Tailwind CSS 4 + Vite
 ```jsonc
 POST /api/v1/trips/
 {
-  "destination": "도쿄",
-  "destination_code": "TYO",
+  // 여행지는 1개 이상. 배열 순서가 곧 도시 이동 순서다.
+  "destinations": [
+    {"city": "도쿄", "city_code": "TYO"},
+    {"city": "나고야", "city_code": "NGO"},
+    {"city": "오사카", "city_code": "OSA"}
+  ],
   "date_source": "flight",
   "flight_info": {
     "airline": "대한항공",

@@ -11,8 +11,10 @@ class OnboardingAPITests(APITestCase):
         response = self.client.post(
             "/api/v1/trips/",
             {
-                "destination": "도쿄",
-                "destination_code": "TYO",
+                "destinations": [
+                    {"city": "도쿄", "city_code": "TYO"},
+                    {"city": "오사카", "city_code": "OSA"},
+                ],
                 "start_date": "2026-09-01",
                 "end_date": "2026-09-05",
                 "flight_info": {
@@ -37,11 +39,23 @@ class OnboardingAPITests(APITestCase):
         self.assertEqual(response.data["nights"], 4)
         self.assertEqual(len(response.data["hotels"]), 1)
 
+        # 여행지는 입력 순서대로 list[dict] 그대로 저장/응답된다.
+        trip = Trip.objects.get(pk=response.data["id"])
+        self.assertEqual(
+            trip.destinations,
+            [
+                {"city": "도쿄", "city_code": "TYO"},
+                {"city": "오사카", "city_code": "OSA"},
+            ],
+        )
+        self.assertEqual(response.data["destinations"], trip.destinations)
+        self.assertEqual(response.data["destination_label"], "도쿄 → 오사카")
+
     def test_derives_dates_from_flight_info(self):
         response = self.client.post(
             "/api/v1/trips/",
             {
-                "destination": "오사카",
+                "destinations": [{"city": "오사카", "city_code": "OSA"}],
                 "flight_info": {
                     "flight_number": "KE723",
                     "departure_at": "2026-10-02T09:00",
@@ -58,7 +72,7 @@ class OnboardingAPITests(APITestCase):
         response = self.client.post(
             "/api/v1/trips/",
             {
-                "destination": "파리",
+                "destinations": [{"city": "파리", "city_code": "PAR"}],
                 "start_date": "2026-11-01",
                 "end_date": "2026-11-07",
                 "flight_info": None,
@@ -72,7 +86,9 @@ class OnboardingAPITests(APITestCase):
 
     def test_adds_hotel_to_existing_trip(self):
         trip = Trip.objects.create(
-            destination="파리", start_date="2026-11-01", end_date="2026-11-07"
+            destinations=[{"city": "파리", "city_code": "PAR"}],
+            start_date="2026-11-01",
+            end_date="2026-11-07",
         )
         response = self.client.post(
             f"/api/v1/trips/{trip.pk}/hotels/",
@@ -90,7 +106,7 @@ class OnboardingAPITests(APITestCase):
 
     def test_rejects_missing_dates(self):
         response = self.client.post(
-            "/api/v1/trips/", {"destination": "제주"}, format="json"
+            "/api/v1/trips/", {"destinations": [{"city": "제주", "city_code": "CJU"}]}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("start_date", response.data)
@@ -99,7 +115,11 @@ class OnboardingAPITests(APITestCase):
     def test_rejects_end_date_before_start_date(self):
         response = self.client.post(
             "/api/v1/trips/",
-            {"destination": "방콕", "start_date": "2026-12-10", "end_date": "2026-12-01"},
+            {
+                "destinations": [{"city": "방콕", "city_code": "BKK"}],
+                "start_date": "2026-12-10",
+                "end_date": "2026-12-01",
+            },
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -109,7 +129,7 @@ class OnboardingAPITests(APITestCase):
         response = self.client.post(
             "/api/v1/trips/",
             {
-                "destination": "다낭",
+                "destinations": [{"city": "다낭", "city_code": "DAD"}],
                 "start_date": "2026-12-01",
                 "end_date": "2026-12-05",
                 "hotels": [
@@ -125,3 +145,74 @@ class OnboardingAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("hotels", response.data)
+
+    def test_rejects_empty_destinations(self):
+        for payload in ({"destinations": []}, {}):
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    "/api/v1/trips/",
+                    {**payload, "start_date": "2026-12-01", "end_date": "2026-12-05"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("destinations", response.data)
+
+    def test_accepts_destination_without_city_code(self):
+        response = self.client.post(
+            "/api/v1/trips/",
+            {
+                "destinations": [{"city": " 후쿠오카 "}],
+                "start_date": "2026-12-01",
+                "end_date": "2026-12-05",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["destinations"], [{"city": "후쿠오카", "city_code": ""}]
+        )
+
+    def test_patches_destinations_on_existing_trip(self):
+        trip = Trip.objects.create(
+            destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-11-01",
+            end_date="2026-11-07",
+        )
+        response = self.client.patch(
+            f"/api/v1/trips/{trip.pk}/",
+            {
+                "destinations": [
+                    {"city": "도쿄", "city_code": "TYO"},
+                    {"city": "나고야", "city_code": "ngo"},
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        trip.refresh_from_db()
+        self.assertEqual(
+            trip.destinations,
+            [
+                {"city": "도쿄", "city_code": "TYO"},
+                {"city": "나고야", "city_code": "NGO"},
+            ],
+        )
+
+    def test_filters_trips_by_destination(self):
+        Trip.objects.create(
+            destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-11-01",
+            end_date="2026-11-07",
+        )
+        Trip.objects.create(
+            destinations=[{"city": "파리", "city_code": "PAR"}],
+            start_date="2026-11-01",
+            end_date="2026-11-07",
+        )
+        response = self.client.get("/api/v1/trips/", {"destination": "도쿄"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(
+            response.data["results"][0]["destinations"],
+            [{"city": "도쿄", "city_code": "TYO"}],
+        )
