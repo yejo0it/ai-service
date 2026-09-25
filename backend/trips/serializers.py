@@ -3,7 +3,7 @@ import datetime
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Hotel, Trip
+from .models import Hotel, Trip, Airline
 
 
 def _jsonify(value):
@@ -15,6 +15,13 @@ def _jsonify(value):
     if isinstance(value, (list, tuple)):
         return [_jsonify(item) for item in value]
     return value
+
+
+class AirlineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Airline
+        fields = ["id", "name_ko", "iata_code", "country"]
+        read_only_fields = ("id",)
 
 
 class DestinationSerializer(serializers.Serializer):
