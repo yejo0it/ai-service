@@ -6,6 +6,10 @@ const api = axios.create({
   timeout: 10000,
 });
 
+/** 항공사 목록 조회 */
+export const getAirlines = () =>
+  api.get("/airlines/").then((res) => res.data);
+
 /** 온보딩 Step 1~3을 한 번에 저장 (hotels 포함 가능) */
 export const createTrip = (payload) =>
   api.post("/trips/", payload).then((res) => res.data);

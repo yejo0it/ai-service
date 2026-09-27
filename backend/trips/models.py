@@ -9,6 +9,21 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
+class Airline(models.Model):
+    """항공사 정보. IATA 코드 기반."""
+
+    name_ko = models.CharField("국문 항공사명", max_length=100)
+    iata_code = models.CharField("iata 코드", max_length=2, unique=True)
+    country = models.CharField("국가", max_length=100, blank=True, null=True)
+
+    class Meta:
+        verbose_name = "항공사"
+        verbose_name_plural = "항공사"
+        ordering = ("name_ko",)
+
+    def __str__(self) -> str:
+        return f"[{self.iata_code}] {self.name_ko}"
+
 class Trip(TimeStampedModel):
     """온보딩 Step 1(목적지) + Step 2(항공권/날짜)의 결과물."""
 
