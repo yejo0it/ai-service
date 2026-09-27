@@ -1,1 +1,115 @@
 @import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * react-datepicker 스킨
+ * 기본 스타일이 온보딩 카드 톤과 달라, .pin-calendar 안에서만 덮어쓴다.
+ * ------------------------------------------------------------------ */
+
+.pin-calendar .react-datepicker {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+
+.pin-calendar .react-datepicker__month-container {
+  float: none;
+}
+
+.pin-calendar .react-datepicker__header {
+  border-bottom: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.pin-calendar .react-datepicker__day-names,
+.pin-calendar .react-datepicker__week {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pin-calendar .react-datepicker__day-name,
+.pin-calendar .react-datepicker__day {
+  width: 2.25rem;
+  line-height: 2.25rem;
+  margin: 0.0625rem;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+}
+
+.pin-calendar .react-datepicker__day-name {
+  color: var(--color-slate-400);
+  font-weight: 500;
+}
+
+.pin-calendar .react-datepicker__month {
+  margin: 0.25rem 0 0;
+}
+
+.pin-calendar .react-datepicker__day {
+  color: var(--color-slate-700);
+  transition: background-color 120ms, color 120ms;
+}
+
+.pin-calendar .react-datepicker__day:hover {
+  background-color: var(--color-slate-100);
+}
+
+/* 선택된 날짜 — 레퍼런스처럼 진한 사각형 */
+.pin-calendar .react-datepicker__day--selected,
+.pin-calendar .react-datepicker__day--range-start,
+.pin-calendar .react-datepicker__day--range-end,
+.pin-calendar .react-datepicker__day--selecting-range-start {
+  background-color: var(--color-slate-900);
+  color: #fff;
+  font-weight: 600;
+}
+
+.pin-calendar .react-datepicker__day--selected:hover,
+.pin-calendar .react-datepicker__day--range-start:hover,
+.pin-calendar .react-datepicker__day--range-end:hover {
+  background-color: var(--color-slate-800);
+}
+
+/* 기간 선택 중간 구간 */
+.pin-calendar .react-datepicker__day--in-range,
+.pin-calendar .react-datepicker__day--in-selecting-range {
+  background-color: var(--color-indigo-50);
+  color: var(--color-indigo-700);
+  border-radius: 0;
+}
+
+.pin-calendar .react-datepicker__day--in-range:hover,
+.pin-calendar .react-datepicker__day--in-selecting-range:hover {
+  background-color: var(--color-indigo-100);
+}
+
+.pin-calendar .react-datepicker__day--range-start,
+.pin-calendar .react-datepicker__day--selecting-range-start {
+  border-radius: 0.625rem 0 0 0.625rem;
+}
+
+.pin-calendar .react-datepicker__day--range-end {
+  border-radius: 0 0.625rem 0.625rem 0;
+}
+
+/* 기간이 하루뿐이면 양쪽 모두 둥글게 */
+.pin-calendar .react-datepicker__day--range-start.react-datepicker__day--range-end {
+  border-radius: 0.625rem;
+}
+
+.pin-calendar .react-datepicker__day--outside-month {
+  color: var(--color-slate-300);
+}
+
+.pin-calendar .react-datepicker__day--disabled {
+  color: var(--color-slate-300);
+  cursor: default;
+}
+
+.pin-calendar .react-datepicker__day--disabled:hover {
+  background-color: transparent;
+}
+
+.pin-calendar .react-datepicker__day--keyboard-selected {
+  background-color: transparent;
+}

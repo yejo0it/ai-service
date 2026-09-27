@@ -3,7 +3,7 @@ import datetime
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Hotel, Trip
+from .models import Hotel, Trip, Airline
 
 
 def _jsonify(value):
@@ -15,6 +15,13 @@ def _jsonify(value):
     if isinstance(value, (list, tuple)):
         return [_jsonify(item) for item in value]
     return value
+
+
+class AirlineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Airline
+        fields = ["id", "name_ko", "iata_code", "country"]
+        read_only_fields = ("id",)
 
 
 class DestinationSerializer(serializers.Serializer):
@@ -39,6 +46,10 @@ class FlightInfoSerializer(serializers.Serializer):
     flight_number = serializers.CharField(max_length=20)
     departure_at = serializers.DateTimeField()
     arrival_at = serializers.DateTimeField(required=False, allow_null=True)
+    # 귀국편 항공사. 출국과 같으면 프론트에서 동일 값을 채워 보낸다.
+    return_airline = serializers.CharField(
+        max_length=60, required=False, allow_blank=True
+    )
     return_flight_number = serializers.CharField(
         max_length=20, required=False, allow_blank=True
     )

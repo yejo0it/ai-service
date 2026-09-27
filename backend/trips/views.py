@@ -6,8 +6,16 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import Hotel, Trip
-from .serializers import HotelSerializer, TripSerializer
+from .models import Hotel, Trip, Airline
+from .serializers import HotelSerializer, TripSerializer, AirlineSerializer
+
+class AirlineViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    `/api/v1/airlines/` — 항공사 목록 조회. CSV import 후 DB에 저장된 항공사 정보 제공.
+    """
+
+    queryset = Airline.objects.all()
+    serializer_class = AirlineSerializer
 
 
 class TripViewSet(viewsets.ModelViewSet):

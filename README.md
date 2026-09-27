@@ -51,6 +51,7 @@ frontend/   React 18 + Tailwind CSS 4 + Vite
 | 2 | 항공권 정보 **또는** 날짜만 등록 | `Trip.flight_info` / `Trip.start_date`, `end_date`, `date_source` |
 | 3 | 호텔 (Skip 가능) | `Hotel` (Trip 당 0개 이상) |
 
+
 ## API
 
 | Method | URL | 설명 |
