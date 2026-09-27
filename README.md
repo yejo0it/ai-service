@@ -1,3 +1,39 @@
+# AI SERVICE
+
+## 과정 / 학습 목표
+
+오픈소스 기반 AI 기술을 활용하여 **실제 배포 가능한 AI 데모 서비스를 1개 이상 완성**하는 것을 목표로 합니다.
+
+이 저장소에는 과정을 진행하며 실습 코드, 프로젝트 진행 과정을 기록합니다.
+
+### 현재 위치
+
+* Claude Code, Codex 등 AI Coding Agent의 개념과 활용 사례를 알고 있는 단계
+* Python/Django 기반 백엔드 개발 경험은 있지만, LLM 및 AI Agent 개발 경험은 부족한 상태
+
+### 개인 목표
+
+* Agent, Model, AI Platform 등을 활용한 **AI Agent의 전체 동작 흐름** 이해
+* MCP, Prompt Engineering, RAG, Tool Calling 등 핵심 기술 학습
+* 목적에 맞는 AI 스택과 오픈소스 도구를 선택하고 활용할 수 있는 역량 확보
+* 실제 서비스 형태로 배포 가능한 AI 데모 프로젝트 1개 이상 완성
+* 학습 과정과 시행착오를 GitHub에 꾸준히 기록하여 기술 포트폴리오 구축
+
+## 관심 트랙
+
+* 🥇 추천 / 분류-1순위
+
+사용자 데이터를 기반으로 개인화 추천 및 매칭 서비스를 구현하는 프로젝트에 가장 관심이 있습니다.
+백엔드 개발 경험을 살려 추천 로직과 AI 모델을 실제 서비스 형태로 연결하는 과정을 경험해 보고 싶습니다.
+
+* 🥈 문서 기반 RAG-2순위
+
+RAG(Retrieval-Augmented Generation)를 활용한 문서 검색 및 질의응답 서비스에 관심이 있습니다.
+기업 문서, 사내 지식베이스, FAQ 등 실무에서 활용 가능한 서비스를 직접 구현하며 AI 서비스 아키텍처를 경험해 보고 싶습니다.
+
+---
+
+
 # PinRoute — 온보딩 MVP
 
 여행 동선 최적화 서비스 PinRoute의 온보딩(Step 1~3) 백엔드 API와 프론트엔드 위저드.
@@ -16,8 +52,6 @@ frontend/   React 18 + Tailwind CSS 4 + Vite
 | 2 | 항공권 정보 **또는** 날짜만 등록 | `Trip.flight_info` / `Trip.start_date`, `end_date`, `date_source` |
 | 3 | 호텔 (Skip 가능) | `Hotel` (Trip 당 0개 이상) |
 
-프론트엔드는 Step 1~3 값을 `useState`+`useContext`로 누적한 뒤 마지막에 `POST /api/v1/trips/` 한 번으로 전송한다.
-단계별로 나눠 저장해야 하면 Step 1~2 → `POST /trips/`, Step 3 → `POST /trips/{id}/hotels/`를 쓰면 된다.
 
 ## API
 
