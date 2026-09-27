@@ -932,7 +932,8 @@ function StepFlight() {
             </PickerButton>
 
             {rangeOpen && (
-              <div className={POPOVER_CLASS}>
+              // Field가 <label>이라 날짜 클릭이 PickerButton으로 전달돼 달력이 닫히는 것을 막는다.
+              <div className={POPOVER_CLASS} onClick={(event) => event.preventDefault()}>
                 <DatePicker
                   selectsRange
                   inline
