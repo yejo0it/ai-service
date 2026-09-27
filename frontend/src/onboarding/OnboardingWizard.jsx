@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useMemo, useState, useEffect } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { createTrip, toErrorMessage, getAirlines } from "../api/client";
+import { createTrip, toErrorMessage } from "../api/client";
 import { findCityByName, searchCities } from "./cities";
+import { findAirlineByName, searchAirlines } from "./airlines";
 
 /* ------------------------------------------------------------------ *
  * 온보딩 상태 (Step 1~3 입력값 누적)
@@ -26,10 +27,13 @@ const INITIAL_DATA = {
   destinations: [emptyDestination()],
   // Step 2
   dateMode: "flight", // "flight" | "dates"
-  // selectOption: [Airline.name_ko],
   airline: "",
+  airlineCode: "", // 선택한 항공사의 IATA 코드. 편명 앞에 붙는다.
   flightNumber: "",
   departureAt: "",
+  sameReturnAirline: true, // 귀국 항공사 동일
+  returnAirline: "",
+  returnAirlineCode: "",
   returnFlightNumber: "",
   returnArrivalAt: "",
   startDate: "",
@@ -55,6 +59,13 @@ export function useOnboarding() {
 /** datetime-local("2026-09-01T10:30") -> "2026-09-01" */
 const toDate = (value) => (value ? value.slice(0, 10) : "");
 
+/** '귀국 항공사 동일'이 켜져 있으면 출국 항공사를 그대로 쓴다. */
+export function returnAirlineOf(data) {
+  return data.sameReturnAirline
+    ? { name: data.airline.trim(), code: data.airlineCode }
+    : { name: data.returnAirline.trim(), code: data.returnAirlineCode };
+}
+
 /** 누적된 상태를 DRF payload로 변환 */
 export function buildTripPayload(data) {
   const usesFlight = data.dateMode === "flight";
@@ -72,9 +83,12 @@ export function buildTripPayload(data) {
     flight_info: usesFlight
       ? {
           airline: data.airline.trim(),
-          flight_number: data.flightNumber.trim(),
+          // IATA 코드와 번호를 합쳐 "KE001" 형태로 보낸다.
+          flight_number: data.airlineCode + data.flightNumber.trim(),
           departure_at: data.departureAt,
-          return_flight_number: data.returnFlightNumber.trim(),
+          return_airline: returnAirlineOf(data).name,
+          return_flight_number:
+            returnAirlineOf(data).code + data.returnFlightNumber.trim(),
           return_arrival_at: data.returnArrivalAt,
         }
       : null,
@@ -100,7 +114,11 @@ function validateStep(step, data) {
   }
   if (step === 2) {
     if (data.dateMode === "flight") {
+      if (!data.airline.trim()) errors.airline = "항공사를 선택해 주세요.";
       if (!data.flightNumber.trim()) errors.flightNumber = "편명을 입력해 주세요.";
+      if (!data.sameReturnAirline && !data.returnAirline.trim()) {
+        errors.returnAirline = "귀국 항공사를 선택해 주세요.";
+      }
       if (!data.departureAt) errors.departureAt = "출국 일시를 선택해 주세요.";
       if (!data.returnArrivalAt) errors.returnArrivalAt = "귀국 일시를 선택해 주세요.";
       if (
@@ -185,45 +203,32 @@ function TextInput({ error, ...props }) {
   return <input {...props} className={`${INPUT_CLASS} ${errorClass}`} />;
 }
 
-/* ------------------------------------------------------------------ *
- * Step 1 — 목적지
- * ------------------------------------------------------------------ */
-
-/** 타임라인 노드. 입력된 행은 채워진 핀, 빈 행은 흐린 핀으로 표시한다. */
-function TimelineNode({ filled }) {
-  return (
-    <span
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] transition-colors ${
-        filled
-          ? "border-indigo-500 bg-indigo-500 text-white"
-          : "border-indigo-200 bg-white text-indigo-300"
-      }`}
-    >
-      <i className="fas fa-map-pin" aria-hidden="true" />
-    </span>
-  );
-}
-
-/** 여행지 한 줄: 타임라인 노드 + 도시 자동완성 입력 + 삭제 버튼. */
-function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
+/**
+ * 입력하면 후보 목록을 드롭다운으로 보여주는 자동완성 입력.
+ * 목록에 없는 값도 그대로 입력할 수 있고, 포커스만으로는 목록이 열리지 않는다.
+ * `search`는 모듈 상수 함수를 넘겨야 useMemo가 유효하다.
+ */
+function SuggestInput({
+  id,
+  value,
+  onChange,
+  onPick,
+  search,
+  keyOf,
+  renderLabel,
+  renderHint,
+  error,
+  ...inputProps
+}) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
 
-  const suggestions = useMemo(() => searchCities(dest.city), [dest.city]);
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
-  const listId = `${dest.id}-listbox`;
+  const suggestions = useMemo(() => search(value), [search, value]);
+  const listId = `${id}-listbox`;
 
-  const pick = (city) => {
-    onChange({ city: city.city, city_code: city.city_code });
+  const pick = (item) => {
+    onPick(item);
     setOpen(false);
-  };
-
-  const handleChange = (value) => {
-    // 목록에 없는 도시도 그대로 입력할 수 있다. 이름이 정확히 맞으면 코드를 채워준다.
-    onChange({ city: value, city_code: findCityByName(value)?.city_code ?? "" });
-    setHighlight(0);
-    setOpen(true);
   };
 
   const handleKeyDown = (event) => {
@@ -253,6 +258,85 @@ function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
   };
 
   return (
+    <div className="relative">
+      <TextInput
+        {...inputProps}
+        value={value}
+        error={error}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setHighlight(0);
+          setOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setOpen(false)}
+        role="combobox"
+        aria-expanded={open && suggestions.length > 0}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        autoComplete="off"
+      />
+
+      {open && suggestions.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {suggestions.map((item, position) => (
+            <li key={keyOf(item)} role="option" aria-selected={position === highlight}>
+              <button
+                type="button"
+                // onBlur보다 먼저 실행되어 목록이 닫히는 것을 막는다.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => pick(item)}
+                onMouseEnter={() => setHighlight(position)}
+                className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
+                  position === highlight ? "bg-indigo-50 text-indigo-700" : "text-slate-700"
+                }`}
+              >
+                {/* 줄 수는 renderLabel이 정한다(항공사는 국문/영문 2줄). */}
+                <span className="min-w-0 flex-1">{renderLabel(item)}</span>
+                <span className="shrink-0 text-xs tabular-nums text-slate-400">
+                  {renderHint(item)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Step 1 — 목적지
+ * ------------------------------------------------------------------ */
+
+const cityKey = (city) => city.city_code;
+const cityHint = (city) => city.city_code;
+const cityLabel = (city) => <span className="block truncate">{city.city}</span>;
+
+/** 타임라인 노드. 입력된 행은 채워진 핀, 빈 행은 흐린 핀으로 표시한다. */
+function TimelineNode({ filled }) {
+  return (
+    <span
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] transition-colors ${
+        filled
+          ? "border-indigo-500 bg-indigo-500 text-white"
+          : "border-indigo-200 bg-white text-indigo-300"
+      }`}
+    >
+      <i className="fas fa-map-pin" aria-hidden="true" />
+    </span>
+  );
+}
+
+function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+
+  return (
     <div className="flex gap-2">
       {/* 첫 행 위/마지막 행 아래로는 선이 뻗지 않는다. */}
       <div className="flex w-6 shrink-0 flex-col items-center" aria-hidden="true">
@@ -262,52 +346,24 @@ function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
       </div>
 
       <div className="flex flex-1 items-center gap-2 py-1">
-        <div className="relative flex-1">
-          <TextInput
+        <div className="flex-1">
+          <SuggestInput
+            id={dest.id}
             value={dest.city}
             error={error}
-            onChange={(event) => handleChange(event.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={() => setOpen(false)}
-            placeholder={"도시"}
+            search={searchCities}
+            keyOf={cityKey}
+            renderLabel={cityLabel}
+            renderHint={cityHint}
+            // 목록에 없는 도시도 그대로 입력할 수 있다. 이름이 정확히 맞으면 코드를 채워준다.
+            onChange={(value) =>
+              onChange({ city: value, city_code: findCityByName(value)?.city_code ?? "" })
+            }
+            onPick={(city) => onChange({ city: city.city, city_code: city.city_code })}
+            placeholder="도시"
             autoFocus={isFirst}
             aria-label={`여행지 ${index + 1}`}
-            role="combobox"
-            aria-expanded={open && suggestions.length > 0}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            autoComplete="off"
           />
-
-          {open && suggestions.length > 0 && (
-            <ul
-              id={listId}
-              role="listbox"
-              className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-            >
-              {suggestions.map((city, position) => (
-                <li key={city.city_code} role="option" aria-selected={position === highlight}>
-                  <button
-                    type="button"
-                    // onBlur보다 먼저 실행되어 목록이 닫히는 것을 막는다.
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => pick(city)}
-                    onMouseEnter={() => setHighlight(position)}
-                    className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
-                      position === highlight
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "text-slate-700"
-                    }`}
-                  >
-                    <span>{city.city}</span>
-                    <span className="text-xs tabular-nums text-slate-400">
-                      {city.city_code}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         {total > 1 && (
@@ -400,76 +456,364 @@ const DATE_MODES = [
   { key: "dates", label: "날짜만 등록" },
 ];
 
+const pad2 = (value) => String(value).padStart(2, "0");
+
+/** Date -> "2026-10-01" */
+const toISODate = (date) =>
+  date ? `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` : "";
+
+/** "2026-10-01" -> Date (타임존 밀림을 피하려고 로컬 자정으로 만든다) */
+const fromISODate = (value) => (value ? new Date(`${value}T00:00:00`) : null);
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** "2026-10-01" -> "2026년 10월 1일 (목)" */
+const formatKoreanDate = (value) => {
+  const date = fromISODate(value);
+  if (!date) return "";
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${
+    WEEKDAYS[date.getDay()]
+  })`;
+};
+
+const HOURS = Array.from({ length: 24 }, (_, index) => pad2(index));
+const MINUTES = Array.from({ length: 12 }, (_, index) => pad2(index * 5));
+
+/** 팝오버 바깥을 누르면 닫는다. */
+function useOutsideClose(ref, onClose) {
+  useEffect(() => {
+    const handle = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) onClose();
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [ref, onClose]);
+}
+
+/** 달력/시간 팝오버를 여는 버튼. 좌측 아이콘 + 값 + 우측 쉐브론. */
+function PickerButton({ icon, children, placeholder, open, invalid, onClick, ariaLabel }) {
+  const filled = Boolean(children);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      aria-expanded={open}
+      className={`flex w-full items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left text-base transition-colors ${
+        invalid
+          ? "border-rose-400"
+          : open
+            ? "border-indigo-500 ring-2 ring-indigo-100"
+            : "border-slate-200 hover:border-slate-300"
+      }`}
+    >
+      <i className={`${icon} shrink-0 text-slate-400`} aria-hidden="true" />
+      <span className={`flex-1 truncate ${filled ? "text-slate-900" : "text-slate-400"}`}>
+        {filled ? children : placeholder}
+      </span>
+      <i
+        className={`fas fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform ${
+          open ? "rotate-180" : ""
+        }`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+const POPOVER_CLASS =
+  "pin-calendar absolute left-0 z-30 mt-1.5 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl";
+
+// react-datepicker 기본 로케일이 영문이라, 요일만 한글로 바꿔 표기한다.
+// (date-fns ko 로케일은 직접 의존하지 않는 패키지라 끌어다 쓰지 않는다)
+const WEEKDAY_KO = {
+  Sunday: "일",
+  Monday: "월",
+  Tuesday: "화",
+  Wednesday: "수",
+  Thursday: "목",
+  Friday: "금",
+  Saturday: "토",
+};
+const formatWeekDay = (name) => WEEKDAY_KO[name] ?? name.slice(0, 1);
+
+/** 달력 상단의 ‹ 2026년 10월 › 헤더. */
+function CalendarHeader({ date, decreaseMonth, increaseMonth, prevMonthButtonDisabled }) {
+  const navClass =
+    "flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div className="mb-1 flex items-center justify-between px-1">
+      <button
+        type="button"
+        onClick={decreaseMonth}
+        aria-label="이전 달"
+        className={navClass}
+      >
+        <i className="fas fa-chevron-left text-xs" aria-hidden="true" />
+      </button>
+      <span className="text-sm font-semibold text-slate-800">
+        {date.getFullYear()}년 {date.getMonth() + 1}월
+      </span>
+      <button
+        type="button"
+        onClick={increaseMonth}
+        aria-label="다음 달"
+        className={navClass}
+      >
+        <i className="fas fa-chevron-right text-xs" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/** 열릴 때 선택된 항목이 목록 가운데로 오도록 스크롤한다(페이지는 움직이지 않게 직접 계산). */
+function useScrollToSelected(listRef, itemRef) {
+  useEffect(() => {
+    const list = listRef.current;
+    const item = itemRef.current;
+    if (!list || !item) return;
+    list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
+  }, [listRef, itemRef]);
+}
+
+/** 시·분을 각각 세로로 스크롤해 고르는 목록. */
+function TimeColumns({ hour, minute, onPick }) {
+  const hourList = useRef(null);
+  const hourItem = useRef(null);
+  const minuteList = useRef(null);
+  const minuteItem = useRef(null);
+  useScrollToSelected(hourList, hourItem);
+  useScrollToSelected(minuteList, minuteItem);
+
+  const cell = (value, active, onClick, ref) => (
+    <button
+      key={value}
+      ref={active ? ref : undefined}
+      type="button"
+      onClick={onClick}
+      className={`w-full rounded-lg px-4 py-1.5 text-center text-sm tabular-nums transition-colors ${
+        active ? "bg-slate-900 font-semibold text-white" : "text-slate-600 hover:bg-slate-100"
+      }`}
+    >
+      {value}
+    </button>
+  );
+
+  return (
+    <div className="flex gap-1">
+      <div ref={hourList} className="max-h-48 w-16 space-y-0.5 overflow-y-auto pr-1">
+        {HOURS.map((item) =>
+          cell(item, item === hour, () => onPick(item, minute || "00"), hourItem),
+        )}
+      </div>
+      <div className="w-px bg-slate-100" />
+      <div ref={minuteList} className="max-h-48 w-16 space-y-0.5 overflow-y-auto pr-1">
+        {MINUTES.map((item) =>
+          cell(item, item === minute, () => onPick(hour || "09", item), minuteItem),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 달력 + 시각 드롭다운 한 쌍. 값은 "YYYY-MM-DDTHH:mm" 문자열. */
+function DateTimeField({ value, onChange, minDate, error, ariaLabel }) {
+  const [open, setOpen] = useState(null); // null | "date" | "time"
+  const wrapperRef = useRef(null);
+  const close = useCallback(() => setOpen(null), []);
+  useOutsideClose(wrapperRef, close);
+
+  const datePart = value ? value.slice(0, 10) : "";
+  const [hour = "", minute = ""] = value ? value.slice(11, 16).split(":") : [];
+
+  const pickDate = (date) => {
+    const iso = toISODate(date);
+    // 날짜를 먼저 고르는 흐름이라, 시각이 비어 있으면 09:00을 기본으로 채운다.
+    onChange(iso ? `${iso}T${hour || "09"}:${minute || "00"}` : "");
+    setOpen(null);
+  };
+
+  const pickTime = (nextHour, nextMinute) => {
+    if (!datePart) return;
+    onChange(`${datePart}T${nextHour}:${nextMinute}`);
+  };
+
+  return (
+    <div ref={wrapperRef}>
+      <div className="grid grid-cols-[1.6fr_1fr] gap-2">
+        <div className="relative">
+          <PickerButton
+            icon="far fa-calendar"
+            open={open === "date"}
+            invalid={Boolean(error)}
+            placeholder="날짜 선택"
+            ariaLabel={ariaLabel}
+            onClick={() => setOpen(open === "date" ? null : "date")}
+          >
+            {datePart ? formatKoreanDate(datePart) : ""}
+          </PickerButton>
+
+          {open === "date" && (
+            // Field가 <label>이라 날짜 클릭이 PickerButton으로 전달돼 달력이 다시 열리는 것을 막는다.
+            <div className={POPOVER_CLASS} onClick={(event) => event.preventDefault()}>
+              <DatePicker
+                inline
+                selected={fromISODate(datePart)}
+                minDate={minDate ? fromISODate(minDate) : new Date()}
+                onChange={pickDate}
+                renderCustomHeader={CalendarHeader}
+                formatWeekDay={formatWeekDay}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <PickerButton
+            icon="far fa-clock"
+            open={open === "time"}
+            placeholder={datePart ? "시각" : "—"}
+            ariaLabel={`${ariaLabel} 시각`}
+            onClick={() => datePart && setOpen(open === "time" ? null : "time")}
+          >
+            {hour && minute ? `${hour}:${minute}` : ""}
+          </PickerButton>
+
+          {open === "time" && (
+            <div className="absolute right-0 z-30 mt-1.5 rounded-2xl border border-slate-100 bg-white p-2 shadow-xl">
+              <div className="mb-1 flex gap-1 px-1 text-center text-[11px] font-medium text-slate-400">
+                <span className="w-16">시</span>
+                <span className="w-px" />
+                <span className="w-16">분</span>
+              </div>
+              <TimeColumns hour={hour} minute={minute} onPick={pickTime} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!datePart && (
+        <span className="mt-1 block text-xs text-slate-400">
+          날짜를 먼저 선택하면 시각을 고를 수 있어요.
+        </span>
+      )}
+    </div>
+  );
+}
+
+const airlineKey = (airline) => airline.code;
+const airlineHint = (airline) => airline.code;
+
+// 항공사 칸이 절반 너비라 국문/영문을 두 줄로 나눠 잘리지 않게 한다.
+const airlineLabel = (airline) => (
+  <span className="block">
+    <span className="block truncate">{airline.name}</span>
+    {airline.name_en && (
+      <span className="block truncate text-xs text-slate-400">{airline.name_en}</span>
+    )}
+  </span>
+);
+
+/** 항공사 자동완성 + IATA 코드가 앞에 붙는 편명 입력 한 쌍. */
+function AirlineFlightFields({
+  id,
+  airlineLabelText,
+  flightLabelText,
+  airline,
+  airlineCode,
+  flightNumber,
+  disabled = false,
+  airlineError,
+  flightError,
+  onAirlineChange,
+  onFlightNumberChange,
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label={airlineLabelText} error={airlineError}>
+        {disabled ? (
+          // '귀국 항공사 동일'이면 출국 값이 그대로 채워진 읽기 전용 입력.
+          <TextInput value={airline} disabled readOnly aria-label={airlineLabelText} />
+        ) : (
+          <SuggestInput
+            id={id}
+            value={airline}
+            error={airlineError}
+            search={searchAirlines}
+            keyOf={airlineKey}
+            renderLabel={airlineLabel}
+            renderHint={airlineHint}
+            // 목록에 없는 항공사도 입력할 수 있다. 이름이 맞으면 IATA 코드를 채워준다.
+            onChange={(value) =>
+              onAirlineChange({
+                name: value,
+                code: findAirlineByName(value)?.code ?? "",
+              })
+            }
+            onPick={(item) => onAirlineChange({ name: item.name, code: item.code })}
+            placeholder="예) 대한항공"
+            aria-label={airlineLabelText}
+          />
+        )}
+      </Field>
+
+      <Field label={flightLabelText} error={flightError}>
+        <div
+          className={`flex items-center rounded-xl border focus-within:ring-2 focus-within:ring-indigo-100 ${
+            flightError
+              ? "border-rose-400 focus-within:border-rose-500"
+              : "border-slate-200 focus-within:border-indigo-500"
+          }`}
+        >
+          <span
+            className={`w-11 shrink-0 rounded-l-xl border-r py-3 text-center text-base font-semibold tabular-nums ${
+              airlineCode
+                ? "border-slate-200 text-slate-600"
+                : "border-slate-100 text-slate-300"
+            } ${disabled ? "bg-slate-50" : "bg-white"}`}
+            aria-hidden="true"
+          >
+            {airlineCode || "--"}
+          </span>
+          <input
+            value={flightNumber}
+            onChange={(event) =>
+              onFlightNumberChange(event.target.value.replace(/\D/g, "").slice(0, 4))
+            }
+            inputMode="numeric"
+            placeholder="001"
+            aria-label={flightLabelText}
+            className="w-full min-w-0 rounded-r-xl bg-transparent px-3 py-3 text-base tabular-nums text-slate-900 placeholder:text-slate-400 focus:outline-none"
+          />
+        </div>
+      </Field>
+    </div>
+  );
+}
+
 function StepFlight() {
   const { data, update, errors } = useOnboarding();
 
-  
-  // 1. 항공사 목록 상태 관리
-  const [airlines, setAirlines] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // '날짜만 등록' 캘린더 안에서만 맴도는 임시 기간값
+  const [tempRange, setTempRange] = useState([
+    fromISODate(data.startDate),
+    fromISODate(data.endDate),
+  ]);
+  const [rangeStart, rangeEnd] = tempRange;
+  const [rangeOpen, setRangeOpen] = useState(false);
 
-  // 2. 비동기 데이터 불러오기 (useEffect 사용)
-  useEffect(() => {
-    async function fetchAirlines() {
-      try {
-        const response = await getAirlines();
-
-        // API 응답이 { results: [...] } 형태일 경우 response.results 사용
-        if (Array.isArray(response)) {
-        setAirlines(response);
-        } else if (response && Array.isArray(response.results)) {
-          setAirlines(response.results);
-        } else if (response && Array.isArray(response.data)) {
-          setAirlines(response.data);
-        } else {
-          setAirlines([]); // 예외 시 빈 배열로 안전하게 초기화
-        }
-      } catch (error) {
-        console.error("항공사 목록 조회 실패:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchAirlines();
-  }, []);
-
-  // 옵셔널 체이닝 및 Array 검사 적용)
-  const selectedIataCode = Array.isArray(airlines) 
-  ? airlines.find((item) => item.name_ko === data.airline)?.iata_code || ""
-  : "";
-  
-
-  // 캘린더 내에서만 맴도는 임시값
-  const [tempDates, setTempDates] = useState([data.startDate ? new Date(data.startDate) : null, data.endDate ? new Date(data.endDate) : null]);
-  const [startDate, endDate] = tempDates;
-
-  // 2. 캘린더 열림/닫힘 상태 직접 제어
-  const [isOpen, setIsOpen] = useState(false);
-
-  const formatDate = (dateObj) => {
-    if (!dateObj) return "";
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const day = String(dateObj.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+  const closeRange = () => {
+    setTempRange([fromISODate(data.startDate), fromISODate(data.endDate)]);
+    setRangeOpen(false);
   };
 
-  // 날짜 클릭 시 임시 상태만 업데이트 (바로 update() 호출 안 함)
-  const handleDateChange = (dates) => {
-    setTempDates(dates);
+  const applyRange = () => {
+    update({ startDate: toISODate(rangeStart), endDate: toISODate(rangeEnd) });
+    setRangeOpen(false);
   };
 
-  const handleCancel = () => {
-    setTempDates([data.startDate ? new Date(data.startDate) : null, data.endDate ? new Date(data.endDate) : null]);
-    setIsOpen(false);
-  };
-
-  // 선택 버튼 클릭 시 최종 부모 상태(update)로 반영 후 캘린더 닫기
-  const handleApply = () =>{
-    const [start, end] = tempDates;
-    update({ startDate: formatDate(start), endDate: formatDate(end) });
-    setIsOpen(false);
-  };
+  const sameAirline = data.sameReturnAirline;
+  const returnAirline = returnAirlineOf(data);
 
   return (
     <div className="space-y-5">
@@ -498,114 +842,128 @@ function StepFlight() {
       </div>
 
       {data.dateMode === "flight" ? (
-        <div className="space-y-4"> 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="항공사">
-              <select
-                value={data.airline || ""}
-                onChange={(event) => update({ airline: event.target.value })}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="" disabled>
-                  {loading ? "항공사 목록 로딩 중..." : "항공사 선택"}
-                </option>
-                {airlines.map((airline) => (
-                  <option key={airline.id || airline.iata_code} value={airline.name_ko}>
-                    {airline.name_ko}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {/* 편명 입력 영역 (IATA 코드가 앞에 프리픽스로 노출됨) */}
-            <Field label="편명" error={errors.flightNumber}>
-              <div className="flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
-                {selectedIataCode && (
-                  <span className="mr-1.5 font-bold text-slate-600">
-                    {selectedIataCode}
-                  </span>
-                )}
-              </div>
-              <TextInput
-                value={data.flightNumber}
-                error={errors.flightNumber}
-                onChange={(event) => update({ flightNumber: event.target.value })}
-                placeholder="001"
-              />
-            </Field>
-          </div>
-          <Field label="출국 일시" error={errors.departureAt}>
-            <TextInput
-              type="datetime-local"
-              value={data.departureAt}
-              error={errors.departureAt}
-              onChange={(event) => update({ departureAt: event.target.value })}
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700">가는 편</h3>
+            <AirlineFlightFields
+              id="departure-airline"
+              airlineLabelText="항공사"
+              flightLabelText="편명"
+              airline={data.airline}
+              airlineCode={data.airlineCode}
+              flightNumber={data.flightNumber}
+              airlineError={errors.airline}
+              flightError={errors.flightNumber}
+              onAirlineChange={({ name, code }) =>
+                update({ airline: name, airlineCode: code })
+              }
+              onFlightNumberChange={(value) => update({ flightNumber: value })}
             />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="귀국 편명">
-              <TextInput
-                value={data.returnFlightNumber}
-                onChange={(event) => update({ returnFlightNumber: event.target.value })}
-                placeholder="KE002"
+            <Field label="출국 일시" error={errors.departureAt}>
+              <DateTimeField
+                value={data.departureAt}
+                error={errors.departureAt}
+                ariaLabel="출국 일시"
+                onChange={(value) => update({ departureAt: value })}
               />
             </Field>
+          </section>
+
+          <section className="space-y-3 border-t border-slate-100 pt-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">오는 편</h3>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={sameAirline}
+                  onChange={(event) =>
+                    update({
+                      sameReturnAirline: event.target.checked,
+                      // 직접 입력으로 바꾸면 출국 항공사를 기본값으로 얹어준다.
+                      returnAirline: event.target.checked ? "" : data.airline,
+                      returnAirlineCode: event.target.checked ? "" : data.airlineCode,
+                    })
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-200"
+                />
+                귀국 항공사 동일
+              </label>
+            </div>
+
+            <AirlineFlightFields
+              id="return-airline"
+              airlineLabelText="귀국 항공사"
+              flightLabelText="귀국 편명"
+              airline={returnAirline.name}
+              airlineCode={returnAirline.code}
+              flightNumber={data.returnFlightNumber}
+              disabled={sameAirline}
+              airlineError={errors.returnAirline}
+              onAirlineChange={({ name, code }) =>
+                update({ returnAirline: name, returnAirlineCode: code })
+              }
+              onFlightNumberChange={(value) => update({ returnFlightNumber: value })}
+            />
             <Field label="귀국 일시" error={errors.returnArrivalAt}>
-              <TextInput
-                type="datetime-local"
+              <DateTimeField
                 value={data.returnArrivalAt}
                 error={errors.returnArrivalAt}
-                min={data.departureAt || undefined}
-                onChange={(event) => update({ returnArrivalAt: event.target.value })}
+                minDate={data.departureAt ? data.departureAt.slice(0, 10) : undefined}
+                ariaLabel="귀국 일시"
+                onChange={(value) => update({ returnArrivalAt: value })}
               />
             </Field>
-          </div>
+          </section>
         </div>
       ) : (
-        // <div className="grid">
-        <div className="space-y-5">
+        <Field label="여행 기간" error={errors.startDate || errors.endDate}>
           <div className="relative w-full">
-            {/* 인풋 영역 (클릭 시 캘린더 팝업 열기) */}
-            <button
-              type="button"
-              onClick={() => setIsOpen(!isOpen)}
-              className={`${INPUT_CLASS} text-left ${
-                !data.startDate || !data.endDate ? "!text-slate-400" : "!text-slate-900"
-              }`}
-              >
-                {data.startDate && data.endDate
-                  ? `${data.startDate} ~ ${data.endDate}`
-                  : "여행 기간을 선택하세요"}
-            </button>
-            {isOpen && (  
-              <div className="absolute z-10 mt-1 w-full rounded-2xl border border-slate-100 bg-white p-4 shadow-xl">
+            <PickerButton
+              icon="far fa-calendar"
+              open={rangeOpen}
+              invalid={Boolean(errors.startDate || errors.endDate)}
+              placeholder="여행 기간을 선택하세요"
+              ariaLabel="여행 기간"
+              onClick={() => setRangeOpen((previous) => !previous)}
+            >
+              {data.startDate && data.endDate
+                ? `${formatKoreanDate(data.startDate)} ~ ${formatKoreanDate(data.endDate)}`
+                : ""}
+            </PickerButton>
+
+            {rangeOpen && (
+              <div className={POPOVER_CLASS}>
                 <DatePicker
-                  selectsRange={true}
+                  selectsRange
                   inline
                   minDate={new Date()}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
-                  dateFormat="yyyy년 MM월 dd일"
-                  startDate={startDate}
-                  endDate={endDate}
-                  onChange={handleDateChange}
+                  startDate={rangeStart}
+                  endDate={rangeEnd}
+                  onChange={setTempRange}
+                  renderCustomHeader={CalendarHeader}
+                formatWeekDay={formatWeekDay}
                 />
-                {/* 하단 확인/적용 버튼 영역 */}
-                <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
                   <button
                     type="button"
-                    onClick={handleCancel}
+                    onClick={closeRange}
                     className="rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50"
-                  >취소</button>
+                  >
+                    취소
+                  </button>
                   <button
                     type="button"
-                    onClick={handleApply}
-                    disabled={!startDate || !endDate} //시작일과 종료일이 모두 지정되어야 활성화
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:bg-slate-200 disabled:cursor-not-allowed"
-                    >선택</button>
+                    onClick={applyRange}
+                    disabled={!rangeStart || !rangeEnd}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-200"
+                  >
+                    선택
+                  </button>
                 </div>
               </div>
             )}
           </div>
-        </div>
+        </Field>
       )}
     </div>
   );

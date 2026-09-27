@@ -46,6 +46,10 @@ class FlightInfoSerializer(serializers.Serializer):
     flight_number = serializers.CharField(max_length=20)
     departure_at = serializers.DateTimeField()
     arrival_at = serializers.DateTimeField(required=False, allow_null=True)
+    # 귀국편 항공사. 출국과 같으면 프론트에서 동일 값을 채워 보낸다.
+    return_airline = serializers.CharField(
+        max_length=60, required=False, allow_blank=True
+    )
     return_flight_number = serializers.CharField(
         max_length=20, required=False, allow_blank=True
     )
