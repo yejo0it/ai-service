@@ -129,13 +129,17 @@ export function buildTripPayload(data) {
   return payload;
 }
 
+/** 숙소명을 입력하지 않은 칸. 숙소는 선택 사항이라 빈 칸은 검증·전송하지 않는다. */
+const isBlankHotel = (hotel) => !hotel.place_id && !hotel.name.trim();
+
 /** 숙소별 에러를 { [hotel.id]: { name, stay } } 형태로 모은다. */
-function validateHotels(hotels) {
+function validateHotels(allHotels) {
   const errors = {};
   const add = (id, key, message) => {
     errors[id] = { ...errors[id], [key]: errors[id]?.[key] ?? message };
   };
 
+  const hotels = allHotels.filter((hotel) => !isBlankHotel(hotel));
   hotels.forEach((hotel) => {
     if (!hotel.place_id) add(hotel.id, "name", "검색 목록에서 숙소를 선택해 주세요.");
     if (!hotel.check_in || !hotel.check_out) {
@@ -161,8 +165,12 @@ function validateHotels(hotels) {
 /** 각 단계의 진행 가능 여부 */
 function validateStep(step, data) {
   const errors = {};
-  if (step === 1 && !data.destinations.some((dest) => dest.city.trim())) {
-    errors.destinations = "목적지를 입력해 주세요.";
+  if (step === 1) {
+    if (!data.destinations.some((dest) => dest.city.trim())) {
+      errors.destinations = "목적지를 입력해 주세요.";
+    } else if (data.destinations.some((dest) => dest.city.trim() && !dest.city_code)) {
+      errors.destinations = "여행지는 검색 목록에서 선택해 주세요.";
+    }
   }
   if (step === 2) {
     if (data.dateMode === "flight") {
@@ -254,6 +262,7 @@ function TextInput({ error, ...props }) {
 /**
  * 입력하면 후보 목록을 드롭다운으로 보여주는 자동완성 입력.
  * 목록에 없는 값도 그대로 입력할 수 있고, 포커스만으로는 목록이 열리지 않는다.
+ * 목록 선택만 허용하려면 onBlur에서 확정되지 않은 값을 정리한다.
  * `search`는 모듈 상수 함수를 넘겨야 useMemo가 유효하다.
  */
 function SuggestInput({
@@ -267,6 +276,7 @@ function SuggestInput({
   renderLabel,
   renderHint,
   error,
+  onBlur,
   ...inputProps
 }) {
   const [open, setOpen] = useState(false);
@@ -319,7 +329,10 @@ function SuggestInput({
           setOpen(true);
         }}
         onKeyDown={handleKeyDown}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false);
+          onBlur?.();
+        }}
         role="combobox"
         aria-expanded={open && suggestions.length > 0}
         aria-controls={listId}
@@ -382,7 +395,7 @@ function TimelineNode({ filled }) {
   );
 }
 
-function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
+function DestinationRow({ dest, index, total, error, onChange, onBlur, onRemove }) {
   const isFirst = index === 0;
   const isLast = index === total - 1;
 
@@ -405,11 +418,10 @@ function DestinationRow({ dest, index, total, error, onChange, onRemove }) {
             keyOf={cityKey}
             renderLabel={cityLabel}
             renderHint={cityHint}
-            // 목록에 없는 도시도 그대로 입력할 수 있다. 이름이 정확히 맞으면 코드를 채워준다.
-            onChange={(value) =>
-              onChange({ city: value, city_code: findCityByName(value)?.city_code ?? "" })
-            }
+            // 입력 중인 값은 확정되지 않은 상태(city_code 없음)이고, 목록에서 골라야 확정된다.
+            onChange={(value) => onChange({ city: value, city_code: "" })}
             onPick={(city) => onChange({ city: city.city, city_code: city.city_code })}
+            onBlur={onBlur}
             placeholder="도시"
             autoFocus={isFirst}
             aria-label={`여행지 ${index + 1}`}
@@ -451,6 +463,21 @@ function StepDestination() {
       destinations: destinations.filter((_, position) => position !== index),
     });
 
+  // 목록에서 고르지 않고 포커스를 떠나면, 도시명이 정확히 일치할 때만 그 도시로 확정하고
+  // 아니면 입력을 비우고 안내한다.
+  const [rejectedCity, setRejectedCity] = useState("");
+  const confirmDestination = (index) => {
+    const dest = destinations[index];
+    const typed = dest.city.trim();
+    if (dest.city_code || !typed) return;
+    const city = findCityByName(typed);
+    setDestination(index, city ?? { city: "", city_code: "" });
+    setRejectedCity(city ? "" : typed);
+  };
+  const destinationError = rejectedCity
+    ? `'${rejectedCity}'은(는) 목록에 없는 여행지예요. 목록에서 선택해 주세요.`
+    : errors.destinations;
+
   return (
     <div className="space-y-5">
       <header>
@@ -471,16 +498,20 @@ function StepDestination() {
               dest={dest}
               index={index}
               total={destinations.length}
-              error={errors.destinations}
-              onChange={(patch) => setDestination(index, patch)}
+              error={destinationError}
+              onChange={(patch) => {
+                setDestination(index, patch);
+                setRejectedCity("");
+              }}
+              onBlur={() => confirmDestination(index)}
               onRemove={() => removeDestination(index)}
             />
           ))}
         </div>
-        {errors.destinations && (
+        {destinationError && (
           // 타임라인 레일(w-6) + gap(2) 만큼 들여써 입력칸과 좌측을 맞춘다.
           <span className="mt-1 block pl-8 text-xs text-rose-600">
-            {errors.destinations}
+            {destinationError}
           </span>
         )}
         <div className="mt-2 flex justify-end">
@@ -1077,8 +1108,29 @@ const hotelLabel = (hotel) => (
 /** "2026-10-01" -> "10월 1일 (목)" */
 const formatShortDate = (value) => formatKoreanDate(value).replace(/^\d+년 /, "");
 
-/** 체크인~체크아웃 범위 선택. 두 날짜를 모두 고르면 바로 반영하고 닫는다. */
-function StayRangeField({ checkIn, checkOut, min, max, error, ariaLabel, onChange }) {
+/** "2026-10-26" -> "2026-10-27" */
+const nextDay = (value) => {
+  const date = fromISODate(value);
+  date.setDate(date.getDate() + 1);
+  return toISODate(date);
+};
+
+/** 다른 숙소가 이미 묵는 밤인지. 체크아웃 날은 비어 있으므로 다음 숙소의 체크인으로 쓸 수 있다. */
+const isNightTaken = (date, stays) =>
+  stays.some((stay) => stay.check_in <= date && date < stay.check_out);
+
+/** start에 체크인했을 때 가장 늦은 체크아웃 날. 뒤 숙소의 체크인 날 또는 여행 종료일이다. */
+const stayLimitFrom = (start, stays, end) =>
+  stays.reduce(
+    (limit, stay) => (stay.check_in > start && stay.check_in < limit ? stay.check_in : limit),
+    end,
+  );
+
+/**
+ * 체크인~체크아웃 범위 선택. 두 날짜를 모두 고르면 바로 반영하고 닫는다.
+ * 다른 숙소(otherStays)가 묵는 밤은 고를 수 없고, 그 사이의 빈 구간은 자유롭게 고를 수 있다.
+ */
+function StayRangeField({ checkIn, checkOut, min, max, otherStays, error, ariaLabel, onChange }) {
   const [open, setOpen] = useState(false);
   const [temp, setTemp] = useState([null, null]);
   const wrapperRef = useRef(null);
@@ -1096,6 +1148,17 @@ function StayRangeField({ checkIn, checkOut, min, max, error, ariaLabel, onChang
       onChange(toISODate(start), toISODate(end));
       setOpen(false);
     }
+  };
+
+  // 체크인을 고른 뒤에는 그 뒤로 이어서 묵을 수 있는 날까지만 체크아웃으로 고를 수 있다.
+  // 체크인보다 앞선 날을 누르면 체크인을 다시 고르는 것이다.
+  const lastDay = max || "9999-12-31";
+  const filterDate = (date) => {
+    const value = toISODate(date);
+    const start = temp[0] && !temp[1] ? toISODate(temp[0]) : "";
+    if (start && value === start) return false;
+    if (start && value > start) return value <= stayLimitFrom(start, otherStays, lastDay);
+    return value < lastDay && !isNightTaken(value, otherStays);
   };
 
   const nights =
@@ -1128,6 +1191,7 @@ function StayRangeField({ checkIn, checkOut, min, max, error, ariaLabel, onChang
             maxDate={fromISODate(max)}
             startDate={temp[0]}
             endDate={temp[1]}
+            filterDate={filterDate}
             onChange={pick}
             renderCustomHeader={CalendarHeader}
             formatWeekDay={formatWeekDay}
@@ -1139,8 +1203,18 @@ function StayRangeField({ checkIn, checkOut, min, max, error, ariaLabel, onChang
 }
 
 /** 숙소 한 칸: (여행지 선택) + 숙소 검색 + 자동 매핑된 주소 + 숙박 기간. */
-function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onRemove }) {
-  // 여행지가 바뀌어 저장된 도시가 사라졌으면 첫 여행지로 검색한다.
+function HotelRow({
+  hotel,
+  index,
+  total,
+  cities,
+  tripRange,
+  otherStays,
+  error,
+  onChange,
+  onRemove,
+}) {
+  // 도시를 아직 정하지 않았으면 첫 여행지로 검색한다.
   const city = cities.find((item) => item.city === hotel.city) ?? cities[0];
   const { items, failed } = useHotelSuggestions(
     hotel.name,
@@ -1173,6 +1247,20 @@ function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onR
     }
   };
 
+  // 다른 여행지로 바꾸면 이전 도시에서 고른 숙소는 남기지 않는다.
+  const selectCity = (item) => {
+    if (item.city === city?.city) return;
+    onChange({
+      city: item.city,
+      name: "",
+      place_id: "",
+      address: "",
+      latitude: null,
+      longitude: null,
+      city_code: "",
+    });
+  };
+
   const nameError =
     error?.name ?? (failed ? "숙소 검색을 사용할 수 없어요. 잠시 후 다시 시도해 주세요." : "");
 
@@ -1193,13 +1281,13 @@ function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onR
         )}
       </div>
 
-      {cities.length > 1 && (
+      {cities.length > 1 ? (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="숙소가 있는 여행지">
           {cities.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => onChange({ city: item.city })}
+              onClick={() => selectCity(item)}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 item.city === city?.city
                   ? "border-indigo-500 bg-indigo-50 text-indigo-700"
@@ -1210,6 +1298,13 @@ function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onR
             </button>
           ))}
         </div>
+      ) : (
+        city && (
+          <p className="text-xs text-slate-500">
+            <i className="fas fa-location-dot mr-1 text-slate-400" aria-hidden="true" />
+            {city.city} 지역에서 검색해요
+          </p>
+        )
       )}
 
       <Field label="숙소명" error={nameError}>
@@ -1237,20 +1332,13 @@ function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onR
         )}
       </Field>
 
-      <Field
-        label="숙박 기간"
-        hint={
-          tripRange.start && tripRange.end
-            ? `여행 기간(${formatShortDate(tripRange.start)} ~ ${formatShortDate(tripRange.end)}) 안에서 선택할 수 있어요.`
-            : undefined
-        }
-        error={error?.stay}
-      >
+      <Field label="숙박 기간" error={error?.stay}>
         <StayRangeField
           checkIn={hotel.check_in}
           checkOut={hotel.check_out}
           min={tripRange.start}
           max={tripRange.end}
+          otherStays={otherStays}
           error={error?.stay}
           ariaLabel={`숙소 ${index + 1} 숙박 기간`}
           onChange={(checkIn, checkOut) => onChange({ check_in: checkIn, check_out: checkOut })}
@@ -1260,24 +1348,42 @@ function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onR
   );
 }
 
+/** 여행 기간 중 어느 숙소도 묵지 않는 첫 구간. 여행 기간이 모두 채워졌으면 null. */
+function firstFreeStay(stays, tripRange) {
+  for (let date = tripRange.start; date < tripRange.end; date = nextDay(date)) {
+    if (!isNightTaken(date, stays)) {
+      return { checkIn: date, checkOut: stayLimitFrom(date, stays, tripRange.end) };
+    }
+  }
+  return null;
+}
+
 function StepHotel() {
-  const { data, update, errors, tripRange } = useOnboarding();
+  const { data, update, errors, tripRange, hotelNotice, dismissHotelNotice } = useOnboarding();
   const hotels = data.hotels;
   const cities = data.destinations.filter((dest) => dest.city.trim());
+  const stays = hotels.filter((hotel) => hotel.check_in && hotel.check_out);
+  // 여행 기간 중 비어 있는 밤이 하나도 없으면 더 추가할 수 없다.
+  const freeStay =
+    tripRange.start && tripRange.end ? firstFreeStay(stays, tripRange) : undefined;
+  const canAddHotel = freeStay !== null;
 
   const setHotel = (id, patch) =>
     update({
       hotels: hotels.map((hotel) => (hotel.id === id ? { ...hotel, ...patch } : hotel)),
     });
 
-  // 새 숙소는 앞 숙소의 체크아웃 날부터, 여행지는 순서상 다음 도시로 시작한다.
+  // 새 숙소는 비어 있는 첫 구간으로, 여행지는 순서상 다음 도시로 시작한다.
   const addHotel = () => {
-    const last = hotels[hotels.length - 1];
     const nextCity = cities[Math.min(hotels.length, cities.length - 1)];
     update({
       hotels: [
         ...hotels,
-        emptyHotel({ city: nextCity?.city ?? "", checkIn: last?.check_out || tripRange.start }),
+        emptyHotel({
+          city: nextCity?.city ?? "",
+          checkIn: freeStay?.checkIn ?? "",
+          checkOut: freeStay?.checkOut ?? "",
+        }),
       ],
     });
   };
@@ -1289,9 +1395,28 @@ function StepHotel() {
       <header>
         <h2 className="text-xl font-bold text-slate-900">숙소를 등록할까요?</h2>
         <p className="mt-1 text-sm text-slate-500">
-          숙소를 기준으로 매일의 동선을 최적화해요. 나중에 추가해도 괜찮아요.
+          숙소를 기준으로 매일의 동선을 최적화해요. 일부 일정만 등록하거나 나중에 추가해도
+          괜찮아요.
         </p>
       </header>
+
+      {hotelNotice && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          <i className="fas fa-circle-info mt-0.5" aria-hidden="true" />
+          <span className="flex-1">{hotelNotice}</span>
+          <button
+            type="button"
+            onClick={dismissHotelNotice}
+            aria-label="안내 닫기"
+            className="text-amber-500 hover:text-amber-700"
+          >
+            <i className="fas fa-xmark" aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       <fieldset disabled={data.skipHotel} className="space-y-3 disabled:opacity-40">
         {hotels.map((hotel, index) => (
@@ -1302,16 +1427,20 @@ function StepHotel() {
             total={hotels.length}
             cities={cities}
             tripRange={tripRange}
+            otherStays={stays.filter((stay) => stay.id !== hotel.id)}
             error={errors.hotels?.[hotel.id]}
             onChange={(patch) => setHotel(hotel.id, patch)}
             onRemove={() => removeHotel(hotel.id)}
           />
         ))}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-400">숙소명을 비워둔 칸은 저장하지 않아요.</p>
           <button
             type="button"
             onClick={addHotel}
-            className="rounded-xl border border-dashed border-indigo-300 px-3.5 py-2 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-500 hover:bg-indigo-50"
+            disabled={!canAddHotel}
+            title={canAddHotel ? undefined : "여행 기간이 모두 채워졌어요"}
+            className="shrink-0 rounded-xl border border-dashed border-indigo-300 px-3.5 py-2 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-500 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
           >
             + 숙소 추가
           </button>
@@ -1323,7 +1452,7 @@ function StepHotel() {
         onClick={() => update({ skipHotel: !data.skipHotel })}
         className="w-full rounded-xl border border-dashed border-slate-300 py-3 text-sm font-medium text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
       >
-        {data.skipHotel ? "숙소 직접 입력하기" : "아직 숙소가 없어요 · Skip"}
+        {data.skipHotel ? "숙소 직접 입력하기" : "숙소 선택 없이 계속하기 · 건너뛰기"}
       </button>
     </div>
   );
@@ -1333,12 +1462,40 @@ function StepHotel() {
  * Wizard
  * ------------------------------------------------------------------ */
 
+/**
+ * Step 1에서 여행지가 빠지거나 바뀌면 그 도시에 연결된 숙소를 정리한다.
+ * 고른 숙소는 목록에서 빼고(안내 문구로 알림), 아직 고르지 않은 칸은 첫 여행지로 옮긴다.
+ */
+function syncHotelsWithDestinations(hotels, destinations) {
+  const cityNames = destinations.map((dest) => dest.city.trim()).filter(Boolean);
+  const removed = [];
+  const kept = [];
+  hotels.forEach((hotel) => {
+    if (!hotel.city || cityNames.includes(hotel.city)) {
+      kept.push(hotel);
+    } else if (hotel.place_id) {
+      removed.push(hotel);
+    } else {
+      kept.push({ ...hotel, city: cityNames[0] ?? "", name: "" });
+    }
+  });
+  if (removed.length === 0) return { hotels: kept, notice: "" };
+
+  const removedCities = [...new Set(removed.map((hotel) => hotel.city))].join(", ");
+  return {
+    hotels: kept.length > 0 ? kept : [emptyHotel({ city: cityNames[0] ?? "" })],
+    notice: `여행지에서 ${removedCities}이(가) 빠져서 선택했던 숙소 ${removed.length}곳을 목록에서 뺐어요.`,
+  };
+}
+
 export default function OnboardingWizard({ onComplete }) {
   const [step, setStep] = useState(1);
   const [data, setData] = useState(INITIAL_DATA);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [hotelNotice, setHotelNotice] = useState("");
+  const dismissHotelNotice = useCallback(() => setHotelNotice(""), []);
 
   const update = useCallback((patch) => {
     setData((previous) => ({ ...previous, ...patch }));
@@ -1383,6 +1540,11 @@ export default function OnboardingWizard({ onComplete }) {
       submit();
       return;
     }
+    if (step === 1) {
+      const synced = syncHotelsWithDestinations(data.hotels, data.destinations);
+      update({ hotels: synced.hotels });
+      setHotelNotice(synced.notice);
+    }
     // Step 2를 마치면 숙소가 하나뿐이고 기간이 비어 있을 때 여행 기간 전체로 채워둔다.
     if (step === 2 && data.hotels.length === 1 && !data.hotels[0].check_in) {
       update({
@@ -1401,12 +1563,13 @@ export default function OnboardingWizard({ onComplete }) {
   };
 
   const contextValue = useMemo(
-    () => ({ data, update, errors, step, tripRange }),
-    [data, update, errors, step, tripRange],
+    () => ({ data, update, errors, step, tripRange, hotelNotice, dismissHotelNotice }),
+    [data, update, errors, step, tripRange, hotelNotice, dismissHotelNotice],
   );
 
+  const hasHotel = !data.skipHotel && data.hotels.some((hotel) => !isBlankHotel(hotel));
   const nextLabel =
-    step < TOTAL_STEPS ? "다음" : data.skipHotel ? "건너뛰고 시작하기" : "여행 만들기";
+    step < TOTAL_STEPS ? "다음" : hasHotel ? "여행 만들기" : "숙소 없이 시작하기";
 
   return (
     <OnboardingContext.Provider value={contextValue}>
