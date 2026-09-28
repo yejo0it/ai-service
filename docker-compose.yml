@@ -34,6 +34,8 @@ services:
       POSTGRES_PORT: 5432
       # 브라우저가 보내는 Origin은 호스트 기준(8002)이다.
       CORS_ALLOWED_ORIGINS: http://localhost:8002,http://127.0.0.1:8002
+      # Step 3 숙소 검색(Google Places API New). 비어 있으면 검색 API가 503을 돌려준다.
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
     ports:
       - "8003:8000"
     volumes:

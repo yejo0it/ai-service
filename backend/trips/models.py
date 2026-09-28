@@ -92,6 +92,12 @@ class Hotel(TimeStampedModel):
     trip = models.ForeignKey(Trip, related_name="hotels", on_delete=models.CASCADE)
     name = models.CharField("숙소명", max_length=150)
     address = models.CharField("주소", max_length=255)
+    # Google Places에서 고른 숙소. 직접 입력한 숙소는 비어 있다.
+    place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
+    latitude = models.FloatField("위도", null=True, blank=True)
+    longitude = models.FloatField("경도", null=True, blank=True)
+    # 이 숙소가 속한 여행지(Trip.destinations의 city_code)
+    city_code = models.CharField("도시코드", max_length=8, blank=True, default="")
     check_in = models.DateField("체크인")
     # 체크아웃 미정(막날 공항 이동 등)인 경우를 위해 Nullable.
     check_out = models.DateField("체크아웃", null=True, blank=True)
