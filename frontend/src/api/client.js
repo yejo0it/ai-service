@@ -18,6 +18,25 @@ export const createTrip = (payload) =>
 export const createHotel = (tripId, payload) =>
   api.post(`/trips/${tripId}/hotels/`, payload).then((res) => res.data);
 
+/**
+ * 숙소 자동완성 (Google Places). sessionToken은 숙소 입력 세션마다 만든 UUID로,
+ * 같은 토큰으로 getHotelDetails를 호출하면 세션이 끝나 자동완성 요청이 과금되지 않는다.
+ */
+export const searchHotels = ({ input, sessionToken, city, cityCode }) =>
+  api
+    .get("/places/hotels/", {
+      params: { input, session_token: sessionToken, city, city_code: cityCode },
+    })
+    .then((res) => res.data);
+
+/** 선택한 숙소의 주소·좌표 */
+export const getHotelDetails = (placeId, sessionToken) =>
+  api
+    .get(`/places/hotels/${encodeURIComponent(placeId)}/`, {
+      params: { session_token: sessionToken },
+    })
+    .then((res) => res.data);
+
 /** DRF의 필드 에러({field: [msg]})를 사람이 읽을 수 있는 문자열로 변환 */
 export function toErrorMessage(error) {
   const data = error?.response?.data;

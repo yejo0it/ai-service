@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { createTrip, toErrorMessage } from "../api/client";
+import { createTrip, getHotelDetails, searchHotels, toErrorMessage } from "../api/client";
 import { findCityByName, searchCities } from "./cities";
 import { findAirlineByName, searchAirlines } from "./airlines";
 
@@ -22,6 +22,25 @@ const emptyDestination = () => ({
   city_code: "",
 });
 
+/**
+ * Step 3의 숙소 한 칸. sessionToken은 Google Places 자동완성 세션 단위로 쓰는 UUID이며,
+ * 숙소를 고르면(Details 호출로 세션 종료) 새 토큰으로 바꾼다. id·sessionToken은 전송하지 않는다.
+ */
+let hotelSeq = 0;
+const emptyHotel = ({ city = "", checkIn = "", checkOut = "" } = {}) => ({
+  id: `hotel-${(hotelSeq += 1)}`,
+  sessionToken: crypto.randomUUID(),
+  city, // 검색 범위로 쓰는 여행지(Step 1의 도시명)
+  name: "",
+  place_id: "",
+  address: "",
+  latitude: null,
+  longitude: null,
+  city_code: "",
+  check_in: checkIn,
+  check_out: checkOut,
+});
+
 const INITIAL_DATA = {
   // Step 1
   destinations: [emptyDestination()],
@@ -40,10 +59,7 @@ const INITIAL_DATA = {
   endDate: "",
   // Step 3
   skipHotel: false,
-  hotelName: "",
-  hotelAddress: "",
-  checkIn: "",
-  checkOut: "",
+  hotels: [emptyHotel()],
 };
 
 const OnboardingContext = createContext(null);
@@ -95,15 +111,51 @@ export function buildTripPayload(data) {
     hotels: [],
   };
 
-  if (!data.skipHotel && data.hotelName.trim()) {
-    payload.hotels.push({
-      name: data.hotelName.trim(),
-      address: data.hotelAddress.trim(),
-      check_in: data.checkIn,
-      check_out: data.checkOut || null,
-    });
+  if (!data.skipHotel) {
+    // 목록에서 고른 숙소만 보낸다. 주소·좌표는 선택 시 Places Details로 채워진 값이다.
+    payload.hotels = data.hotels
+      .filter((hotel) => hotel.place_id)
+      .map((hotel) => ({
+        name: hotel.name.trim(),
+        address: hotel.address,
+        place_id: hotel.place_id,
+        latitude: hotel.latitude,
+        longitude: hotel.longitude,
+        city_code: hotel.city_code,
+        check_in: hotel.check_in,
+        check_out: hotel.check_out || null,
+      }));
   }
   return payload;
+}
+
+/** 숙소별 에러를 { [hotel.id]: { name, stay } } 형태로 모은다. */
+function validateHotels(hotels) {
+  const errors = {};
+  const add = (id, key, message) => {
+    errors[id] = { ...errors[id], [key]: errors[id]?.[key] ?? message };
+  };
+
+  hotels.forEach((hotel) => {
+    if (!hotel.place_id) add(hotel.id, "name", "검색 목록에서 숙소를 선택해 주세요.");
+    if (!hotel.check_in || !hotel.check_out) {
+      add(hotel.id, "stay", "숙박 기간을 선택해 주세요.");
+    } else if (hotel.check_out <= hotel.check_in) {
+      add(hotel.id, "stay", "최소 1박 이상 선택해 주세요.");
+    }
+  });
+
+  // 체크인 순으로 늘어놓고 앞 숙소의 체크아웃이 다음 숙소 체크인보다 늦으면 겹친 것이다.
+  // (체크아웃 날 다른 숙소로 체크인하는 것은 허용)
+  const dated = hotels
+    .filter((hotel) => hotel.check_in && hotel.check_out)
+    .sort((a, b) => a.check_in.localeCompare(b.check_in));
+  dated.slice(1).forEach((hotel, index) => {
+    if (dated[index].check_out > hotel.check_in) {
+      add(hotel.id, "stay", "다른 숙소의 숙박 기간과 겹쳐요.");
+    }
+  });
+  return errors;
 }
 
 /** 각 단계의 진행 가능 여부 */
@@ -137,12 +189,8 @@ function validateStep(step, data) {
     }
   }
   if (step === 3 && !data.skipHotel) {
-    if (!data.hotelName.trim()) errors.hotelName = "숙소명을 입력해 주세요.";
-    if (!data.hotelAddress.trim()) errors.hotelAddress = "주소를 입력해 주세요.";
-    if (!data.checkIn) errors.checkIn = "체크인 날짜를 선택해 주세요.";
-    if (data.checkIn && data.checkOut && data.checkOut < data.checkIn) {
-      errors.checkOut = "체크아웃은 체크인 이후여야 합니다.";
-    }
+    const hotelErrors = validateHotels(data.hotels);
+    if (Object.keys(hotelErrors).length > 0) errors.hotels = hotelErrors;
   }
   return errors;
 }
@@ -214,6 +262,7 @@ function SuggestInput({
   onChange,
   onPick,
   search,
+  items,
   keyOf,
   renderLabel,
   renderHint,
@@ -223,7 +272,8 @@ function SuggestInput({
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
 
-  const suggestions = useMemo(() => search(value), [search, value]);
+  // items를 넘기면(비동기 검색 결과) search 대신 그대로 후보로 쓴다.
+  const suggestions = useMemo(() => items ?? search(value), [items, search, value]);
   const listId = `${id}-listbox`;
 
   const pick = (item) => {
@@ -974,8 +1024,265 @@ function StepFlight() {
  * Step 3 — 숙소 (Skip 가능)
  * ------------------------------------------------------------------ */
 
+/** 입력어가 바뀌면 300ms 뒤 숙소 자동완성을 요청한다. 숙소를 고른 뒤(enabled=false)에는 멈춘다. */
+function useHotelSuggestions(query, city, sessionToken, enabled) {
+  const [items, setItems] = useState([]);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const keyword = query.trim();
+    if (!enabled || keyword.length < 2) {
+      setItems([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchHotels({
+        input: keyword,
+        sessionToken,
+        city: city?.city ?? "",
+        cityCode: city?.city_code ?? "",
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setItems(result);
+          setFailed(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setItems([]);
+          setFailed(true);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, city?.city, city?.city_code, sessionToken, enabled]);
+
+  return { items, failed };
+}
+
+const hotelKey = (hotel) => hotel.place_id;
+const hotelHint = () => null;
+const hotelLabel = (hotel) => (
+  <span className="block">
+    <span className="block truncate">{hotel.name}</span>
+    {hotel.description && (
+      <span className="block truncate text-xs text-slate-400">{hotel.description}</span>
+    )}
+  </span>
+);
+
+/** "2026-10-01" -> "10월 1일 (목)" */
+const formatShortDate = (value) => formatKoreanDate(value).replace(/^\d+년 /, "");
+
+/** 체크인~체크아웃 범위 선택. 두 날짜를 모두 고르면 바로 반영하고 닫는다. */
+function StayRangeField({ checkIn, checkOut, min, max, error, ariaLabel, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [temp, setTemp] = useState([null, null]);
+  const wrapperRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  useOutsideClose(wrapperRef, close);
+
+  const toggle = () => {
+    setTemp([fromISODate(checkIn), fromISODate(checkOut)]);
+    setOpen((previous) => !previous);
+  };
+
+  const pick = ([start, end]) => {
+    setTemp([start, end]);
+    if (start && end) {
+      onChange(toISODate(start), toISODate(end));
+      setOpen(false);
+    }
+  };
+
+  const nights =
+    checkIn && checkOut
+      ? Math.round((fromISODate(checkOut) - fromISODate(checkIn)) / 86400000)
+      : 0;
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <PickerButton
+        icon="far fa-calendar"
+        open={open}
+        invalid={Boolean(error)}
+        placeholder="체크인 ~ 체크아웃"
+        ariaLabel={ariaLabel}
+        onClick={toggle}
+      >
+        {checkIn && checkOut
+          ? `${formatShortDate(checkIn)} ~ ${formatShortDate(checkOut)} · ${nights}박`
+          : ""}
+      </PickerButton>
+
+      {open && (
+        // Field가 <label>이라 날짜 클릭이 PickerButton으로 전달돼 달력이 닫히는 것을 막는다.
+        <div className={POPOVER_CLASS} onClick={(event) => event.preventDefault()}>
+          <DatePicker
+            selectsRange
+            inline
+            minDate={fromISODate(min)}
+            maxDate={fromISODate(max)}
+            startDate={temp[0]}
+            endDate={temp[1]}
+            onChange={pick}
+            renderCustomHeader={CalendarHeader}
+            formatWeekDay={formatWeekDay}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 숙소 한 칸: (여행지 선택) + 숙소 검색 + 자동 매핑된 주소 + 숙박 기간. */
+function HotelRow({ hotel, index, total, cities, tripRange, error, onChange, onRemove }) {
+  // 여행지가 바뀌어 저장된 도시가 사라졌으면 첫 여행지로 검색한다.
+  const city = cities.find((item) => item.city === hotel.city) ?? cities[0];
+  const { items, failed } = useHotelSuggestions(
+    hotel.name,
+    city,
+    hotel.sessionToken,
+    !hotel.place_id,
+  );
+
+  const pickHotel = async (item) => {
+    const selection = {
+      name: item.name,
+      place_id: item.place_id,
+      city: city?.city ?? "",
+      city_code: city?.city_code ?? "",
+      // Details 호출로 이 세션이 끝나므로, 다음 검색은 새 토큰으로 시작한다.
+      sessionToken: crypto.randomUUID(),
+    };
+    onChange(selection);
+    try {
+      const detail = await getHotelDetails(item.place_id, hotel.sessionToken);
+      // onChange는 호출 시점의 숙소 목록에 덮어쓰므로, 선택값을 함께 다시 넣는다.
+      onChange({
+        ...selection,
+        address: detail.address,
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+      });
+    } catch {
+      onChange({ ...selection, place_id: "" });
+    }
+  };
+
+  const nameError =
+    error?.name ?? (failed ? "숙소 검색을 사용할 수 없어요. 잠시 후 다시 시도해 주세요." : "");
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-slate-700">숙소 {index + 1}</span>
+        {total > 1 && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`숙소 ${index + 1} 삭제`}
+            title="삭제"
+            className="rounded-lg px-2.5 py-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+          >
+            <i className="fas fa-trash" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      {cities.length > 1 && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="숙소가 있는 여행지">
+          {cities.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onChange({ city: item.city })}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                item.city === city?.city
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300"
+              }`}
+            >
+              {item.city}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Field label="숙소명" error={nameError}>
+        <SuggestInput
+          id={hotel.id}
+          value={hotel.name}
+          error={nameError}
+          items={items}
+          keyOf={hotelKey}
+          renderLabel={hotelLabel}
+          renderHint={hotelHint}
+          // 다시 입력하면 이전 선택(주소·좌표)은 무효가 된다.
+          onChange={(value) =>
+            onChange({ name: value, place_id: "", address: "", latitude: null, longitude: null })
+          }
+          onPick={pickHotel}
+          placeholder={city ? `${city.city}의 숙소 검색` : "숙소 검색"}
+          aria-label={`숙소 ${index + 1} 이름`}
+        />
+        {hotel.address && (
+          <span className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-500">
+            <i className="fas fa-location-dot mt-0.5 text-slate-400" aria-hidden="true" />
+            {hotel.address}
+          </span>
+        )}
+      </Field>
+
+      <Field
+        label="숙박 기간"
+        hint={
+          tripRange.start && tripRange.end
+            ? `여행 기간(${formatShortDate(tripRange.start)} ~ ${formatShortDate(tripRange.end)}) 안에서 선택할 수 있어요.`
+            : undefined
+        }
+        error={error?.stay}
+      >
+        <StayRangeField
+          checkIn={hotel.check_in}
+          checkOut={hotel.check_out}
+          min={tripRange.start}
+          max={tripRange.end}
+          error={error?.stay}
+          ariaLabel={`숙소 ${index + 1} 숙박 기간`}
+          onChange={(checkIn, checkOut) => onChange({ check_in: checkIn, check_out: checkOut })}
+        />
+      </Field>
+    </div>
+  );
+}
+
 function StepHotel() {
   const { data, update, errors, tripRange } = useOnboarding();
+  const hotels = data.hotels;
+  const cities = data.destinations.filter((dest) => dest.city.trim());
+
+  const setHotel = (id, patch) =>
+    update({
+      hotels: hotels.map((hotel) => (hotel.id === id ? { ...hotel, ...patch } : hotel)),
+    });
+
+  // 새 숙소는 앞 숙소의 체크아웃 날부터, 여행지는 순서상 다음 도시로 시작한다.
+  const addHotel = () => {
+    const last = hotels[hotels.length - 1];
+    const nextCity = cities[Math.min(hotels.length, cities.length - 1)];
+    update({
+      hotels: [
+        ...hotels,
+        emptyHotel({ city: nextCity?.city ?? "", checkIn: last?.check_out || tripRange.start }),
+      ],
+    });
+  };
+
+  const removeHotel = (id) => update({ hotels: hotels.filter((hotel) => hotel.id !== id) });
 
   return (
     <div className="space-y-5">
@@ -986,44 +1293,28 @@ function StepHotel() {
         </p>
       </header>
 
-      <fieldset disabled={data.skipHotel} className="space-y-4 disabled:opacity-40">
-        <Field label="숙소명" error={errors.hotelName}>
-          <TextInput
-            value={data.hotelName}
-            error={errors.hotelName}
-            onChange={(event) => update({ hotelName: event.target.value })}
-            placeholder="예) 신주쿠 그랜비아 호텔"
+      <fieldset disabled={data.skipHotel} className="space-y-3 disabled:opacity-40">
+        {hotels.map((hotel, index) => (
+          <HotelRow
+            key={hotel.id}
+            hotel={hotel}
+            index={index}
+            total={hotels.length}
+            cities={cities}
+            tripRange={tripRange}
+            error={errors.hotels?.[hotel.id]}
+            onChange={(patch) => setHotel(hotel.id, patch)}
+            onRemove={() => removeHotel(hotel.id)}
           />
-        </Field>
-        <Field label="주소" error={errors.hotelAddress}>
-          <TextInput
-            value={data.hotelAddress}
-            error={errors.hotelAddress}
-            onChange={(event) => update({ hotelAddress: event.target.value })}
-            placeholder="도쿄도 신주쿠구 ..."
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="체크인" error={errors.checkIn}>
-            <TextInput
-              type="date"
-              value={data.checkIn}
-              error={errors.checkIn}
-              min={tripRange.start || undefined}
-              max={tripRange.end || undefined}
-              onChange={(event) => update({ checkIn: event.target.value })}
-            />
-          </Field>
-          <Field label="체크아웃" hint="미정이면 비워두세요" error={errors.checkOut}>
-            <TextInput
-              type="date"
-              value={data.checkOut}
-              error={errors.checkOut}
-              min={data.checkIn || tripRange.start || undefined}
-              max={tripRange.end || undefined}
-              onChange={(event) => update({ checkOut: event.target.value })}
-            />
-          </Field>
+        ))}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={addHotel}
+            className="rounded-xl border border-dashed border-indigo-300 px-3.5 py-2 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-500 hover:bg-indigo-50"
+          >
+            + 숙소 추가
+          </button>
         </div>
       </fieldset>
 
@@ -1092,11 +1383,12 @@ export default function OnboardingWizard({ onComplete }) {
       submit();
       return;
     }
-    // Step 2를 마치면 체크인/체크아웃 기본값을 여행 기간으로 채워둔다.
-    if (step === 2) {
+    // Step 2를 마치면 숙소가 하나뿐이고 기간이 비어 있을 때 여행 기간 전체로 채워둔다.
+    if (step === 2 && data.hotels.length === 1 && !data.hotels[0].check_in) {
       update({
-        checkIn: data.checkIn || tripRange.start,
-        checkOut: data.checkOut || tripRange.end,
+        hotels: [
+          { ...data.hotels[0], check_in: tripRange.start, check_out: tripRange.end },
+        ],
       });
     }
     setStep(step + 1);

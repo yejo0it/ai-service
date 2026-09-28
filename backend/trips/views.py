@@ -5,7 +5,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from . import places
 from .models import Hotel, Trip, Airline
 from .serializers import HotelSerializer, TripSerializer, AirlineSerializer
 
@@ -78,3 +80,43 @@ class HotelViewSet(viewsets.ModelViewSet):
         if trip_id:
             context["trip"] = get_object_or_404(Trip, pk=trip_id)
         return context
+
+
+class HotelSearchView(APIView):
+    """
+    `/api/v1/places/hotels/?input=신주쿠&session_token=...&city=도쿄&city_code=TYO`
+
+    Step 3 숙소 자동완성. session_token은 프론트가 숙소 입력 세션마다 만든 UUID다.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        query = request.query_params.get("input", "").strip()
+        session_token = request.query_params.get("session_token", "")
+        if len(query) < 2 or not session_token:
+            return Response([])
+        try:
+            hotels = places.autocomplete_hotels(
+                query,
+                session_token,
+                city=request.query_params.get("city", "").strip(),
+                city_code=request.query_params.get("city_code", "").strip(),
+            )
+        except places.PlacesError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+        return Response(hotels)
+
+
+class HotelDetailView(APIView):
+    """`/api/v1/places/hotels/{place_id}/?session_token=...` — 선택한 숙소의 주소·좌표."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, place_id):
+        session_token = request.query_params.get("session_token", "")
+        try:
+            hotel = places.hotel_details(place_id, session_token)
+        except places.PlacesError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+        return Response(hotel)

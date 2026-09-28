@@ -88,7 +88,18 @@ class NestedHotelSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Hotel
-        fields = ("id", "name", "address", "check_in", "check_out", "nights")
+        fields = (
+            "id",
+            "name",
+            "address",
+            "place_id",
+            "latitude",
+            "longitude",
+            "city_code",
+            "check_in",
+            "check_out",
+            "nights",
+        )
         read_only_fields = ("id", "nights")
 
     def validate(self, attrs):
