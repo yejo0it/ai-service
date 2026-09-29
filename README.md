@@ -128,7 +128,22 @@ DB는 5433, 백엔드는 8003으로 바인딩했다. 바꾸려면 `docker-compos
 - `backend` 컨테이너는 `db`의 healthcheck(`pg_isready`)가 통과한 뒤 시작하고,
   [entrypoint.sh](backend/entrypoint.sh)에서 `makemigrations` → `migrate`를 자동 수행한 뒤 runserver를 띄운다.
 - `./backend`, `./frontend`가 바인드 마운트되어 있어 코드를 고치면 각각 StatReloader / Vite HMR로 즉시 반영된다.
-  단 `requirements.txt`나 `package.json`을 바꾸면 이미지 재빌드(`docker compose up -d --build`)가 필요하다.
+  `requirements.txt`를 바꾸면 이미지 재빌드(`docker compose up -d --build`)가 필요하다.
+- `frontend`의 `node_modules`는 컨테이너 안 익명 볼륨에 있어 호스트 폴더에는 보이지 않는다.
+  컨테이너가 시작할 때마다 `npm install`로 `package.json`과 맞추므로, 의존성이 바뀌면 `docker compose restart frontend`면 된다.
+
+### 에디터 설정 (VS Code · 프론트엔드)
+
+패키지가 컨테이너 안에만 있어서, 호스트에서 `frontend/`를 그냥 열면 VS Code가 `react`·`vite/client` 등의 타입을 찾지 못해
+import와 JSX에 빨간 줄이 생긴다. 둘 중 하나로 해결한다.
+
+- **Dev Container (권장, 호스트 설치 불필요)**: [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) 확장 설치 후
+  명령 팔레트 → `Dev Containers: Reopen in Container` → **PinRoute Frontend**.
+  VS Code가 `frontend` 컨테이너 안(`/app`)에서 열리고 컨테이너의 `node_modules`로 타입을 인식한다.
+  컨테이너에는 `.git`이 없으므로 커밋·푸시는 호스트 창에서 한다.
+- **호스트에 설치**: `frontend/`에서 `npm install --no-package-lock`을 한 번 실행한다(의존성이 바뀌면 다시).
+  `package-lock.json`이 Linux 컨테이너에서 만들어져 Windows용 바이너리 항목이 빠져 있으므로 `npm ci`는 실패하고,
+  lock 파일을 건드리지 않도록 `--no-package-lock`을 쓴다.
 
 ## 실행 (Docker 없이 로컬)
 
