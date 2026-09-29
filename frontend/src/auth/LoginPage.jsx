@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { login, toErrorMessage } from "../api/client";
+import { ROUTES } from "../routes";
 import AuthLayout, {
   AuthField,
   AuthInput,
@@ -48,9 +49,11 @@ function NaverButton({ onClick }) {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("");
+  // 아이디 찾기·비밀번호 재설정에서 넘어오면 이메일과 안내 문구가 state로 온다.
+  const [email, setEmail] = useState(location.state?.email ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(location.state?.error ?? "");
+  const [notice, setNotice] = useState(location.state?.notice ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {
@@ -61,9 +64,10 @@ export default function LoginPage() {
     }
     setSubmitting(true);
     setError("");
+    setNotice("");
     try {
       saveSession(await login({ email: email.trim(), password }));
-      navigate(location.state?.from ?? "/onboarding", { replace: true });
+      navigate(location.state?.from ?? ROUTES.HOME, { replace: true });
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -90,7 +94,7 @@ export default function LoginPage() {
             placeholder="example@pinroute.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoFocus
+            autoFocus={!email}
           />
         </AuthField>
         <AuthField label="비밀번호" htmlFor="login-password">
@@ -100,9 +104,15 @@ export default function LoginPage() {
             placeholder="비밀번호"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            autoFocus={Boolean(email)}
           />
         </AuthField>
 
+        {notice && !error && (
+          <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {notice}
+          </p>
+        )}
         {error && (
           <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
@@ -113,12 +123,22 @@ export default function LoginPage() {
           {submitting ? "로그인하는 중..." : "로그인"}
         </button>
         <Link
-          to="/signup"
+          to={ROUTES.SIGNUP}
           className="block w-full rounded-xl border border-slate-200 px-5 py-3.5 text-center text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
         >
           회원가입
         </Link>
       </form>
+
+      <p className="mt-4 flex justify-center gap-3 text-sm text-slate-500">
+        <Link to={ROUTES.FIND_ID} className="hover:text-indigo-600">
+          아이디 찾기
+        </Link>
+        <span className="h-3 w-px self-center bg-slate-200" aria-hidden="true" />
+        <Link to={ROUTES.RESET_PASSWORD} className="hover:text-indigo-600">
+          비밀번호 재설정
+        </Link>
+      </p>
 
       <div className="my-6 flex items-center gap-3 text-xs text-slate-400">
         <span className="h-px flex-1 bg-slate-200" />

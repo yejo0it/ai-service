@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { socialLogin, toErrorMessage } from "../api/client";
+import { ROUTES } from "../routes";
 import { consumeState, redirectUriOf } from "./oauth";
 import { saveSession } from "./session";
 
@@ -22,7 +23,7 @@ export default function SocialCallback() {
     if (started.current || !PROVIDERS.includes(provider)) return;
     started.current = true;
 
-    const fail = (error) => navigate("/login", { replace: true, state: { error } });
+    const fail = (error) => navigate(ROUTES.LOGIN, { replace: true, state: { error } });
     const code = params.get("code");
     const state = params.get("state");
 
@@ -41,12 +42,12 @@ export default function SocialCallback() {
     socialLogin(provider, payload)
       .then((session) => {
         saveSession(session);
-        navigate("/onboarding", { replace: true });
+        navigate(ROUTES.HOME, { replace: true });
       })
       .catch((error) => fail(toErrorMessage(error)));
   }, [provider, params, navigate]);
 
-  if (!PROVIDERS.includes(provider)) return <Navigate to="/login" replace />;
+  if (!PROVIDERS.includes(provider)) return <Navigate to={ROUTES.LOGIN} replace />;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">

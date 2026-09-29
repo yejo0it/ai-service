@@ -1,15 +1,18 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import FindIdPage from "./auth/FindIdPage";
 import LoginPage from "./auth/LoginPage";
+import ResetPasswordPage, { ResetPasswordNewPage } from "./auth/ResetPasswordPage";
 import SignupPage from "./auth/SignupPage";
 import SocialCallback from "./auth/SocialCallback";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
+import { ROUTES } from "./routes";
 
 /** 온보딩 완료 후 도착 화면 (동선 최적화 화면이 붙기 전 임시 요약) */
 function TripCreated() {
   const { state } = useLocation();
   const trip = state?.trip;
 
-  if (!trip) return <Navigate to="/onboarding" replace />;
+  if (!trip) return <Navigate to={ROUTES.HOME} replace />;
 
   return (
     <div className="flex min-h-screen justify-center bg-slate-50 px-4 py-8 sm:items-center">
@@ -37,12 +40,15 @@ export default function App() {
   return (
     <Routes>
       {/* TODO 홈 화면이 생기면 <Route path="/" element={<HomePage />} /> 로 바꾸기 */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/auth/:provider/callback" element={<SocialCallback />} />
+      <Route path="/" element={<Navigate to={ROUTES.LOGIN} replace />} />
+      <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+      <Route path={ROUTES.SIGNUP} element={<SignupPage />} />
+      <Route path={ROUTES.FIND_ID} element={<FindIdPage />} />
+      <Route path={ROUTES.RESET_PASSWORD} element={<ResetPasswordPage />} />
+      <Route path={ROUTES.RESET_PASSWORD_NEW} element={<ResetPasswordNewPage />} />
+      <Route path={ROUTES.SOCIAL_CALLBACK} element={<SocialCallback />} />
       <Route
-        path="/onboarding"
+        path={ROUTES.HOME}
         element={
           <OnboardingWizard
             onComplete={(trip) =>

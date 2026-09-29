@@ -6,7 +6,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import SocialAccount
+from .models import Profile, SocialAccount
 from .social import SocialProfile
 
 User = get_user_model()
@@ -14,9 +14,8 @@ PASSWORD = "pinroute!2026"
 PHONE = "01012345678"
 
 
-@override_settings(DEBUG=True)
-class EmailSignupTests(APITestCase):
-    """이메일 중복 확인 → 휴대폰 인증 → 가입 → 로그인 흐름."""
+class PhoneVerificationMixin:
+    """DEBUG 응답의 인증번호로 휴대폰 인증을 마치고 verification_token을 받는다."""
 
     def setUp(self):
         # 요청 제한(throttle) 카운터가 테스트 사이에 이어지지 않게 한다.
@@ -30,6 +29,11 @@ class EmailSignupTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.data["verification_token"]
+
+
+@override_settings(DEBUG=True)
+class EmailSignupTests(PhoneVerificationMixin, APITestCase):
+    """이메일 중복 확인 → 휴대폰 인증 → 가입 → 로그인 흐름."""
 
     def signup(self, **overrides):
         payload = {
@@ -132,3 +136,73 @@ class SocialLoginTests(APITestCase):
             response = self.client.post("/api/v1/auth/naver/", {"code": "abc", "state": "xyz"})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["user"]["name"], "네이버")
+
+
+@override_settings(DEBUG=True)
+class AccountRecoveryTests(PhoneVerificationMixin, APITestCase):
+    """아이디 찾기 · 비밀번호 재설정 · 로그아웃."""
+
+    def setUp(self):
+        super().setUp()
+        user = User.objects.create_user(
+            username="traveler@example.com", email="traveler@example.com", password=PASSWORD
+        )
+        Profile.objects.create(user=user, phone=PHONE)
+
+    def reset_token(self, email="traveler@example.com"):
+        return self.client.post(
+            "/api/v1/auth/password-reset/verify/",
+            {"email": email, "phone": PHONE, "phone_verification_token": self.verify_phone()},
+        )
+
+    def test_find_id_returns_email_for_verified_phone(self):
+        response = self.client.post(
+            "/api/v1/auth/find-id/",
+            {"phone": PHONE, "phone_verification_token": self.verify_phone()},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["emails"], ["traveler@example.com"])
+
+    def test_find_id_requires_phone_verification(self):
+        response = self.client.post(
+            "/api/v1/auth/find-id/", {"phone": PHONE, "phone_verification_token": "forged"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_then_login_with_new_password(self):
+        token = self.reset_token().data["reset_token"]
+        new_password = "newroute#2026"
+        response = self.client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"reset_token": token, "password": new_password, "password_confirm": new_password},
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        login = lambda password: self.client.post(  # noqa: E731
+            "/api/v1/auth/login/", {"email": "traveler@example.com", "password": password}
+        )
+        self.assertEqual(login(PASSWORD).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(login(new_password).status_code, status.HTTP_200_OK)
+
+        # 같은 재설정 토큰은 다시 쓸 수 없다.
+        response = self.client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"reset_token": token, "password": "again#2026a", "password_confirm": "again#2026a"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_rejects_unknown_email(self):
+        response = self.reset_token(email="nobody@example.com")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_logout_revokes_token(self):
+        token = self.client.post(
+            "/api/v1/auth/login/", {"email": "traveler@example.com", "password": PASSWORD}
+        ).data["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        self.assertEqual(
+            self.client.post("/api/v1/auth/logout/").status_code, status.HTTP_204_NO_CONTENT
+        )
+        self.assertEqual(
+            self.client.post("/api/v1/auth/logout/").status_code, status.HTTP_401_UNAUTHORIZED
+        )

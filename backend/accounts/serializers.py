@@ -24,6 +24,13 @@ def email_taken(email):
     ).exists()
 
 
+def phone_field():
+    return serializers.RegexField(
+        phone_verification.PHONE_PATTERN,
+        error_messages={"invalid": "휴대폰 번호를 숫자만 정확히 입력해 주세요."},
+    )
+
+
 class UserSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="first_name")
 
@@ -40,10 +47,7 @@ class EmailSerializer(serializers.Serializer):
 
 
 class PhoneSerializer(serializers.Serializer):
-    phone = serializers.RegexField(
-        phone_verification.PHONE_PATTERN,
-        error_messages={"invalid": "휴대폰 번호를 숫자만 정확히 입력해 주세요."},
-    )
+    phone = phone_field()
 
 
 class PhoneVerifySerializer(PhoneSerializer):
@@ -52,15 +56,40 @@ class PhoneVerifySerializer(PhoneSerializer):
     )
 
 
-class SignupSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+class VerifiedPhoneSerializer(serializers.Serializer):
+    """휴대폰 인증(phone/verify)에서 받은 토큰이 이 번호의 것인지 확인한다."""
+
+    phone = phone_field()
+    phone_verification_token = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if phone_verification.verified_phone(attrs["phone_verification_token"]) != attrs["phone"]:
+            raise serializers.ValidationError({"phone": "휴대폰 인증을 다시 진행해 주세요."})
+        return attrs
+
+
+class NewPasswordSerializer(serializers.Serializer):
+    """가입·재설정 공통 새 비밀번호 검증. 흔한 비밀번호 등 Django 기본 규칙도 함께 검사한다."""
+
     password = serializers.CharField(write_only=True)
     password_confirm = serializers.CharField(write_only=True)
-    phone = serializers.RegexField(
-        phone_verification.PHONE_PATTERN,
-        error_messages={"invalid": "휴대폰 번호를 숫자만 정확히 입력해 주세요."},
-    )
-    phone_verification_token = serializers.CharField(write_only=True)
+
+    def validate_password(self, value):
+        if not PASSWORD_PATTERN.match(value):
+            raise serializers.ValidationError(PASSWORD_RULE_MESSAGE)
+        return value
+
+    def validate_new_password(self, attrs, user):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError({"password_confirm": "비밀번호가 일치하지 않아요."})
+        try:
+            validate_password(attrs["password"], user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)}) from exc
+
+
+class SignupSerializer(VerifiedPhoneSerializer, NewPasswordSerializer):
+    email = serializers.EmailField()
 
     def validate_email(self, value):
         email = normalize_email(value)
@@ -68,21 +97,9 @@ class SignupSerializer(serializers.Serializer):
             raise serializers.ValidationError("이미 가입된 이메일이에요.")
         return email
 
-    def validate_password(self, value):
-        if not PASSWORD_PATTERN.match(value):
-            raise serializers.ValidationError(PASSWORD_RULE_MESSAGE)
-        return value
-
     def validate(self, attrs):
-        if attrs["password"] != attrs["password_confirm"]:
-            raise serializers.ValidationError({"password_confirm": "비밀번호가 일치하지 않아요."})
-        if phone_verification.verified_phone(attrs["phone_verification_token"]) != attrs["phone"]:
-            raise serializers.ValidationError({"phone": "휴대폰 인증을 다시 진행해 주세요."})
-        # 흔한 비밀번호, 이메일과 비슷한 비밀번호 등 Django 기본 규칙도 함께 검사한다.
-        try:
-            validate_password(attrs["password"], User(username=attrs["email"], email=attrs["email"]))
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError({"password": list(exc.messages)}) from exc
+        attrs = super().validate(attrs)
+        self.validate_new_password(attrs, User(username=attrs["email"], email=attrs["email"]))
         return attrs
 
 
@@ -92,6 +109,21 @@ class LoginSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         return normalize_email(value)
+
+
+class FindIdSerializer(VerifiedPhoneSerializer):
+    pass
+
+
+class PasswordResetVerifySerializer(VerifiedPhoneSerializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return normalize_email(value)
+
+
+class PasswordResetConfirmSerializer(NewPasswordSerializer):
+    reset_token = serializers.CharField(write_only=True)
 
 
 class KakaoLoginSerializer(serializers.Serializer):

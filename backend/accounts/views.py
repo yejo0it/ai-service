@@ -2,18 +2,22 @@ from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import phone as phone_verification
 from . import social
+from .password_reset import make_reset_token, user_from_reset_token
 from .models import Profile, SocialAccount
 from .serializers import (
     EmailSerializer,
+    FindIdSerializer,
     KakaoLoginSerializer,
     LoginSerializer,
     NaverLoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetVerifySerializer,
     PhoneSerializer,
     PhoneVerifySerializer,
     SignupSerializer,
@@ -112,6 +116,70 @@ class LoginView(AuthAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return auth_response(user)
+
+
+class LogoutView(APIView):
+    """`POST /api/v1/auth/logout/` — 서버의 API 토큰을 폐기한다. 이 회원의 모든 기기에서 로그아웃된다."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        Token.objects.filter(user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def email_accounts_with_phone(phone):
+    """이 번호로 인증해 이메일로 가입한 회원들. 소셜 가입 회원은 비밀번호·번호가 없어 제외된다."""
+    return User.objects.filter(profile__phone=phone, is_active=True).exclude(email="")
+
+
+class FindIdView(AuthAPIView):
+    """`POST /api/v1/auth/find-id/` — 휴대폰 인증을 마친 번호로 가입한 이메일 목록."""
+
+    def post(self, request):
+        serializer = FindIdSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        users = email_accounts_with_phone(serializer.validated_data["phone"]).order_by("date_joined")
+        return Response({"emails": [user.email for user in users if user.has_usable_password()]})
+
+
+class PasswordResetVerifyView(AuthAPIView):
+    """
+    `POST /api/v1/auth/password-reset/verify/` — 이메일과 인증한 휴대폰이 같은 회원이면
+    비밀번호 재설정 토큰(15분, 1회용)을 발급한다.
+    """
+
+    def post(self, request):
+        serializer = PasswordResetVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user = email_accounts_with_phone(data["phone"]).filter(email__iexact=data["email"]).first()
+        if user is None or not user.has_usable_password():
+            return Response(
+                {"detail": "입력한 이메일과 휴대폰 번호로 가입된 계정이 없어요."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"reset_token": make_reset_token(user)})
+
+
+class PasswordResetConfirmView(AuthAPIView):
+    """`POST /api/v1/auth/password-reset/confirm/` — 새 비밀번호 저장. 기존 로그인은 모두 해제된다."""
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user = user_from_reset_token(data["reset_token"])
+        if user is None:
+            return Response(
+                {"detail": "재설정 시간이 지났어요. 처음부터 다시 진행해 주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.validate_new_password(data, user)
+        user.set_password(data["password"])
+        user.save(update_fields=["password"])
+        Token.objects.filter(user=user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def social_login(provider, profile):

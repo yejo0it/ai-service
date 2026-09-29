@@ -72,6 +72,19 @@ export const requestPhoneCode = (phone) =>
 export const verifyPhoneCode = (phone, code) =>
   api.post("/auth/phone/verify/", { phone, code }).then((res) => res.data);
 
+/** 서버의 API 토큰 폐기 (useLogout에서 세션 삭제와 함께 쓴다) */
+export const logout = () => api.post("/auth/logout/");
+
+/** 휴대폰 인증 후 가입한 이메일 찾기 -> { emails } */
+export const findId = (payload) => api.post("/auth/find-id/", payload).then((res) => res.data);
+
+/** 이메일 + 휴대폰 인증 확인 -> { reset_token } (15분, 1회용) */
+export const verifyPasswordReset = (payload) =>
+  api.post("/auth/password-reset/verify/", payload).then((res) => res.data);
+
+/** 새 비밀번호 저장 { reset_token, password, password_confirm } */
+export const confirmPasswordReset = (payload) => api.post("/auth/password-reset/confirm/", payload);
+
 /** 소셜 로그인. kakao: { code, redirect_uri } / naver: { code, state } */
 export const socialLogin = (provider, payload) =>
   api.post(`/auth/${provider}/`, payload).then((res) => res.data);

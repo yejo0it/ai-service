@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { createTrip, getHotelDetails, searchHotels, toErrorMessage } from "../api/client";
+import LogoutButton from "../auth/LogoutButton";
 import { findCityByName, searchCities } from "./cities";
 import { findAirlineByName, searchAirlines } from "./airlines";
 
@@ -1575,6 +1576,9 @@ export default function OnboardingWizard({ onComplete }) {
     <OnboardingContext.Provider value={contextValue}>
       <div className="flex min-h-screen justify-center bg-slate-50 px-4 py-8 sm:items-center">
         <div className="w-full max-w-md">
+          <div className="mb-2 flex justify-end">
+            <LogoutButton />
+          </div>
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-7">
             <ProgressBar step={step} />
 
