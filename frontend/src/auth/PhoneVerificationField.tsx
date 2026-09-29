@@ -3,11 +3,31 @@ import { requestPhoneCode, toErrorMessage, verifyPhoneCode } from "../api/client
 import { AuthField, AuthInput, SIDE_BUTTON_CLASS } from "./AuthLayout";
 import { PHONE_PATTERN } from "./validation";
 
-const formatTimer = (seconds) =>
+/** 인증을 마친 번호와, 백엔드에 phone_verification_token으로 넘길 토큰 */
+export interface VerifiedPhone {
+  phone: string;
+  token: string;
+}
+
+interface PhoneVerificationFieldProps {
+  id: string;
+  /** 제출 검증·서버에서 온 에러 (인증 과정의 에러는 컴포넌트가 직접 보여준다) */
+  error?: string;
+  /** 인증을 마치면 { phone, token }, 번호를 다시 입력하면 null */
+  onVerifiedChange: (verified: VerifiedPhone | null) => void;
+  autoFocus?: boolean;
+}
+
+interface FieldMessage {
+  error: string;
+  success: string;
+}
+
+const formatTimer = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 /** 인증번호 유효 시간 카운트다운. expiresAt(ms)이 없으면 멈춘다. */
-function useCountdown(expiresAt) {
+function useCountdown(expiresAt: number | null): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!expiresAt) return undefined;
@@ -22,20 +42,26 @@ function useCountdown(expiresAt) {
  * 인증을 마치면 onVerifiedChange({ phone, token })을, 번호를 다시 입력하면 null을 알린다.
  * token은 백엔드에 phone_verification_token으로 넘긴다.
  */
-export default function PhoneVerificationField({ id, error, onVerifiedChange, autoFocus }) {
+export default function PhoneVerificationField({
+  id,
+  error,
+  onVerifiedChange,
+  autoFocus,
+}: PhoneVerificationFieldProps) {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
-  const [codeExpiresAt, setCodeExpiresAt] = useState(null);
+  // 인증번호 만료 시각(ms). 아직 요청하지 않았으면 null.
+  const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
   const [debugCode, setDebugCode] = useState("");
   const [verified, setVerified] = useState(false);
-  const [message, setMessage] = useState({ error: "", success: "" });
+  const [message, setMessage] = useState<FieldMessage>({ error: "", success: "" });
   const [busy, setBusy] = useState(false);
 
   const remaining = useCountdown(verified ? null : codeExpiresAt);
   const codeSent = Boolean(codeExpiresAt);
   const shownError = error || message.error;
 
-  const changePhone = (value) => {
+  const changePhone = (value: string) => {
     // 숫자만 입력받는다.
     setPhone(value.replace(/\D/g, "").slice(0, 11));
     setMessage({ error: "", success: "" });

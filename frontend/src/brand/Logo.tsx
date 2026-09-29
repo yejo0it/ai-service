@@ -5,8 +5,15 @@
 
 const MARK_PATH = "M22 50 L22 14 L33 14 A11 11 0 0 1 33 36 L22 36";
 
+interface PinRouteMarkProps {
+  size?: number;
+  /** 경로·출발점 색 (색 배경 위 #FFFFFF, 흰 배경 위 #4F46E5) */
+  color?: string;
+  className?: string;
+}
+
 /** 마크만. color는 경로·출발점 색(색 배경 위 #FFFFFF, 흰 배경 위 #4F46E5). */
-export function PinRouteMark({ size = 64, color = "#FFFFFF", className = "" }) {
+export function PinRouteMark({ size = 64, color = "#FFFFFF", className = "" }: PinRouteMarkProps) {
   return (
     <svg
       width={size}
@@ -34,7 +41,13 @@ export function PinRouteMark({ size = 64, color = "#FFFFFF", className = "" }) {
  * 타일 안의 마크. 112px 기준 radius 30px(≈26.8%).
  * inverse는 인디고 배경 위에 둘 때 쓰는 흰 타일 + 인디고 마크다.
  */
-export function PinRouteAppIcon({ size = 112, inverse = false, className = "" }) {
+interface PinRouteAppIconProps {
+  size?: number;
+  inverse?: boolean;
+  className?: string;
+}
+
+export function PinRouteAppIcon({ size = 112, inverse = false, className = "" }: PinRouteAppIconProps) {
   return (
     <span
       className={`inline-flex items-center justify-center ${
@@ -48,7 +61,12 @@ export function PinRouteAppIcon({ size = 112, inverse = false, className = "" })
 }
 
 /** 워드마크 "Pin" + "Route". tone="light"는 색 배경 위(흰색 + 인디고-200). */
-export function PinRouteWordmark({ tone = "dark", className = "" }) {
+interface PinRouteWordmarkProps {
+  tone?: "dark" | "light";
+  className?: string;
+}
+
+export function PinRouteWordmark({ tone = "dark", className = "" }: PinRouteWordmarkProps) {
   const [pin, route] =
     tone === "light" ? ["text-white", "text-indigo-200"] : ["text-slate-900", "text-indigo-600"];
   return (

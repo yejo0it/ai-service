@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { findId, toErrorMessage } from "../api/client";
-import { ROUTES } from "../routes";
+import { ROUTES, type RoutePath } from "../routes";
 import AuthLayout, { PRIMARY_BUTTON_CLASS } from "./AuthLayout";
-import PhoneVerificationField from "./PhoneVerificationField";
+import type { LoginLocationState } from "./LoginPage";
+import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
 
 /**
  * `/find-id` — 가입할 때 인증한 휴대폰으로 다시 인증하면 가입된 이메일(아이디)을 보여준다.
@@ -11,12 +12,13 @@ import PhoneVerificationField from "./PhoneVerificationField";
  */
 export default function FindIdPage() {
   const navigate = useNavigate();
-  const [verifiedPhone, setVerifiedPhone] = useState(null);
-  const [emails, setEmails] = useState(null);
+  const [verifiedPhone, setVerifiedPhone] = useState<VerifiedPhone | null>(null);
+  // 조회 전에는 null, 조회 후에는 찾은 이메일 목록(없으면 빈 배열)
+  const [emails, setEmails] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!verifiedPhone) {
       setError("휴대폰 인증을 완료해 주세요.");
@@ -60,7 +62,10 @@ export default function FindIdPage() {
           <button
             type="button"
             onClick={() =>
-              navigate(ROUTES.LOGIN, { replace: true, state: { email: emails[0] ?? "" } })
+              navigate(ROUTES.LOGIN, {
+                replace: true,
+                state: { email: emails[0] ?? "" } satisfies LoginLocationState,
+              })
             }
             className={PRIMARY_BUTTON_CLASS}
           >
@@ -111,8 +116,13 @@ export default function FindIdPage() {
   );
 }
 
+interface AccountLinksProps {
+  /** 지금 보고 있는 계정 찾기 화면. 나머지 한 화면으로 가는 링크를 보여준다. */
+  current?: RoutePath;
+}
+
 /** 계정 찾기 화면 하단의 로그인 · 비밀번호 재설정 이동 링크 */
-export function AccountLinks({ current = ROUTES.FIND_ID }) {
+export function AccountLinks({ current = ROUTES.FIND_ID }: AccountLinksProps) {
   const links = [
     { to: ROUTES.LOGIN, label: "로그인" },
     current === ROUTES.FIND_ID

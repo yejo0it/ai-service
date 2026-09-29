@@ -7,7 +7,16 @@
  * name_en: 주요 항공사에만 존재. 없으면 한글명과 코드로만 검색된다.
  */
 
-export const AIRLINES = [
+export interface AirlineOption {
+  /** IATA 항공사 코드 (2자리) */
+  code: string;
+  /** 국문 항공사명 */
+  name: string;
+  /** 영문 항공사명 (주요 항공사만) */
+  name_en?: string;
+}
+
+export const AIRLINES: AirlineOption[] = [
   {"code": "2I", "name": "21 에어"},
   {"code": "Q5", "name": "40 마일 에어"},
   {"code": "FE", "name": "748 항공서비스"},
@@ -747,10 +756,10 @@ export const AIRLINES = [
 ];
 
 /** CSV 표기는 '에어 서울'처럼 띄어쓰기가 섞여 있어, 비교 시 공백을 무시한다. */
-const squash = (value) => value.replace(/\s+/g, "").toLowerCase();
+const squash = (value: string) => value.replace(/\s+/g, "").toLowerCase();
 
 /** 입력한 이름과 일치하는 항공사(코드 자동 채움용). 띄어쓰기는 무시한다. */
-export function findAirlineByName(name) {
+export function findAirlineByName(name: string): AirlineOption | undefined {
   const key = squash(name);
   if (!key) return undefined;
   return AIRLINES.find((airline) => squash(airline.name) === key);
@@ -761,15 +770,15 @@ export function findAirlineByName(name) {
  * 코드가 정확히 맞거나 앞글자가 일치하는 항목을 먼저 보여준다.
  * ('대한' -> 대한항공 KE / 'KE' -> 대한항공 KE / 'korean' -> 대한항공 KE)
  */
-export function searchAirlines(query, limit = 6) {
+export function searchAirlines(query: string, limit = 6): AirlineOption[] {
   const keyword = query.trim();
   if (!keyword) return [];
 
   const upper = keyword.toUpperCase();
   const key = squash(keyword);
-  const exact = [];
-  const prefix = [];
-  const partial = [];
+  const exact: AirlineOption[] = [];
+  const prefix: AirlineOption[] = [];
+  const partial: AirlineOption[] = [];
 
   for (const airline of AIRLINES) {
     const name = squash(airline.name);

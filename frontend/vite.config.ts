@@ -6,11 +6,11 @@ import tailwindcss from "@tailwindcss/vite";
 // Docker Desktop(Windows) 바인드 마운트 위에서 dev 서버를 안정적으로 유지하기 위한 설정.
 //
 // 증상: 브라우저 흰 화면 + "React is not defined"
-// 경로: 폴링 감시가 마운트를 stat 하다 EIO를 내거나 vite.config.js 변경을 오탐 ->
+// 경로: 폴링 감시가 마운트를 stat 하다 EIO를 내거나 vite.config.ts 변경을 오탐 ->
 //       dev 서버 재시작 -> 재시작한 서버가 entry(index.html)를 못 찾아
 //       "Skipping dependency pre-bundling" 상태로 뜨고, JSX가 plugin-react의
 //       automatic runtime 대신 esbuild classic 변환(React.createElement)으로 나감 ->
-//       main.jsx에 `import React`가 없으므로 브라우저에서 ReferenceError -> 흰 화면.
+//       main.tsx에 `import React`가 없으므로 브라우저에서 ReferenceError -> 흰 화면.
 //
 // 따라서 (1) 재시작해도 root/entry/cacheDir이 흔들리지 않게 못박고,
 //        (2) 감시 대상에서 캐시/산출물을 빼서 재시작 루프를 끊는다.

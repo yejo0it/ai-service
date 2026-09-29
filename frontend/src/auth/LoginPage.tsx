@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { login, toErrorMessage } from "../api/client";
 import { ROUTES } from "../routes";
@@ -9,10 +9,27 @@ import AuthLayout, {
   PRIMARY_BUTTON_CLASS,
 } from "./AuthLayout";
 import { isSocialLoginConfigured, startSocialLogin } from "./oauth";
+import type { SocialProvider } from "../types/api";
+
+interface SocialButtonProps {
+  onClick: () => void;
+}
+
+/** 다른 화면에서 로그인 화면으로 보낼 때 라우터 state로 넘기는 값 */
+export interface LoginLocationState {
+  /** 로그인 후 돌아갈 경로 */
+  from?: string;
+  /** 미리 채워둘 이메일 (아이디 찾기·비밀번호 재설정) */
+  email?: string;
+  /** 성공 안내 문구 (비밀번호 변경 완료 등) */
+  notice?: string;
+  /** 실패 안내 문구 (소셜 로그인 실패 등) */
+  error?: string;
+}
 import { saveSession } from "./session";
 
 /** 카카오 로그인 버튼 (카카오 디자인 가이드: #FEE500, 검정 말풍선 심볼, 85% 검정 레이블) */
-function KakaoButton({ onClick }) {
+function KakaoButton({ onClick }: SocialButtonProps) {
   return (
     <button
       type="button"
@@ -31,7 +48,7 @@ function KakaoButton({ onClick }) {
 }
 
 /** 네이버 로그인 버튼 (네이버 디자인 가이드: #03C75A, 흰색 N 로고) */
-function NaverButton({ onClick }) {
+function NaverButton({ onClick }: SocialButtonProps) {
   return (
     <button
       type="button"
@@ -49,14 +66,15 @@ function NaverButton({ onClick }) {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationState = (location.state ?? {}) as LoginLocationState;
   // 아이디 찾기·비밀번호 재설정에서 넘어오면 이메일과 안내 문구가 state로 온다.
-  const [email, setEmail] = useState(location.state?.email ?? "");
+  const [email, setEmail] = useState(locationState.email ?? "");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(location.state?.error ?? "");
-  const [notice, setNotice] = useState(location.state?.notice ?? "");
+  const [error, setError] = useState(locationState.error ?? "");
+  const [notice, setNotice] = useState(locationState.notice ?? "");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!email.trim() || !password) {
       setError("이메일과 비밀번호를 입력해 주세요.");
@@ -67,7 +85,7 @@ export default function LoginPage() {
     setNotice("");
     try {
       saveSession(await login({ email: email.trim(), password }));
-      navigate(location.state?.from ?? ROUTES.HOME, { replace: true });
+      navigate(locationState.from ?? ROUTES.HOME, { replace: true });
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -75,7 +93,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleSocial = (provider) => {
+  const handleSocial = (provider: SocialProvider) => {
     if (!isSocialLoginConfigured(provider)) {
       setError("소셜 로그인이 아직 설정되지 않았어요. 이메일로 로그인해 주세요.");
       return;

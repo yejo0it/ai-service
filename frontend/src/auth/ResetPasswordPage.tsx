@@ -1,16 +1,35 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   confirmPasswordReset,
+  errorDataOf,
   toErrorMessage,
   verifyPasswordReset,
 } from "../api/client";
 import { ROUTES } from "../routes";
 import AuthLayout, { AuthField, AuthInput, PRIMARY_BUTTON_CLASS } from "./AuthLayout";
 import { AccountLinks } from "./FindIdPage";
-import NewPasswordFields, { validateNewPassword } from "./NewPasswordFields";
-import PhoneVerificationField from "./PhoneVerificationField";
+import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "./NewPasswordFields";
+import type { LoginLocationState } from "./LoginPage";
+import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
 import { EMAIL_PATTERN, firstError } from "./validation";
+
+interface VerifyErrors {
+  email?: string;
+  phone?: string;
+  /** 필드에 속하지 않는 에러 (계정 없음 등) */
+  form?: string;
+}
+
+interface NewPasswordFormErrors extends NewPasswordErrors {
+  form?: string;
+}
+
+/** 1단계에서 2단계로 라우터 state로 넘기는 값 */
+interface ResetPasswordNewState {
+  resetToken: string;
+  email: string;
+}
 
 /**
  * `/reset-password` — 1단계: 이메일 + 가입할 때 인증한 휴대폰으로 본인 확인.
@@ -19,18 +38,18 @@ import { EMAIL_PATTERN, firstError } from "./validation";
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
-  const [verifiedPhone, setVerifiedPhone] = useState(null);
-  const [errors, setErrors] = useState({});
+  const [verifiedPhone, setVerifiedPhone] = useState<VerifiedPhone | null>(null);
+  const [errors, setErrors] = useState<VerifyErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalized = email.trim().toLowerCase();
-    const next = {};
+    const next: VerifyErrors = {};
     if (!EMAIL_PATTERN.test(normalized)) next.email = "이메일 형식이 올바르지 않아요.";
     if (!verifiedPhone) next.phone = "휴대폰 인증을 완료해 주세요.";
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0 || !verifiedPhone) return;
 
     setSubmitting(true);
     try {
@@ -40,7 +59,8 @@ export default function ResetPasswordPage() {
         phone_verification_token: verifiedPhone.token,
       });
       // 토큰은 주소에 남지 않도록 라우터 state로만 넘긴다.
-      navigate(ROUTES.RESET_PASSWORD_NEW, { state: { resetToken, email: normalized } });
+      const state: ResetPasswordNewState = { resetToken, email: normalized };
+      navigate(ROUTES.RESET_PASSWORD_NEW, { state });
     } catch (error) {
       setErrors({ form: toErrorMessage(error) });
     } finally {
@@ -102,15 +122,15 @@ export default function ResetPasswordPage() {
  */
 export function ResetPasswordNewPage() {
   const navigate = useNavigate();
-  const { state } = useLocation();
+  const state = useLocation().state as ResetPasswordNewState | null;
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<NewPasswordFormErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
   if (!state?.resetToken) return <Navigate to={ROUTES.RESET_PASSWORD} replace />;
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next = validateNewPassword(password, passwordConfirm);
     setErrors(next);
@@ -128,11 +148,11 @@ export function ResetPasswordNewPage() {
         state: {
           email: state.email,
           notice: "비밀번호를 변경했어요. 새 비밀번호로 로그인해 주세요.",
-        },
+        } satisfies LoginLocationState,
       });
     } catch (error) {
-      const data = error?.response?.data;
-      const fieldErrors = {
+      const data = errorDataOf(error);
+      const fieldErrors: NewPasswordErrors = {
         password: firstError(data, "password"),
         passwordConfirm: firstError(data, "password_confirm"),
       };

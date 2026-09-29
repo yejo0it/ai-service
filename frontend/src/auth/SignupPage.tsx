@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { checkEmail, signup, toErrorMessage } from "../api/client";
+import { checkEmail, errorDataOf, signup, toErrorMessage } from "../api/client";
 import { ROUTES } from "../routes";
 import AuthLayout, {
   AuthField,
@@ -8,10 +8,22 @@ import AuthLayout, {
   PRIMARY_BUTTON_CLASS,
   SIDE_BUTTON_CLASS,
 } from "./AuthLayout";
-import NewPasswordFields, { validateNewPassword } from "./NewPasswordFields";
-import PhoneVerificationField from "./PhoneVerificationField";
+import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "./NewPasswordFields";
+import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
 import { saveSession } from "./session";
 import { EMAIL_PATTERN, firstError } from "./validation";
+
+interface SignupErrors extends NewPasswordErrors {
+  email?: string;
+  phone?: string;
+}
+
+type SignupField = keyof SignupErrors;
+
+interface FieldMessage {
+  error: string;
+  success: string;
+}
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -19,21 +31,21 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   // 중복 확인을 마친 이메일. 입력이 바뀌면 다시 확인해야 한다.
   const [checkedEmail, setCheckedEmail] = useState("");
-  const [emailMessage, setEmailMessage] = useState({ error: "", success: "" });
+  const [emailMessage, setEmailMessage] = useState<FieldMessage>({ error: "", success: "" });
   const [checkingEmail, setCheckingEmail] = useState(false);
 
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   // 인증을 마친 번호와 가입 API에 넘길 토큰 { phone, token }
-  const [verifiedPhone, setVerifiedPhone] = useState(null);
+  const [verifiedPhone, setVerifiedPhone] = useState<VerifiedPhone | null>(null);
 
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<SignupErrors>({});
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const clearError = (field) => setErrors((previous) => ({ ...previous, [field]: "" }));
+  const clearError = (field: SignupField) => setErrors((previous) => ({ ...previous, [field]: "" }));
 
-  const changeEmail = (value) => {
+  const changeEmail = (value: string) => {
     setEmail(value);
     setCheckedEmail("");
     setEmailMessage({ error: "", success: "" });
@@ -62,8 +74,8 @@ export default function SignupPage() {
     }
   };
 
-  const validate = () => {
-    const next = validateNewPassword(password, passwordConfirm);
+  const validate = (): SignupErrors => {
+    const next: SignupErrors = validateNewPassword(password, passwordConfirm);
     const normalized = email.trim().toLowerCase();
     if (!EMAIL_PATTERN.test(normalized)) next.email = "이메일 형식이 올바르지 않아요.";
     else if (checkedEmail !== normalized) next.email = "이메일 중복 확인을 해 주세요.";
@@ -71,12 +83,12 @@ export default function SignupPage() {
     return next;
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next = validate();
     setErrors(next);
     setSubmitError("");
-    if (Object.values(next).some(Boolean)) return;
+    if (Object.values(next).some(Boolean) || !verifiedPhone) return;
 
     setSubmitting(true);
     try {
@@ -90,8 +102,8 @@ export default function SignupPage() {
       saveSession(session);
       navigate(ROUTES.HOME, { replace: true });
     } catch (error) {
-      const data = error?.response?.data;
-      const fieldErrors = {
+      const data = errorDataOf(error);
+      const fieldErrors: SignupErrors = {
         email: firstError(data, "email"),
         password: firstError(data, "password"),
         passwordConfirm: firstError(data, "password_confirm"),

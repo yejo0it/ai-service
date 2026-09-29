@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { PinRouteAppIcon, PinRouteMark, PinRouteWordmark } from "../brand/Logo";
+
+interface AuthLayoutProps {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}
 
 /**
  * 로그인·회원가입 공통 split 레이아웃.
  * 왼쪽은 브랜드 배너, 오른쪽은 폼. 좁은 화면에서는 배너를 숨기고 폼 위에 작은 로고를 둔다.
  */
-export default function AuthLayout({ title, description, children }) {
+export default function AuthLayout({ title, description, children }: AuthLayoutProps) {
   return (
     <div className="flex min-h-screen bg-white">
       <aside className="relative hidden flex-1 items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 lg:flex">
@@ -40,8 +46,18 @@ export default function AuthLayout({ title, description, children }) {
   );
 }
 
+interface AuthFieldProps {
+  label: string;
+  /** 연결할 입력칸 id */
+  htmlFor: string;
+  error?: string;
+  hint?: string;
+  success?: string;
+  children: ReactNode;
+}
+
 /** 폼 입력 한 칸 (라벨 + 입력 + 안내/에러). 온보딩 Field와 같은 톤이다. */
-export function AuthField({ label, htmlFor, error, hint, success, children }) {
+export function AuthField({ label, htmlFor, error, hint, success, children }: AuthFieldProps) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -64,13 +80,18 @@ const INPUT_CLASS =
   "placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 " +
   "focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500";
 
-export function AuthInput({ error, className = "", ...props }) {
+export type AuthInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  /** 값이 있으면 입력칸 테두리를 에러 색으로 바꾼다(메시지는 AuthField가 보여준다). */
+  error?: string;
+};
+
+export function AuthInput({ error, className = "", ...props }: AuthInputProps) {
   const errorClass = error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-100" : "";
   return <input {...props} className={`${INPUT_CLASS} ${errorClass} ${className}`} />;
 }
 
 /** 비밀번호 입력. 오른쪽 눈 아이콘으로 입력값을 보이거나 숨긴다. */
-export function PasswordInput(props) {
+export function PasswordInput(props: Omit<AuthInputProps, "type">) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="relative">
