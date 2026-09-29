@@ -6,10 +6,16 @@ import SignupPage from "./auth/SignupPage";
 import SocialCallback from "./auth/SocialCallback";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
 import { ROUTES } from "./routes";
+import type { Trip } from "./types/api";
+
+/** 온보딩 완료 화면으로 넘기는 라우터 state */
+interface TripCreatedState {
+  trip: Trip;
+}
 
 /** 온보딩 완료 후 도착 화면 (동선 최적화 화면이 붙기 전 임시 요약) */
 function TripCreated() {
-  const { state } = useLocation();
+  const state = useLocation().state as TripCreatedState | null;
   const trip = state?.trip;
 
   if (!trip) return <Navigate to={ROUTES.HOME} replace />;
@@ -51,9 +57,10 @@ export default function App() {
         path={ROUTES.HOME}
         element={
           <OnboardingWizard
-            onComplete={(trip) =>
-              navigate(`/trips/${trip.id}`, { state: { trip }, replace: true })
-            }
+            onComplete={(trip) => {
+              const state: TripCreatedState = { trip };
+              navigate(`/trips/${trip.id}`, { state, replace: true });
+            }}
           />
         }
       />

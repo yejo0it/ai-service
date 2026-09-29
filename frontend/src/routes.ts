@@ -10,4 +10,6 @@ export const ROUTES = {
   RESET_PASSWORD: "/reset-password",
   RESET_PASSWORD_NEW: "/reset-password/new",
   SOCIAL_CALLBACK: "/auth/:provider/callback",
-};
+} as const;
+
+export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];

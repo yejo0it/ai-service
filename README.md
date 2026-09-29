@@ -154,7 +154,7 @@ npm run dev                          # http://localhost:8002/onboarding
 ```
 
 `.env`는 **프로젝트 루트 하나**만 둔다. compose가 읽는 파일과 동일한 파일을
-Vite도 읽도록 [vite.config.js](frontend/vite.config.js)에 `envDir: ".."`를 지정해 두었다.
+Vite도 읽도록 [vite.config.ts](frontend/vite.config.ts)에 `envDir: ".."`를 지정해 두었다.
 Vite는 `VITE_` 접두사가 붙은 값만 번들에 노출하므로 같은 파일에 있는 `POSTGRES_PASSWORD` 등은 클라이언트로 새지 않는다.
 
 ## 남은 작업 (MVP 이후)

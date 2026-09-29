@@ -2,10 +2,10 @@ import { useEffect, useRef } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { socialLogin, toErrorMessage } from "../api/client";
 import { ROUTES } from "../routes";
-import { consumeState, redirectUriOf } from "./oauth";
+import type { SocialLoginPayload } from "../types/api";
+import type { LoginLocationState } from "./LoginPage";
+import { consumeState, isSocialProvider, redirectUriOf } from "./oauth";
 import { saveSession } from "./session";
-
-const PROVIDERS = ["kakao", "naver"];
 
 /**
  * `/auth/:provider/callback` — 카카오·네이버 인가 후 돌아오는 화면.
@@ -20,10 +20,13 @@ export default function SocialCallback() {
   const started = useRef(false);
 
   useEffect(() => {
-    if (started.current || !PROVIDERS.includes(provider)) return;
+    if (started.current || !isSocialProvider(provider)) return;
     started.current = true;
 
-    const fail = (error) => navigate(ROUTES.LOGIN, { replace: true, state: { error } });
+    const fail = (error: string) => {
+      const state: LoginLocationState = { error };
+      navigate(ROUTES.LOGIN, { replace: true, state });
+    };
     const code = params.get("code");
     const state = params.get("state");
 
@@ -37,8 +40,8 @@ export default function SocialCallback() {
       return;
     }
 
-    const payload =
-      provider === "kakao" ? { code, redirect_uri: redirectUriOf(provider) } : { code, state };
+    const payload: SocialLoginPayload =
+      provider === "kakao" ? { code, redirect_uri: redirectUriOf(provider) } : { code, state: state ?? "" };
     socialLogin(provider, payload)
       .then((session) => {
         saveSession(session);
@@ -47,7 +50,7 @@ export default function SocialCallback() {
       .catch((error) => fail(toErrorMessage(error)));
   }, [provider, params, navigate]);
 
-  if (!PROVIDERS.includes(provider)) return <Navigate to={ROUTES.LOGIN} replace />;
+  if (!isSocialProvider(provider)) return <Navigate to={ROUTES.LOGIN} replace />;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">

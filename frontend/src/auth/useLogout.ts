@@ -8,7 +8,7 @@ import { clearSession } from "./session";
  * 로그아웃: 서버 토큰 폐기 → 저장된 세션 삭제 → 로그인 화면으로 이동.
  * 서버 요청이 실패해도(네트워크 오류, 이미 만료된 토큰) 브라우저 쪽 세션은 반드시 지운다.
  */
-export default function useLogout() {
+export default function useLogout(): () => Promise<void> {
   const navigate = useNavigate();
   return useCallback(async () => {
     try {
