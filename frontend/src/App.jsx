@@ -1,4 +1,7 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import LoginPage from "./auth/LoginPage";
+import SignupPage from "./auth/SignupPage";
+import SocialCallback from "./auth/SocialCallback";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
 
 /** 온보딩 완료 후 도착 화면 (동선 최적화 화면이 붙기 전 임시 요약) */
@@ -33,7 +36,11 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/onboarding" replace />} />
+      {/* TODO 홈 화면이 생기면 <Route path="/" element={<HomePage />} /> 로 바꾸기 */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/auth/:provider/callback" element={<SocialCallback />} />
       <Route
         path="/onboarding"
         element={

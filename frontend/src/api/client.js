@@ -1,9 +1,23 @@
 import axios from "axios";
+import { clearSession, getSession } from "../auth/session";
 
 const api = axios.create({
   baseURL: import.meta.env?.VITE_API_URL ?? "http://localhost:8003/api/v1",
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
+});
+
+// 로그인한 경우 모든 요청에 API 토큰을 붙인다.
+api.interceptors.request.use((config) => {
+  const token = getSession()?.token;
+  if (token) config.headers.Authorization = `Token ${token}`;
+  return config;
+});
+
+// 토큰이 만료·삭제되어 401이 오면 저장된 세션을 비운다.
+api.interceptors.response.use(undefined, (error) => {
+  if (error?.response?.status === 401 && getSession()) clearSession();
+  return Promise.reject(error);
 });
 
 /** 항공사 목록 조회 */
@@ -36,6 +50,31 @@ export const getHotelDetails = (placeId, sessionToken) =>
       params: { session_token: sessionToken },
     })
     .then((res) => res.data);
+
+/* ------------------------------------------------------------------ *
+ * 회원 (로그인 · 가입)
+ * 로그인·가입·소셜 로그인은 모두 { token, user }를 돌려준다.
+ * ------------------------------------------------------------------ */
+
+export const login = (payload) => api.post("/auth/login/", payload).then((res) => res.data);
+
+export const signup = (payload) => api.post("/auth/signup/", payload).then((res) => res.data);
+
+/** 가입 가능한 이메일인지 -> { available } */
+export const checkEmail = (email) =>
+  api.post("/auth/check-email/", { email }).then((res) => res.data);
+
+/** 인증번호 발송 -> { expires_in, debug_code? } (debug_code는 개발 서버에서만) */
+export const requestPhoneCode = (phone) =>
+  api.post("/auth/phone/request/", { phone }).then((res) => res.data);
+
+/** 인증번호 확인 -> { verification_token } */
+export const verifyPhoneCode = (phone, code) =>
+  api.post("/auth/phone/verify/", { phone, code }).then((res) => res.data);
+
+/** 소셜 로그인. kakao: { code, redirect_uri } / naver: { code, state } */
+export const socialLogin = (provider, payload) =>
+  api.post(`/auth/${provider}/`, payload).then((res) => res.data);
 
 /** DRF의 필드 에러({field: [msg]})를 사람이 읽을 수 있는 문자열로 변환 */
 export function toErrorMessage(error) {
