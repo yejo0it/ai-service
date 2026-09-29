@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
@@ -48,6 +49,15 @@ class Trip(TimeStampedModel):
     # {"airline": "KE", "flight_number": "KE001", "departure_at": "...", "arrival_at": "...",
     #  "return_flight_number": "KE002", "return_departure_at": "...", "return_arrival_at": "..."}
     flight_info = models.JSONField("항공권 정보", null=True, blank=True)
+    # 여행을 만든 회원. 회원 연결 전에 만든 여행은 비어 있어 누구의 목록에도 나오지 않는다.
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="회원",
+        related_name="trips",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         verbose_name = "여행"

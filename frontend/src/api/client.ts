@@ -48,6 +48,9 @@ api.interceptors.response.use(undefined, (error: unknown) => {
 /** 항공사 목록 조회 */
 export const getAirlines = () => api.get<Airline[]>("/airlines/").then((res) => res.data);
 
+/** 로그인한 회원의 여행 목록 (페이지 없이 전체) */
+export const listTrips = () => api.get<Trip[]>("/trips/").then((res) => res.data);
+
 /** 온보딩 Step 1~3을 한 번에 저장 (hotels 포함 가능) */
 export const createTrip = (payload: TripPayload) =>
   api.post<Trip>("/trips/", payload).then((res) => res.data);
