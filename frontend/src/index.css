@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* 로고 워드마크 폰트 (index.html에서 Pretendard를 불러온다) */
+@theme {
+  --font-brand: "Pretendard", ui-sans-serif, system-ui, sans-serif;
+}
+
 /* ------------------------------------------------------------------ *
  * react-datepicker 스킨
  * 기본 스타일이 온보딩 카드 톤과 달라, .pin-calendar 안에서만 덮어쓴다.
