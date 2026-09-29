@@ -1,4 +1,7 @@
+from unittest import mock
+
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -264,6 +267,26 @@ class TripOwnershipTests(APITestCase):
         self.assertEqual([trip["id"] for trip in response.data], [response.data[0]["id"]])
         self.assertNotEqual(response.data[0]["id"], self.others_trip.pk)
 
+    def test_updates_trip_color(self):
+        trip = Trip.objects.create(
+            owner=self.user,
+            destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-10-12",
+            end_date="2026-10-17",
+        )
+        self.assertEqual(self.client.get(f"/api/v1/trips/{trip.pk}/").data["color"], "")
+
+        response = self.client.patch(f"/api/v1/trips/{trip.pk}/", {"color": "green"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["color"], "green")
+
+        # 빈 값으로 되돌리면 자동 색상이다.
+        response = self.client.patch(f"/api/v1/trips/{trip.pk}/", {"color": ""}, format="json")
+        self.assertEqual(response.data["color"], "")
+
+        response = self.client.patch(f"/api/v1/trips/{trip.pk}/", {"color": "pink"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_cannot_read_or_add_hotel_to_others_trip(self):
         self.assertEqual(
             self.client.get(f"/api/v1/trips/{self.others_trip.pk}/").status_code,
@@ -277,3 +300,53 @@ class TripOwnershipTests(APITestCase):
         # 다른 회원의 여행은 없는 여행으로 취급한다.
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertFalse(self.others_trip.hotels.exists())
+
+
+class TravelInfoTests(APITestCase):
+    """홈 위젯의 날씨·환율. 외부 API 응답은 모킹한다."""
+
+    OPEN_METEO = {
+        "current": {"temperature_2m": 21.4, "weather_code": 1},
+        "daily": {
+            "time": ["2026-10-12", "2026-10-13"],
+            "weather_code": [1, 61],
+            "temperature_2m_max": [22.0, 19.5],
+            "temperature_2m_min": [15.1, 14.0],
+        },
+    }
+    ER_API = {"result": "success", "time_last_update_utc": "Tue, 29 Sep 2026", "rates": {"JPY": 0.1124, "EUR": 0.00064}}
+
+    def setUp(self):
+        cache.clear()
+        self.client.force_authenticate(User.objects.create_user(username="info@example.com"))
+
+    def test_weather_for_city(self):
+        with mock.patch("trips.travel_info._get_json", return_value=self.OPEN_METEO) as get_json:
+            response = self.client.get("/api/v1/travel-info/weather/", {"city_code": "tyo"})
+            self.client.get("/api/v1/travel-info/weather/", {"city_code": "TYO"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current"], {"temperature": 21.4, "weather_code": 1})
+        self.assertEqual(response.data["daily"][1], {"date": "2026-10-13", "weather_code": 61, "max": 19.5, "min": 14.0})
+        # 두 번째 요청은 캐시에서 돌려준다.
+        self.assertEqual(get_json.call_count, 1)
+
+    def test_weather_unknown_city(self):
+        response = self.client.get("/api/v1/travel-info/weather/", {"city_code": "XXX"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_exchange_rates_per_currency_unit(self):
+        with mock.patch("trips.travel_info._get_json", return_value=self.ER_API):
+            response = self.client.get(
+                "/api/v1/travel-info/exchange-rates/", {"city_codes": "SEL,TYO,OSA,PAR"}
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 국내(원화)는 빼고, 같은 통화(도쿄·오사카)는 한 번만. 엔은 100엔 단위.
+        self.assertEqual(
+            [(rate["currency"], rate["unit"], rate["krw"]) for rate in response.data["rates"]],
+            [("JPY", 100, 889.68), ("EUR", 1, 1562.5)],
+        )
+
+    def test_requires_login(self):
+        self.client.force_authenticate(None)
+        response = self.client.get("/api/v1/travel-info/weather/", {"city_code": "TYO"})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

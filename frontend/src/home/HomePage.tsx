@@ -1,15 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { updateTripColor } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { nicknameOf } from "../components/layout/AppHeader";
 import { ROUTES } from "../routes";
 import { nextTrip } from "../trips/tripUtils";
 import useTrips from "../trips/useTrips";
-import type { Trip } from "../types/api";
+import type { Trip, TripColorKey } from "../types/api";
 import { parseISODate, todayISODate } from "../utils/date";
 import { DDayCard, RouteTimeline } from "./DashboardWidgets";
 import TripCalendar from "./TripCalendar";
 import TripSummaryCard from "./TripSummaryCard";
+import { ExchangeWidget, PackingWidget, WeatherWidget } from "./TravelInfoWidgets";
 
 const firstOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
@@ -29,6 +31,16 @@ export default function HomePage() {
   const trips = tripsState.status === "ready" ? tripsState.trips : [];
   const upcoming = useMemo(() => nextTrip(trips, today), [trips, today]);
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) ?? null;
+  // 위젯(경로·날씨·환율)은 선택한 여행, 없으면 다가오는 여행 기준
+  const focusTrip = selectedTrip ?? upcoming;
+
+  // 처음 들어오면 오늘이 아니라 다가오는 여행이 있는 달을 보여준다(한 번만).
+  const openedUpcoming = useRef(false);
+  useEffect(() => {
+    if (openedUpcoming.current || tripsState.status !== "ready") return;
+    openedUpcoming.current = true;
+    if (upcoming) setMonth(firstOfMonth(parseISODate(upcoming.start_date)));
+  }, [tripsState.status, upcoming]);
   const tripsOnDate = selectedDate
     ? trips.filter((trip) => trip.start_date <= selectedDate && selectedDate <= trip.end_date)
     : [];
@@ -43,6 +55,11 @@ export default function HomePage() {
     const onDate = trips.filter((trip) => trip.start_date <= date && date <= trip.end_date);
     setSelectedDate(date);
     setSelectedTripId(onDate.length === 1 ? onDate[0].id : null);
+  };
+
+  const changeTripColor = async (trip: Trip, color: TripColorKey | "") => {
+    const updated = await updateTripColor(trip.id, color);
+    if (tripsState.status === "ready") tripsState.replaceTrip(updated);
   };
 
   // D-Day 카드에서 "캘린더에서 보기": 여행 시작 달로 이동해 선택한다.
@@ -85,11 +102,15 @@ export default function HomePage() {
               <>
                 <div className="h-40 animate-pulse rounded-2xl bg-slate-200/70" />
                 <div className="h-56 animate-pulse rounded-2xl bg-slate-200/70" />
+                <div className="h-32 animate-pulse rounded-2xl bg-slate-200/70" />
               </>
             ) : (
               <>
                 <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} />
-                <RouteTimeline trip={selectedTrip ?? upcoming} />
+                {focusTrip && <WeatherWidget trip={focusTrip} today={today} />}
+                {focusTrip && <ExchangeWidget trip={focusTrip} />}
+                <PackingWidget />
+                <RouteTimeline trip={focusTrip} />
               </>
             )}
           </aside>
@@ -113,6 +134,7 @@ export default function HomePage() {
               tripsOnDate={tripsOnDate}
               today={today}
               onSelectTrip={selectTrip}
+              onColorChange={changeTripColor}
               onClose={() => {
                 setSelectedTripId(null);
                 setSelectedDate(null);

@@ -170,6 +170,7 @@ class TripSerializer(serializers.ModelSerializer):
             "end_date",
             "date_source",
             "flight_info",
+            "color",
             "has_flight",
             "nights",
             "hotels",

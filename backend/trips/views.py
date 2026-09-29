@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import places
+from . import places, travel_info
 from .models import Hotel, Trip, Airline
 from .serializers import HotelSerializer, TripSerializer, AirlineSerializer
 
@@ -128,3 +128,33 @@ class HotelDetailView(APIView):
         except places.PlacesError as exc:
             return Response({"detail": str(exc)}, status=exc.status_code)
         return Response(hotel)
+
+
+class WeatherView(APIView):
+    """`/api/v1/travel-info/weather/?city_code=TYO` — 홈 날씨 위젯: 현재 날씨 + 일별 예보."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city_code = request.query_params.get("city_code", "").strip()
+        if not city_code:
+            return Response({"detail": "city_code가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response(travel_info.weather(city_code))
+        except travel_info.TravelInfoError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+
+
+class ExchangeRateView(APIView):
+    """`/api/v1/travel-info/exchange-rates/?city_codes=TYO,PAR` — 홈 환율 위젯: 여행 도시의 현지 통화 환율."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city_codes = [
+            code.strip() for code in request.query_params.get("city_codes", "").split(",") if code.strip()
+        ]
+        try:
+            return Response(travel_info.exchange_rates(city_codes))
+        except travel_info.TravelInfoError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)

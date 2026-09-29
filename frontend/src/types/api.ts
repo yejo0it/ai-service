@@ -70,8 +70,13 @@ export interface TripPayload {
   hotels: HotelPayload[];
 }
 
+/** 여행 색상 (기본 색상 + 서비스 대표색 인디고) */
+export type TripColorKey = "indigo" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
+
 export interface Trip extends Omit<TripPayload, "hotels"> {
   id: number;
+  /** 사용자가 고른 캘린더 색. 비어 있으면 자동 색상 */
+  color: TripColorKey | "";
   /** "도쿄 → 오사카" 형태의 동선 표기 */
   destination_label: string;
   has_flight: boolean;
@@ -189,3 +194,39 @@ export type SocialProvider = "kakao" | "naver";
 export type SocialLoginPayload =
   | { code: string; redirect_uri: string }
   | { code: string; state: string };
+
+/* ------------------------------------------------------------------ *
+ * 홈 위젯: 여행지 날씨 · 환율 (travel-info)
+ * ------------------------------------------------------------------ */
+
+/** weather_code는 WMO 날씨 코드 (0 맑음, 61 비 등) */
+export interface DailyWeather {
+  date: ISODate;
+  weather_code: number | null;
+  max: number | null;
+  min: number | null;
+}
+
+export interface CityWeather {
+  city_code: string;
+  current: { temperature: number | null; weather_code: number | null };
+  /** 오늘부터 최대 16일 */
+  daily: DailyWeather[];
+}
+
+export interface ExchangeRate {
+  currency: string;
+  /** 한글 통화 이름 (엔, 유로 등) */
+  name: string;
+  flag: string;
+  /** 표시 단위 (엔·동 등은 100) */
+  unit: number;
+  /** unit 만큼의 원화 금액 */
+  krw: number;
+}
+
+export interface ExchangeRatesResponse {
+  rates: ExchangeRate[];
+  /** 환율 기준 시각 (UTC 문자열) */
+  updated_at: string;
+}

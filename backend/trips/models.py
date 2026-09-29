@@ -32,6 +32,18 @@ class Trip(TimeStampedModel):
         FLIGHT = "flight", "항공권 기반"
         MANUAL = "manual", "날짜만 등록"
 
+    class Color(models.TextChoices):
+        """캘린더에 표시할 여행 색. 기본 색상 + 서비스 대표색(인디고)."""
+
+        INDIGO = "indigo", "인디고"
+        RED = "red", "빨강"
+        ORANGE = "orange", "주황"
+        YELLOW = "yellow", "노랑"
+        GREEN = "green", "초록"
+        BLUE = "blue", "파랑"
+        PURPLE = "purple", "보라"
+        GRAY = "gray", "회색"
+
     # [{"city": "도쿄", "city_code": "TYO"}, {"city": "오사카", "city_code": "OSA"}]
     # 도시 이동 순서를 그대로 유지하므로 list 순서가 곧 여행 동선이다.
     destinations = models.JSONField(
@@ -49,6 +61,8 @@ class Trip(TimeStampedModel):
     # {"airline": "KE", "flight_number": "KE001", "departure_at": "...", "arrival_at": "...",
     #  "return_flight_number": "KE002", "return_departure_at": "...", "return_arrival_at": "..."}
     flight_info = models.JSONField("항공권 정보", null=True, blank=True)
+    # 비어 있으면 프론트가 여행마다 팔레트에서 자동으로 고른다.
+    color = models.CharField("색상", max_length=10, choices=Color.choices, blank=True, default="")
     # 여행을 만든 회원. 회원 연결 전에 만든 여행은 비어 있어 누구의 목록에도 나오지 않는다.
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
