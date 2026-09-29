@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useNavigate } from "react-router-dom";
 import FindIdPage from "./auth/FindIdPage";
 import LoginPage from "./auth/LoginPage";
 import ResetPasswordPage, { ResetPasswordNewPage } from "./auth/ResetPasswordPage";
@@ -6,50 +6,18 @@ import SignupPage from "./auth/SignupPage";
 import SocialCallback from "./auth/SocialCallback";
 import GuestOnlyRoute from "./components/GuestOnlyRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AppLayout from "./components/layout/AppLayout";
+import HomePage from "./home/HomePage";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
-import { ROUTES } from "./routes";
-import type { Trip } from "./types/api";
-
-/** 온보딩 완료 화면으로 넘기는 라우터 state */
-interface TripCreatedState {
-  trip: Trip;
-}
-
-/** 온보딩 완료 후 도착 화면 (동선 최적화 화면이 붙기 전 임시 요약) */
-function TripCreated() {
-  const state = useLocation().state as TripCreatedState | null;
-  const trip = state?.trip;
-
-  if (!trip) return <Navigate to={ROUTES.HOME} replace />;
-
-  return (
-    <div className="flex min-h-screen justify-center bg-slate-50 px-4 py-8 sm:items-center">
-      <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-sm ring-1 ring-slate-100">
-        <h1 className="text-xl font-bold text-slate-900">
-          {trip.destination_label} 여행이 만들어졌어요
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {trip.start_date} ~ {trip.end_date} · {trip.nights}박
-        </p>
-        <ul className="mt-5 space-y-2 text-sm text-slate-700">
-          <li>항공권 {trip.has_flight ? "등록됨" : "미등록"}</li>
-          <li>
-            숙소 {trip.hotels?.length ? `${trip.hotels.length}곳 등록됨` : "미등록"}
-          </li>
-        </ul>
-      </div>
-    </div>
-  );
-}
+import { ROUTES, tripDetailPath } from "./routes";
+import MyTripsPage from "./trips/MyTripsPage";
+import TripDetailPage, { type TripDetailState } from "./trips/TripDetailPage";
 
 export default function App() {
   const navigate = useNavigate();
 
   return (
     <Routes>
-      {/* TODO 홈 화면이 생기면 <Route path="/" element={<HomePage />} /> 로 바꾸기 */}
-      <Route path="/" element={<Navigate to={ROUTES.LOGIN} replace />} />
-
       {/* 로그인한 사용자는 원래 가려던 화면(또는 홈)으로 보낸다. */}
       <Route element={<GuestOnlyRoute />}>
         <Route path={ROUTES.LOGIN} element={<LoginPage />} />
@@ -61,20 +29,25 @@ export default function App() {
       <Route path={ROUTES.RESET_PASSWORD_NEW} element={<ResetPasswordNewPage />} />
       <Route path={ROUTES.SOCIAL_CALLBACK} element={<SocialCallback />} />
 
-      {/* 로그인해야 볼 수 있는 화면. 미로그인이면 로그인 화면으로 보내고 원래 경로를 기억한다. */}
+      {/* 로그인해야 볼 수 있는 화면. 미로그인이면 로그인 화면으로 보내고 원래 경로를 기억한다.
+          상단 내비게이션 바(AppLayout) 아래에 그린다. */}
       <Route element={<ProtectedRoute />}>
-        <Route
-          path={ROUTES.HOME}
-          element={
-            <OnboardingWizard
-              onComplete={(trip) => {
-                const state: TripCreatedState = { trip };
-                navigate(`/trips/${trip.id}`, { state, replace: true });
-              }}
-            />
-          }
-        />
-        <Route path="/trips/:tripId" element={<TripCreated />} />
+        <Route element={<AppLayout />}>
+          <Route path={ROUTES.HOME} element={<HomePage />} />
+          <Route
+            path={ROUTES.ONBOARDING}
+            element={
+              <OnboardingWizard
+                onComplete={(trip) => {
+                  const state: TripDetailState = { trip };
+                  navigate(tripDetailPath(trip.id), { state, replace: true });
+                }}
+              />
+            }
+          />
+          <Route path={ROUTES.MY_TRIPS} element={<MyTripsPage />} />
+          <Route path={ROUTES.TRIP_DETAIL} element={<TripDetailPage />} />
+        </Route>
       </Route>
     </Routes>
   );

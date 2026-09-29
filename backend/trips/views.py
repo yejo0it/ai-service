@@ -3,11 +3,11 @@ from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import places
+from . import places, travel_info
 from .models import Hotel, Trip, Airline
 from .serializers import HotelSerializer, TripSerializer, AirlineSerializer
 
@@ -27,14 +27,18 @@ class TripViewSet(viewsets.ModelViewSet):
     - POST: 온보딩 Step 1~2만 저장하거나, `hotels: [...]`를 함께 보내 Step 1~3을 한 번에 저장.
     - PATCH: 단계별 저장 시 Step 2 결과를 이어서 갱신.
     - GET `/api/v1/trips/{id}/hotels/` · POST 로 Step 3만 따로 저장.
+
+    로그인한 회원의 여행만 조회·수정할 수 있고, 만든 여행은 요청한 회원의 것으로 저장한다.
+    홈 캘린더가 여행 전체를 한 번에 그리므로 목록은 페이지로 나누지 않는다.
     """
 
     queryset = Trip.objects.prefetch_related("hotels")
     serializer_class = TripSerializer
-    permission_classes = [AllowAny]  # MVP: 인증 도입 시 IsAuthenticated로 교체
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(owner=self.request.user)
         destination = self.request.query_params.get("destination")
         if destination:
             # destinations는 JSONField(list)이므로 text로 캐스팅해 부분 검색한다.
@@ -43,6 +47,9 @@ class TripViewSet(viewsets.ModelViewSet):
                 destinations_text=Cast("destinations", TextField())
             ).filter(destinations_text__icontains=destination)
         return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
     @action(detail=True, methods=["get", "post"], url_path="hotels")
     def hotels(self, request, pk=None):
@@ -65,10 +72,11 @@ class HotelViewSet(viewsets.ModelViewSet):
 
     queryset = Hotel.objects.select_related("trip")
     serializer_class = HotelSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # 내 여행의 숙소만 다룬다.
+        queryset = super().get_queryset().filter(trip__owner=self.request.user)
         trip_id = self.request.query_params.get("trip")
         if trip_id:
             queryset = queryset.filter(trip_id=trip_id)
@@ -78,7 +86,7 @@ class HotelViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         trip_id = self.request.data.get("trip") if hasattr(self.request, "data") else None
         if trip_id:
-            context["trip"] = get_object_or_404(Trip, pk=trip_id)
+            context["trip"] = get_object_or_404(Trip, pk=trip_id, owner=self.request.user)
         return context
 
 
@@ -120,3 +128,33 @@ class HotelDetailView(APIView):
         except places.PlacesError as exc:
             return Response({"detail": str(exc)}, status=exc.status_code)
         return Response(hotel)
+
+
+class WeatherView(APIView):
+    """`/api/v1/travel-info/weather/?city_code=TYO` — 홈 날씨 위젯: 현재 날씨 + 일별 예보."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city_code = request.query_params.get("city_code", "").strip()
+        if not city_code:
+            return Response({"detail": "city_code가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response(travel_info.weather(city_code))
+        except travel_info.TravelInfoError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+
+
+class ExchangeRateView(APIView):
+    """`/api/v1/travel-info/exchange-rates/?city_codes=TYO,PAR` — 홈 환율 위젯: 여행 도시의 현지 통화 환율."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city_codes = [
+            code.strip() for code in request.query_params.get("city_codes", "").split(",") if code.strip()
+        ]
+        try:
+            return Response(travel_info.exchange_rates(city_codes))
+        except travel_info.TravelInfoError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)

@@ -6,6 +6,8 @@ import type {
   AuthSession,
   AuthUser,
   CheckEmailResponse,
+  CityWeather,
+  ExchangeRatesResponse,
   FindIdPayload,
   FindIdResponse,
   Hotel,
@@ -23,6 +25,7 @@ import type {
   SocialLoginPayload,
   SocialProvider,
   Trip,
+  TripColorKey,
   TripPayload,
 } from "../types/api";
 
@@ -48,6 +51,13 @@ api.interceptors.response.use(undefined, (error: unknown) => {
 /** 항공사 목록 조회 */
 export const getAirlines = () => api.get<Airline[]>("/airlines/").then((res) => res.data);
 
+/** 로그인한 회원의 여행 목록 (페이지 없이 전체) */
+export const listTrips = () => api.get<Trip[]>("/trips/").then((res) => res.data);
+
+/** 여행 캘린더 색 변경. 빈 문자열이면 자동 색상 */
+export const updateTripColor = (tripId: number, color: TripColorKey | "") =>
+  api.patch<Trip>(`/trips/${tripId}/`, { color }).then((res) => res.data);
+
 /** 온보딩 Step 1~3을 한 번에 저장 (hotels 포함 가능) */
 export const createTrip = (payload: TripPayload) =>
   api.post<Trip>("/trips/", payload).then((res) => res.data);
@@ -72,6 +82,20 @@ export const getHotelDetails = (placeId: string, sessionToken: string) =>
   api
     .get<HotelDetail>(`/places/hotels/${encodeURIComponent(placeId)}/`, {
       params: { session_token: sessionToken },
+    })
+    .then((res) => res.data);
+
+/** 여행지 현재 날씨 + 일별 예보 (Open-Meteo, 서버 30분 캐시) */
+export const getWeather = (cityCode: string) =>
+  api
+    .get<CityWeather>("/travel-info/weather/", { params: { city_code: cityCode } })
+    .then((res) => res.data);
+
+/** 여행 도시들의 현지 통화 환율 (원화 기준, 하루 1회 갱신) */
+export const getExchangeRates = (cityCodes: string[]) =>
+  api
+    .get<ExchangeRatesResponse>("/travel-info/exchange-rates/", {
+      params: { city_codes: cityCodes.join(",") },
     })
     .then((res) => res.data);
 

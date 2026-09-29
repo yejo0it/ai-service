@@ -119,6 +119,13 @@ class HotelSerializer(NestedHotelSerializer):
         queryset=Trip.objects.all(), required=False, allow_null=True
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 요청한 회원의 여행에만 숙소를 붙일 수 있다.
+        request = self.context.get("request")
+        if request is not None and "trip" in self.fields:
+            self.fields["trip"].queryset = Trip.objects.filter(owner=request.user)
+
     class Meta(NestedHotelSerializer.Meta):
         fields = NestedHotelSerializer.Meta.fields + ("trip", "created_at")
         read_only_fields = NestedHotelSerializer.Meta.read_only_fields + ("created_at",)
@@ -163,6 +170,7 @@ class TripSerializer(serializers.ModelSerializer):
             "end_date",
             "date_source",
             "flight_info",
+            "color",
             "has_flight",
             "nights",
             "hotels",
