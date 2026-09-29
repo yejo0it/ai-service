@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { socialLogin, toErrorMessage } from "../api/client";
+import FullScreenLoader from "../components/FullScreenLoader";
 import { ROUTES } from "../routes";
 import type { SocialLoginPayload } from "../types/api";
 import type { LoginLocationState } from "./LoginPage";
-import { consumeState, isSocialProvider, redirectUriOf } from "./oauth";
+import { consumeReturnPath, consumeState, isSocialProvider, redirectUriOf } from "./oauth";
+import { safeReturnPath } from "./returnPath";
 import { saveSession } from "./session";
 
 /**
@@ -45,17 +47,12 @@ export default function SocialCallback() {
     socialLogin(provider, payload)
       .then((session) => {
         saveSession(session);
-        navigate(ROUTES.HOME, { replace: true });
+        navigate(safeReturnPath(consumeReturnPath()), { replace: true });
       })
       .catch((error) => fail(toErrorMessage(error)));
   }, [provider, params, navigate]);
 
   if (!isSocialProvider(provider)) return <Navigate to={ROUTES.LOGIN} replace />;
 
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
-      <i className="fas fa-circle-notch fa-spin text-2xl text-indigo-500" aria-hidden="true" />
-      <p className="text-sm text-slate-500">로그인하는 중이에요...</p>
-    </div>
-  );
+  return <FullScreenLoader message="로그인하는 중이에요..." />;
 }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { checkEmail, errorDataOf, signup, toErrorMessage } from "../api/client";
 import { ROUTES } from "../routes";
 import AuthLayout, {
@@ -10,6 +10,7 @@ import AuthLayout, {
 } from "./AuthLayout";
 import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "./NewPasswordFields";
 import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
+import { safeReturnPath, type ReturnPathState } from "./returnPath";
 import { saveSession } from "./session";
 import { EMAIL_PATTERN, firstError } from "./validation";
 
@@ -27,6 +28,8 @@ interface FieldMessage {
 
 export default function SignupPage() {
   const navigate = useNavigate();
+  // 로그인이 필요한 화면에서 로그인 → 회원가입으로 왔으면 가입 후 그 화면으로 보낸다.
+  const returnPath = safeReturnPath((useLocation().state as ReturnPathState | null)?.from);
 
   const [email, setEmail] = useState("");
   // 중복 확인을 마친 이메일. 입력이 바뀌면 다시 확인해야 한다.
@@ -100,7 +103,7 @@ export default function SignupPage() {
         phone_verification_token: verifiedPhone.token,
       });
       saveSession(session);
-      navigate(ROUTES.HOME, { replace: true });
+      navigate(returnPath, { replace: true });
     } catch (error) {
       const data = errorDataOf(error);
       const fieldErrors: SignupErrors = {
@@ -184,7 +187,11 @@ export default function SignupPage() {
 
       <p className="mt-6 text-center text-sm text-slate-500">
         이미 계정이 있으신가요?{" "}
-        <Link to={ROUTES.LOGIN} className="font-semibold text-indigo-600 hover:text-indigo-700">
+        <Link
+          to={ROUTES.LOGIN}
+          state={{ from: returnPath } satisfies ReturnPathState}
+          className="font-semibold text-indigo-600 hover:text-indigo-700"
+        >
           로그인
         </Link>
       </p>

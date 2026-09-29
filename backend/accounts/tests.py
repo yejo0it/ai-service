@@ -206,3 +206,18 @@ class AccountRecoveryTests(PhoneVerificationMixin, APITestCase):
         self.assertEqual(
             self.client.post("/api/v1/auth/logout/").status_code, status.HTTP_401_UNAUTHORIZED
         )
+
+    def test_me_returns_user_until_token_is_revoked(self):
+        token = self.client.post(
+            "/api/v1/auth/login/", {"email": "traveler@example.com", "password": PASSWORD}
+        ).data["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        response = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["email"], "traveler@example.com")
+
+        self.client.post("/api/v1/auth/logout/")
+        self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_me_requires_token(self):
+        self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_401_UNAUTHORIZED)

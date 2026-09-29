@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getSession } from "./session";
+import { useAuth } from "./AuthContext";
 import useLogout from "./useLogout";
 
 /** 로그인한 경우에만 보이는 로그아웃 버튼. 어느 화면에 두어도 같은 흐름(useLogout)을 탄다. */
@@ -10,8 +10,8 @@ interface LogoutButtonProps {
 export default function LogoutButton({ className = "" }: LogoutButtonProps) {
   const logout = useLogout();
   const [pending, setPending] = useState(false);
-  const session = getSession();
-  if (!session) return null;
+  const { status } = useAuth();
+  if (status !== "authenticated") return null;
 
   return (
     <button

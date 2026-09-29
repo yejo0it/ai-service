@@ -9,6 +9,7 @@ import AuthLayout, {
   PRIMARY_BUTTON_CLASS,
 } from "./AuthLayout";
 import { isSocialLoginConfigured, startSocialLogin } from "./oauth";
+import { safeReturnPath, type ReturnPathState } from "./returnPath";
 import type { SocialProvider } from "../types/api";
 
 interface SocialButtonProps {
@@ -16,9 +17,7 @@ interface SocialButtonProps {
 }
 
 /** 다른 화면에서 로그인 화면으로 보낼 때 라우터 state로 넘기는 값 */
-export interface LoginLocationState {
-  /** 로그인 후 돌아갈 경로 */
-  from?: string;
+export interface LoginLocationState extends ReturnPathState {
   /** 미리 채워둘 이메일 (아이디 찾기·비밀번호 재설정) */
   email?: string;
   /** 성공 안내 문구 (비밀번호 변경 완료 등) */
@@ -85,7 +84,7 @@ export default function LoginPage() {
     setNotice("");
     try {
       saveSession(await login({ email: email.trim(), password }));
-      navigate(locationState.from ?? ROUTES.HOME, { replace: true });
+      navigate(safeReturnPath(locationState.from), { replace: true });
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -98,7 +97,7 @@ export default function LoginPage() {
       setError("소셜 로그인이 아직 설정되지 않았어요. 이메일로 로그인해 주세요.");
       return;
     }
-    startSocialLogin(provider);
+    startSocialLogin(provider, locationState.from);
   };
 
   return (
@@ -142,6 +141,8 @@ export default function LoginPage() {
         </button>
         <Link
           to={ROUTES.SIGNUP}
+          // 가입 후에도 원래 가려던 화면으로 가도록 돌아갈 경로를 넘긴다.
+          state={{ from: locationState.from } satisfies ReturnPathState}
           className="block w-full rounded-xl border border-slate-200 px-5 py-3.5 text-center text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
         >
           회원가입
