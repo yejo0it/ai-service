@@ -4,6 +4,8 @@ import LoginPage from "./auth/LoginPage";
 import ResetPasswordPage, { ResetPasswordNewPage } from "./auth/ResetPasswordPage";
 import SignupPage from "./auth/SignupPage";
 import SocialCallback from "./auth/SocialCallback";
+import GuestOnlyRoute from "./components/GuestOnlyRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
 import { ROUTES } from "./routes";
 import type { Trip } from "./types/api";
@@ -47,24 +49,33 @@ export default function App() {
     <Routes>
       {/* TODO 홈 화면이 생기면 <Route path="/" element={<HomePage />} /> 로 바꾸기 */}
       <Route path="/" element={<Navigate to={ROUTES.LOGIN} replace />} />
-      <Route path={ROUTES.LOGIN} element={<LoginPage />} />
-      <Route path={ROUTES.SIGNUP} element={<SignupPage />} />
+
+      {/* 로그인한 사용자는 원래 가려던 화면(또는 홈)으로 보낸다. */}
+      <Route element={<GuestOnlyRoute />}>
+        <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+        <Route path={ROUTES.SIGNUP} element={<SignupPage />} />
+      </Route>
+
       <Route path={ROUTES.FIND_ID} element={<FindIdPage />} />
       <Route path={ROUTES.RESET_PASSWORD} element={<ResetPasswordPage />} />
       <Route path={ROUTES.RESET_PASSWORD_NEW} element={<ResetPasswordNewPage />} />
       <Route path={ROUTES.SOCIAL_CALLBACK} element={<SocialCallback />} />
-      <Route
-        path={ROUTES.HOME}
-        element={
-          <OnboardingWizard
-            onComplete={(trip) => {
-              const state: TripCreatedState = { trip };
-              navigate(`/trips/${trip.id}`, { state, replace: true });
-            }}
-          />
-        }
-      />
-      <Route path="/trips/:tripId" element={<TripCreated />} />
+
+      {/* 로그인해야 볼 수 있는 화면. 미로그인이면 로그인 화면으로 보내고 원래 경로를 기억한다. */}
+      <Route element={<ProtectedRoute />}>
+        <Route
+          path={ROUTES.HOME}
+          element={
+            <OnboardingWizard
+              onComplete={(trip) => {
+                const state: TripCreatedState = { trip };
+                navigate(`/trips/${trip.id}`, { state, replace: true });
+              }}
+            />
+          }
+        />
+        <Route path="/trips/:tripId" element={<TripCreated />} />
+      </Route>
     </Routes>
   );
 }

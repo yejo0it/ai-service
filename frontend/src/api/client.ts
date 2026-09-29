@@ -4,6 +4,7 @@ import type {
   Airline,
   ApiErrorData,
   AuthSession,
+  AuthUser,
   CheckEmailResponse,
   FindIdPayload,
   FindIdResponse,
@@ -98,6 +99,9 @@ export const verifyPhoneCode = (phone: string, code: string) =>
   api
     .post<PhoneVerifyResponse>("/auth/phone/verify/", { phone, code })
     .then((res) => res.data);
+
+/** 저장된 토큰이 아직 유효한지 확인하고 회원 정보를 받는다 (만료·폐기 시 401) */
+export const getMe = () => api.get<AuthUser>("/auth/me/").then((res) => res.data);
 
 /** 서버의 API 토큰 폐기 (useLogout에서 세션 삭제와 함께 쓴다) */
 export const logout = () => api.post<void>("/auth/logout/");

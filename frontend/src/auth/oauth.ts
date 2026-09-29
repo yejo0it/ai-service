@@ -18,6 +18,8 @@ const AUTHORIZE_URLS: Record<SocialProvider, string> = {
 
 // CSRF 방지용 state. 돌아왔을 때 같은 값인지 확인한다.
 const STATE_KEY = "pinroute.oauth-state";
+// 인가 페이지를 다녀오는 동안 로그인 후 돌아갈 경로를 보관한다.
+const RETURN_PATH_KEY = "pinroute.oauth-return";
 
 export const SOCIAL_PROVIDERS: readonly SocialProvider[] = ["kakao", "naver"];
 
@@ -29,9 +31,11 @@ export const redirectUriOf = (provider: SocialProvider) =>
 
 export const isSocialLoginConfigured = (provider: SocialProvider) => Boolean(CLIENT_IDS[provider]);
 
-export function startSocialLogin(provider: SocialProvider): void {
+export function startSocialLogin(provider: SocialProvider, returnPath?: string): void {
   const state = crypto.randomUUID();
   sessionStorage.setItem(STATE_KEY, state);
+  if (returnPath) sessionStorage.setItem(RETURN_PATH_KEY, returnPath);
+  else sessionStorage.removeItem(RETURN_PATH_KEY);
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -40,6 +44,13 @@ export function startSocialLogin(provider: SocialProvider): void {
     state,
   });
   window.location.assign(`${AUTHORIZE_URLS[provider]}?${params}`);
+}
+
+/** 소셜 로그인 전에 기억해 둔 돌아갈 경로를 꺼내고 지운다. */
+export function consumeReturnPath(): string | null {
+  const returnPath = sessionStorage.getItem(RETURN_PATH_KEY);
+  sessionStorage.removeItem(RETURN_PATH_KEY);
+  return returnPath;
 }
 
 /** 돌아온 state가 요청 때 저장한 값과 같은지 확인하고, 저장값은 지운다. */

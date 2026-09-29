@@ -118,6 +118,15 @@ class LoginView(AuthAPIView):
         return auth_response(user)
 
 
+class MeView(APIView):
+    """`GET /api/v1/auth/me/` — 토큰이 유효한지 확인하고 로그인한 회원 정보를 돌려준다(만료·폐기 시 401)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
 class LogoutView(APIView):
     """`POST /api/v1/auth/logout/` — 서버의 API 토큰을 폐기한다. 이 회원의 모든 기기에서 로그아웃된다."""
 
