@@ -30,12 +30,24 @@ export interface Destination {
 
 export type DateSource = "flight" | "manual";
 
+/** 목록에서 고른 공항 */
+export interface Airport {
+  /** IATA 공항 코드 (예: ICN) */
+  code: string;
+  /** 표시 이름 (예: 인천공항 1터미널) */
+  name: string;
+}
+
 export interface FlightInfo {
   airline?: string;
   /** IATA 코드 + 번호 (예: "KE001") */
   flight_number: string;
   departure_at: ISODateTime;
   arrival_at?: ISODateTime | null;
+  departure_airport?: Airport | null;
+  arrival_airport?: Airport | null;
+  return_departure_airport?: Airport | null;
+  return_arrival_airport?: Airport | null;
   return_airline?: string;
   return_flight_number?: string;
   return_departure_at?: ISODateTime | null;

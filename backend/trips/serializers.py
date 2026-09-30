@@ -39,6 +39,13 @@ class DestinationSerializer(serializers.Serializer):
         return value.strip().upper()
 
 
+class AirportSerializer(serializers.Serializer):
+    """프론트 공항 목록에서 고른 공항 (IATA 코드 + 표시 이름)."""
+
+    code = serializers.CharField(max_length=3)
+    name = serializers.CharField(max_length=60)
+
+
 class FlightInfoSerializer(serializers.Serializer):
     """Trip.flight_info(JSONField)에 저장될 payload의 형태를 검증한다."""
 
@@ -46,6 +53,11 @@ class FlightInfoSerializer(serializers.Serializer):
     flight_number = serializers.CharField(max_length=20)
     departure_at = serializers.DateTimeField()
     arrival_at = serializers.DateTimeField(required=False, allow_null=True)
+    # 출국편 출발·도착 공항, 귀국편 출발·도착 공항 (선택)
+    departure_airport = AirportSerializer(required=False, allow_null=True)
+    arrival_airport = AirportSerializer(required=False, allow_null=True)
+    return_departure_airport = AirportSerializer(required=False, allow_null=True)
+    return_arrival_airport = AirportSerializer(required=False, allow_null=True)
     # 귀국편 항공사. 출국과 같으면 프론트에서 동일 값을 채워 보낸다.
     return_airline = serializers.CharField(
         max_length=60, required=False, allow_blank=True
