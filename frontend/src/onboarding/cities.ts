@@ -3,7 +3,13 @@
  * city_code는 IATA 도시 코드(공항 코드가 아니라 도시 단위 코드)를 쓴다.
  * 예) 도쿄=TYO(하네다 HND + 나리타 NRT), 서울=SEL(김포 GMP + 인천 ICN)
  */
-export const CITIES = [
+
+import type { Destination } from "../types/api";
+
+/** 자동완성 후보 도시. 여행지(Destination)와 같은 모양이다. */
+export type CityOption = Destination;
+
+export const CITIES: CityOption[] = [
   // 한국
   { city: "서울", city_code: "SEL" },
   { city: "부산", city_code: "PUS" },
@@ -140,7 +146,7 @@ export const CITIES = [
 ];
 
 /** 입력한 도시명과 정확히 일치하는 도시(코드 자동 채움용). */
-export function findCityByName(name) {
+export function findCityByName(name: string): CityOption | undefined {
   const trimmed = name.trim();
   return CITIES.find((city) => city.city === trimmed);
 }
@@ -149,13 +155,13 @@ export function findCityByName(name) {
  * 입력어로 도시를 검색한다. 도시명과 도시코드 양쪽으로 찾으며,
  * 앞글자가 일치하는 항목을 먼저 보여준다. ('도' -> 도쿄 TYO, 도하 DOH)
  */
-export function searchCities(query, limit = 6) {
+export function searchCities(query: string, limit = 6): CityOption[] {
   const keyword = query.trim();
   if (!keyword) return [];
 
   const upper = keyword.toUpperCase();
-  const prefix = [];
-  const partial = [];
+  const prefix: CityOption[] = [];
+  const partial: CityOption[] = [];
 
   for (const city of CITIES) {
     if (city.city.startsWith(keyword) || city.city_code.startsWith(upper)) {

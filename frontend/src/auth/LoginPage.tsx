@@ -1,0 +1,174 @@
+import { useState, type FormEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { login, toErrorMessage } from "../api/client";
+import { ROUTES } from "../routes";
+import AuthLayout, {
+  AuthField,
+  AuthInput,
+  PasswordInput,
+  PRIMARY_BUTTON_CLASS,
+} from "./AuthLayout";
+import { isSocialLoginConfigured, startSocialLogin } from "./oauth";
+import { safeReturnPath, type ReturnPathState } from "./returnPath";
+import type { SocialProvider } from "../types/api";
+
+interface SocialButtonProps {
+  onClick: () => void;
+}
+
+/** 다른 화면에서 로그인 화면으로 보낼 때 라우터 state로 넘기는 값 */
+export interface LoginLocationState extends ReturnPathState {
+  /** 미리 채워둘 이메일 (아이디 찾기·비밀번호 재설정) */
+  email?: string;
+  /** 성공 안내 문구 (비밀번호 변경 완료 등) */
+  notice?: string;
+  /** 실패 안내 문구 (소셜 로그인 실패 등) */
+  error?: string;
+}
+import { saveSession } from "./session";
+
+/** 카카오 로그인 버튼 (카카오 디자인 가이드: #FEE500, 검정 말풍선 심볼, 85% 검정 레이블) */
+function KakaoButton({ onClick }: SocialButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex h-12 w-full items-center justify-center rounded-xl bg-[#FEE500] text-sm font-semibold text-black/85 transition-[filter] hover:brightness-95"
+    >
+      <svg viewBox="0 0 24 24" className="absolute left-4 h-5 w-5" aria-hidden="true">
+        <path
+          fill="#000000"
+          d="M12 3C6.48 3 2 6.47 2 10.75c0 2.77 1.86 5.2 4.66 6.57l-.95 3.48c-.08.3.26.54.52.37l4.16-2.75c.53.07 1.07.11 1.61.11 5.52 0 10-3.47 10-7.78S17.52 3 12 3z"
+        />
+      </svg>
+      카카오 로그인
+    </button>
+  );
+}
+
+/** 네이버 로그인 버튼 (네이버 디자인 가이드: #03C75A, 흰색 N 로고) */
+function NaverButton({ onClick }: SocialButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex h-12 w-full items-center justify-center rounded-xl bg-[#03C75A] text-sm font-semibold text-white transition-[filter] hover:brightness-95"
+    >
+      <svg viewBox="0 0 24 24" className="absolute left-[18px] h-3.5 w-3.5" aria-hidden="true">
+        <path fill="#FFFFFF" d="M16.27 12.84 7.46 0H0v24h7.73V11.16L16.54 24H24V0h-7.73z" />
+      </svg>
+      네이버 로그인
+    </button>
+  );
+}
+
+export default function LoginPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = (location.state ?? {}) as LoginLocationState;
+  // 아이디 찾기·비밀번호 재설정에서 넘어오면 이메일과 안내 문구가 state로 온다.
+  const [email, setEmail] = useState(locationState.email ?? "");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(locationState.error ?? "");
+  const [notice, setNotice] = useState(locationState.notice ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!email.trim() || !password) {
+      setError("이메일과 비밀번호를 입력해 주세요.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    try {
+      saveSession(await login({ email: email.trim(), password }));
+      navigate(safeReturnPath(locationState.from), { replace: true });
+    } catch (err) {
+      setError(toErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSocial = (provider: SocialProvider) => {
+    if (!isSocialLoginConfigured(provider)) {
+      setError("소셜 로그인이 아직 설정되지 않았어요. 이메일로 로그인해 주세요.");
+      return;
+    }
+    startSocialLogin(provider, locationState.from);
+  };
+
+  return (
+    <AuthLayout title="로그인" description="핀만 찍으면 최적 경로를 찾아드려요.">
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <AuthField label="이메일" htmlFor="login-email">
+          <AuthInput
+            id="login-email"
+            type="email"
+            autoComplete="email"
+            placeholder="example@pinroute.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoFocus={!email}
+          />
+        </AuthField>
+        <AuthField label="비밀번호" htmlFor="login-password">
+          <PasswordInput
+            id="login-password"
+            autoComplete="current-password"
+            placeholder="비밀번호"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoFocus={Boolean(email)}
+          />
+        </AuthField>
+
+        {notice && !error && (
+          <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" disabled={submitting} className={PRIMARY_BUTTON_CLASS}>
+          {submitting ? "로그인하는 중..." : "로그인"}
+        </button>
+        <Link
+          to={ROUTES.SIGNUP}
+          // 가입 후에도 원래 가려던 화면으로 가도록 돌아갈 경로를 넘긴다.
+          state={{ from: locationState.from } satisfies ReturnPathState}
+          className="block w-full rounded-xl border border-slate-200 px-5 py-3.5 text-center text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          회원가입
+        </Link>
+      </form>
+
+      <p className="mt-4 flex justify-center gap-3 text-sm text-slate-500">
+        <Link to={ROUTES.FIND_ID} className="hover:text-indigo-600">
+          아이디 찾기
+        </Link>
+        <span className="h-3 w-px self-center bg-slate-200" aria-hidden="true" />
+        <Link to={ROUTES.RESET_PASSWORD} className="hover:text-indigo-600">
+          비밀번호 재설정
+        </Link>
+      </p>
+
+      <div className="my-6 flex items-center gap-3 text-xs text-slate-400">
+        <span className="h-px flex-1 bg-slate-200" />
+        간편 로그인
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      <div className="space-y-2.5">
+        <KakaoButton onClick={() => handleSocial("kakao")} />
+        <NaverButton onClick={() => handleSocial("naver")} />
+      </div>
+    </AuthLayout>
+  );
+}
