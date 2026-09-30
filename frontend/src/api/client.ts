@@ -54,6 +54,12 @@ export const getAirlines = () => api.get<Airline[]>("/airlines/").then((res) => 
 /** 로그인한 회원의 여행 목록 (페이지 없이 전체) */
 export const listTrips = () => api.get<Trip[]>("/trips/").then((res) => res.data);
 
+/** 여행 하나 (내 여행만) */
+export const getTrip = (tripId: number) => api.get<Trip>(`/trips/${tripId}/`).then((res) => res.data);
+
+/** 여행 삭제 (숙소도 함께 삭제된다) */
+export const deleteTrip = (tripId: number) => api.delete<void>(`/trips/${tripId}/`);
+
 /** 여행 캘린더 색 변경. 빈 문자열이면 자동 색상 */
 export const updateTripColor = (tripId: number, color: TripColorKey | "") =>
   api.patch<Trip>(`/trips/${tripId}/`, { color }).then((res) => res.data);

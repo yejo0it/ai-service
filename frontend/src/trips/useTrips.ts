@@ -12,6 +12,8 @@ export default function useTrips(): TripsState & {
   reload: () => void;
   /** 수정된 여행 하나를 목록에 반영한다(다시 불러오지 않고). */
   replaceTrip: (trip: Trip) => void;
+  /** 삭제한 여행을 목록에서 뺀다. */
+  removeTrip: (tripId: number) => void;
 } {
   const [state, setState] = useState<TripsState>({ status: "loading" });
   const [version, setVersion] = useState(0);
@@ -43,5 +45,14 @@ export default function useTrips(): TripsState & {
       ),
     [],
   );
-  return { ...state, reload, replaceTrip };
+  const removeTrip = useCallback(
+    (tripId: number) =>
+      setState((current) =>
+        current.status === "ready"
+          ? { ...current, trips: current.trips.filter((trip) => trip.id !== tripId) }
+          : current,
+      ),
+    [],
+  );
+  return { ...state, reload, replaceTrip, removeTrip };
 }

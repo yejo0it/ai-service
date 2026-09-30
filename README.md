@@ -73,6 +73,7 @@ docker compose up -d --build
 | 키 | 용도 |
 | --- | --- |
 | `GOOGLE_PLACES_API_KEY` | 숙소 검색 |
+| `GOOGLE_MAPS_API_KEY` | 여행 상세 지도 (브라우저용 Maps JavaScript API 키, HTTP 리퍼러 제한 권장) |
 | `KAKAO_REST_API_KEY` · `KAKAO_CLIENT_SECRET` | 카카오 로그인 |
 | `NAVER_CLIENT_ID` · `NAVER_CLIENT_SECRET` | 네이버 로그인 |
 

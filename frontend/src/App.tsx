@@ -39,7 +39,7 @@ export default function App() {
             element={
               <OnboardingWizard
                 onComplete={(trip) => {
-                  const state: TripDetailState = { trip };
+                  const state: TripDetailState = { trip, created: true };
                   navigate(tripDetailPath(trip.id), { state, replace: true });
                 }}
               />
