@@ -61,6 +61,30 @@ class OnboardingAPITests(APITestCase):
         self.assertEqual(response.data["destinations"], trip.destinations)
         self.assertEqual(response.data["destination_label"], "도쿄 → 오사카")
 
+    def test_saves_selected_airports_in_flight_info(self):
+        airports = {
+            "departure_airport": {"code": "ICN", "name": "인천공항 2터미널"},
+            "arrival_airport": {"code": "NRT", "name": "나리타공항"},
+            "return_departure_airport": {"code": "HND", "name": "하네다공항"},
+            "return_arrival_airport": None,
+        }
+        response = self.client.post(
+            "/api/v1/trips/",
+            {
+                "destinations": [{"city": "도쿄", "city_code": "TYO"}],
+                "flight_info": {
+                    "flight_number": "KE703",
+                    "departure_at": "2026-10-12T09:00",
+                    "return_arrival_at": "2026-10-17T18:00",
+                    **airports,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        for field, value in airports.items():
+            self.assertEqual(response.data["flight_info"][field], value)
+
     def test_derives_dates_from_flight_info(self):
         response = self.client.post(
             "/api/v1/trips/",

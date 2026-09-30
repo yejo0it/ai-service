@@ -59,22 +59,6 @@
   background-color: var(--color-slate-100);
 }
 
-/* 선택된 날짜 — 레퍼런스처럼 진한 사각형 */
-.pin-calendar .react-datepicker__day--selected,
-.pin-calendar .react-datepicker__day--range-start,
-.pin-calendar .react-datepicker__day--range-end,
-.pin-calendar .react-datepicker__day--selecting-range-start {
-  background-color: var(--color-slate-900);
-  color: #fff;
-  font-weight: 600;
-}
-
-.pin-calendar .react-datepicker__day--selected:hover,
-.pin-calendar .react-datepicker__day--range-start:hover,
-.pin-calendar .react-datepicker__day--range-end:hover {
-  background-color: var(--color-slate-800);
-}
-
 /* 기간 선택 중간 구간 */
 .pin-calendar .react-datepicker__day--in-range,
 .pin-calendar .react-datepicker__day--in-selecting-range {
@@ -86,6 +70,23 @@
 .pin-calendar .react-datepicker__day--in-range:hover,
 .pin-calendar .react-datepicker__day--in-selecting-range:hover {
   background-color: var(--color-indigo-100);
+}
+
+/* 선택된 날짜·기간 시작/끝 — 홈 캘린더와 같은 파스텔 인디고.
+   시작/끝 날짜에도 in-range 클래스가 붙으므로 그 규칙보다 뒤에 둬야 색이 유지된다. */
+.pin-calendar .react-datepicker__day--selected,
+.pin-calendar .react-datepicker__day--range-start,
+.pin-calendar .react-datepicker__day--range-end,
+.pin-calendar .react-datepicker__day--selecting-range-start {
+  background-color: var(--color-indigo-200);
+  color: var(--color-indigo-800);
+  font-weight: 600;
+}
+
+.pin-calendar .react-datepicker__day--selected:hover,
+.pin-calendar .react-datepicker__day--range-start:hover,
+.pin-calendar .react-datepicker__day--range-end:hover {
+  background-color: var(--color-indigo-300);
 }
 
 .pin-calendar .react-datepicker__day--range-start,
@@ -115,6 +116,10 @@
   background-color: transparent;
 }
 
-.pin-calendar .react-datepicker__day--keyboard-selected {
+/* 키보드 포커스 표시는 지우되, 방금 고른 날짜(선택·기간 시작/끝)의 색은 남긴다. */
+.pin-calendar
+  .react-datepicker__day--keyboard-selected:not(.react-datepicker__day--selected):not(
+    .react-datepicker__day--selecting-range-start
+  ):not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end) {
   background-color: transparent;
 }
