@@ -72,6 +72,8 @@ class Trip(TimeStampedModel):
         null=True,
         blank=True,
     )
+    # 상세 화면을 처음 열 때 항공편·숙소로 일정 카드를 한 번 만들었는지
+    itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
 
     class Meta:
         verbose_name = "여행"
@@ -145,3 +147,67 @@ class Hotel(TimeStampedModel):
         if self.check_out is None:
             return None
         return (self.check_out - self.check_in).days
+
+
+class ItineraryItem(TimeStampedModel):
+    """
+    여행 상세의 일정 카드 한 장. 날짜(day)별로 order 순서대로 보여준다.
+    항공편·숙소 카드는 상세 화면을 처음 열 때 만들어지고(source=auto), 장소는 직접(manual)·AI(ai)로 추가한다.
+    stops는 카드 안의 위치 목록(지도 핀): [{"kind", "caption", "label", "lat", "lng"}]
+    """
+
+    class Kind(models.TextChoices):
+        FLIGHT = "flight", "항공편"
+        HOTEL = "hotel", "숙소"
+        AIRPORT = "airport", "공항"
+        SIGHT = "sight", "관광지"
+        RESTAURANT = "restaurant", "식당"
+        CAFE = "cafe", "카페"
+
+    class Source(models.TextChoices):
+        AUTO = "auto", "항공편·숙소"
+        MANUAL = "manual", "직접 추가"
+        AI = "ai", "AI 추천"
+
+    trip = models.ForeignKey(Trip, related_name="itinerary_items", on_delete=models.CASCADE)
+    day = models.DateField("날짜")
+    order = models.PositiveIntegerField("순서", default=0)
+    kind = models.CharField("유형", max_length=12, choices=Kind.choices)
+    source = models.CharField("추가 방법", max_length=8, choices=Source.choices, default=Source.MANUAL)
+    title = models.CharField("이름", max_length=150)
+    # 방문 시각(선택). 숙소 카드처럼 시각 대신 "체크인" 등을 보여줄 때는 time_label을 쓴다.
+    time = models.TimeField("시간", null=True, blank=True)
+    time_label = models.CharField("시간 표기", max_length=20, blank=True, default="")
+    subtitle = models.CharField("부가 설명", max_length=100, blank=True, default="")
+    stops = models.JSONField("위치", default=list, blank=True)
+    # 장소 상세 (Google Places)
+    place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
+    address = models.CharField("주소", max_length=255, blank=True, default="")
+    phone = models.CharField("전화번호", max_length=40, blank=True, default="")
+    opening_hours = models.JSONField("영업시간", default=list, blank=True)
+    memo = models.TextField("메모", blank=True, default="")
+
+    class Meta:
+        verbose_name = "일정"
+        verbose_name_plural = "일정"
+        ordering = ("day", "order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.day} #{self.order} {self.title}"
+
+
+class ChecklistItem(TimeStampedModel):
+    """일정 카드의 체크리스트. in_packing_note가 켜진 항목은 짐싸기 노트 '일정 연동 항목'에 나온다."""
+
+    item = models.ForeignKey(ItineraryItem, related_name="checklist", on_delete=models.CASCADE)
+    text = models.CharField("내용", max_length=200)
+    done = models.BooleanField("완료", default=False)
+    in_packing_note = models.BooleanField("짐싸기 노트 표시", default=False)
+
+    class Meta:
+        verbose_name = "체크리스트"
+        verbose_name_plural = "체크리스트"
+        ordering = ("created_at", "id")
+
+    def __str__(self) -> str:
+        return self.text

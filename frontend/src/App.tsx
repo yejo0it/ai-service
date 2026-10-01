@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import HomePage from "./home/HomePage";
 import OnboardingWizard from "./onboarding/OnboardingWizard";
+import PackingNotePage from "./packing/PackingNotePage";
 import { ROUTES, tripDetailPath } from "./routes";
 import MyTripsPage from "./trips/MyTripsPage";
 import TripDetailPage, { type TripDetailState } from "./trips/TripDetailPage";
@@ -47,6 +48,7 @@ export default function App() {
           />
           <Route path={ROUTES.MY_TRIPS} element={<MyTripsPage />} />
           <Route path={ROUTES.TRIP_DETAIL} element={<TripDetailPage />} />
+          <Route path={ROUTES.PACKING} element={<PackingNotePage />} />
         </Route>
       </Route>
     </Routes>

@@ -1,12 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getTrip, toErrorMessage } from "../api/client";
+import {
+  deleteItineraryItem,
+  getItinerary,
+  getTrip,
+  initItinerary,
+  reorderItinerary,
+  toErrorMessage,
+} from "../api/client";
 import { ROUTES } from "../routes";
-import type { Airport, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryResponse, Trip } from "../types/api";
 import { formatMonthDay, todayISODate } from "../utils/date";
-import TripItinerary, { RouteActions } from "./TripItinerary";
+import AddPlaceDrawer from "./AddPlaceDrawer";
+import AiPlannerDrawer from "./AiPlannerDrawer";
+import TripItinerary from "./TripItinerary";
 import TripMap from "./TripMap";
-import { cityPoints, dayLabel, numberStops, tripDays, type ItineraryItem, type TripDay } from "./tripDays";
+import { cityPoints, dayLabel, initialCards, numberStops, tripDates } from "./tripDays";
 import { dDayLabel, tripColor } from "./tripUtils";
 
 /** 여행 상세로 이동할 때 넘기는 라우터 state (있으면 서버 응답 전에 바로 그린다) */
@@ -144,27 +153,27 @@ function TripBasics({ trip }: { trip: Trip }) {
 }
 
 /** 일자 탭: 첫째 날, 둘째 날 ... */
-function DayTabs({ days, selected, onSelect }: { days: TripDay[]; selected: number; onSelect: (index: number) => void }) {
+function DayTabs({ dates, selected, onSelect }: { dates: string[]; selected: number; onSelect: (index: number) => void }) {
   return (
     <div role="tablist" aria-label="일자" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-      {days.map((day) => {
-        const active = day.index === selected;
+      {dates.map((date, index) => {
+        const active = index === selected;
         return (
           <button
-            key={day.date}
+            key={date}
             type="button"
             role="tab"
             aria-selected={active}
-            onClick={() => onSelect(day.index)}
+            onClick={() => onSelect(index)}
             className={`shrink-0 rounded-xl border px-3.5 py-2 text-left transition-colors ${
               active
                 ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                 : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
             }`}
           >
-            <span className="block text-sm font-semibold">{dayLabel(day.index)}</span>
+            <span className="block text-sm font-semibold">{dayLabel(index)}</span>
             <span className={`block text-[11px] ${active ? "text-indigo-500" : "text-slate-400"}`}>
-              {formatMonthDay(day.date)}
+              {formatMonthDay(date)}
             </span>
           </button>
         );
@@ -173,20 +182,70 @@ function DayTabs({ days, selected, onSelect }: { days: TripDay[]; selected: numb
   );
 }
 
+type Panel = "ai" | "add" | null;
+
+const BUTTON_BASE =
+  "flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition-colors";
+const OUTLINE_BUTTON = `${BUTTON_BASE} border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50`;
+
+/** 여행 경로 카드 머리의 일정 메뉴: AI와 함께 만들기 · 직접 추가 */
+function RouteMenu({ onOpen }: { onOpen: (panel: Exclude<Panel, null>) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:flex">
+      <button
+        type="button"
+        onClick={() => onOpen("ai")}
+        className={`${BUTTON_BASE} bg-indigo-600 text-white hover:bg-indigo-700`}
+      >
+        <i className="fas fa-magic text-xs" aria-hidden="true" />
+        AI와 함께 만들기
+      </button>
+      <button type="button" onClick={() => onOpen("add")} className={OUTLINE_BUTTON}>
+        <i className="fas fa-plus text-xs" aria-hidden="true" />
+        직접 추가
+      </button>
+    </div>
+  );
+}
+
+/** 여행 제목 오른쪽 끝의 일행 초대하기 (준비 중) */
+function InviteButton() {
+  const [notice, setNotice] = useState("");
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => setNotice("'일행 초대하기'는 준비 중이에요.")}
+        className={`${OUTLINE_BUTTON} whitespace-nowrap`}
+      >
+        <i className="fas fa-user-plus text-xs" aria-hidden="true" />
+        일행 초대하기
+      </button>
+      {notice && (
+        <p role="status" className="text-xs text-slate-500">
+          {notice}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * `/trips/:tripId` 여행 상세.
+ * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
- * - 일자 탭(첫째 날 기본)을 고르면 그날의 일정 카드와 지도 핀이 바뀐다.
+ * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
  * - 지도 핀 번호는 일정 카드 순서를 따르고, 카드를 끌어 순서를 바꾸면 번호도 바뀐다.
- * 목록·홈에서 넘어오면 받은 여행으로 바로 그리고, 새로고침·직접 접근이면 서버에서 불러온다.
  */
 export default function TripDetailPage() {
   const { tripId } = useParams();
   const state = useLocation().state as TripDetailState | null;
   const [trip, setTrip] = useState<Trip | null>(state?.trip ?? null);
+  const [items, setItems] = useState<ItineraryItem[] | null>(null);
   const [error, setError] = useState("");
-  const [days, setDays] = useState<TripDay[]>(() => (state?.trip ? tripDays(state.trip) : []));
+  const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
+  const [panel, setPanel] = useState<Panel>(null);
 
   useEffect(() => {
     const id = Number(tripId);
@@ -195,11 +254,12 @@ export default function TripDetailPage() {
       return undefined;
     }
     let cancelled = false;
-    getTrip(id)
-      .then((data) => {
+    Promise.all([getTrip(id), getItinerary(id)])
+      .then(async ([data, itinerary]) => {
         if (cancelled) return;
         setTrip(data);
-        setDays(tripDays(data));
+        const loaded = itinerary.initialized ? itinerary : await initItinerary(id, initialCards(data));
+        if (!cancelled) setItems(loaded.items);
       })
       .catch((err: unknown) => !cancelled && setError(toErrorMessage(err)));
     return () => {
@@ -207,14 +267,53 @@ export default function TripDetailPage() {
     };
   }, [tripId]);
 
-  const day = days[dayIndex] ?? days[0];
-  const { points, numbers } = useMemo(() => numberStops(day?.items ?? []), [day]);
+  const dates = useMemo(() => (trip ? tripDates(trip) : []), [trip]);
+  const day = dates[dayIndex] ?? dates[0];
+  const dayItems = useMemo(() => (items ?? []).filter((item) => item.day === day), [items, day]);
+  const { points, numbers } = useMemo(() => numberStops(dayItems), [dayItems]);
   // 그날 좌표가 있는 위치가 없으면 여행 도시를 대신 보여준다.
   const fallbackPoints = useMemo(() => (trip && points.length === 0 ? cityPoints(trip) : []), [trip, points]);
   const mapPoints = points.length > 0 ? points : fallbackPoints;
 
-  const updateDayItems = (items: ItineraryItem[]) =>
-    setDays((current) => current.map((item) => (item.index === dayIndex ? { ...item, items } : item)));
+  const replaceDay = (dayValue: string, next: ItineraryItem[]) =>
+    setItems((current) => [...(current ?? []).filter((item) => item.day !== dayValue), ...next]);
+
+  // 순서는 바로 반영하고 저장한다. 저장에 실패하면 되돌린다.
+  const onReorder = (next: ItineraryItem[]) => {
+    if (!trip || !day) return;
+    const previous = dayItems;
+    replaceDay(day, next);
+    setRouteError("");
+    reorderItinerary(
+      trip.id,
+      day,
+      next.map((item) => item.id),
+    )
+      .then((itinerary) => setItems(itinerary.items))
+      .catch((err: unknown) => {
+        replaceDay(day, previous);
+        setRouteError(toErrorMessage(err));
+      });
+  };
+
+  const onRemove = (id: number) => {
+    setRouteError("");
+    deleteItineraryItem(id)
+      .then(() => setItems((current) => (current ?? []).filter((item) => item.id !== id)))
+      .catch((err: unknown) => setRouteError(toErrorMessage(err)));
+  };
+
+  const onChange = (updated: ItineraryItem) =>
+    setItems((current) => (current ?? []).map((item) => (item.id === updated.id ? updated : item)));
+
+  const closePanel = useCallback(() => setPanel(null), []);
+
+  const onPlacesSaved = (itinerary: ItineraryResponse) => setItems(itinerary.items);
+
+  const onPlacesDone = (addedDay: string) => {
+    setDayIndex(Math.max(0, dates.indexOf(addedDay)));
+    setPanel(null);
+  };
 
   if (!trip) {
     return (
@@ -239,9 +338,9 @@ export default function TripDetailPage() {
   const today = todayISODate();
   // 방금 만든 여행: 첫째 날의 출발 공항 → 도착 공항 → 첫 숙소를 맨 위에 한 줄로 보여준다.
   // 공항은 공항명, 숙소는 숙소명으로 보여준다.
-  const firstDayStops = (days[0]?.items ?? []).flatMap((item) =>
-    item.kind === "hotel" ? [item.title] : item.stops.map((stop) => stop.label),
-  );
+  const firstDayStops = (items ?? [])
+    .filter((item) => item.day === dates[0])
+    .flatMap((item) => (item.kind === "flight" ? item.stops.map((stop) => stop.label) : [item.title]));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -268,24 +367,27 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      <header className="mb-6 mt-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`h-3 w-3 rounded-full ${tripColor(trip).dot}`} aria-hidden="true" />
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">{trip.destination_label} 여행</h1>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-            {dDayLabel(trip, today)}
-          </span>
+      <header className="mb-6 mt-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`h-3 w-3 rounded-full ${tripColor(trip).dot}`} aria-hidden="true" />
+            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">{trip.destination_label} 여행</h1>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+              {dDayLabel(trip, today)}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
+          </p>
         </div>
-        <p className="mt-1 text-sm text-slate-500">
-          {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
-        </p>
+        <InviteButton />
       </header>
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <section aria-label="여행 지도" className={`${CARD_CLASS} order-2 flex flex-col lg:order-1`}>
           <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="text-base font-bold text-slate-900">{day ? `${dayLabel(day.index)} 이동` : "이동 경로"}</h2>
+            <h2 className="text-base font-bold text-slate-900">{day ? `${dayLabel(dayIndex)} 이동` : "이동 경로"}</h2>
             {points.length === 0 && fallbackPoints.length > 0 && (
               <span className="text-xs text-slate-400">이 날 위치가 없어 여행 도시를 표시해요</span>
             )}
@@ -298,14 +400,51 @@ export default function TripDetailPage() {
         </div>
 
         <section aria-label="여행 경로" className={`${CARD_CLASS} order-3 space-y-5 lg:col-span-2`}>
-          <h2 className="text-base font-bold text-slate-900">여행 경로</h2>
-          <DayTabs days={days} selected={dayIndex} onSelect={setDayIndex} />
-          <RouteActions />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-bold text-slate-900">여행 경로</h2>
+            <RouteMenu onOpen={setPanel} />
+          </div>
+          <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
+          {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
           <div className="lg:max-w-3xl">
-            <TripItinerary items={day?.items ?? []} numbers={numbers} onChange={updateDayItems} />
+            {items === null ? (
+              error ? (
+                <p className="text-sm text-rose-600">{error}</p>
+              ) : (
+                <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
+              )
+            ) : (
+              <TripItinerary
+                items={dayItems}
+                numbers={numbers}
+                onReorder={onReorder}
+                onRemove={onRemove}
+                onChange={onChange}
+              />
+            )}
           </div>
         </section>
       </div>
+
+      {panel === "add" && day && (
+        <AddPlaceDrawer
+          trip={trip}
+          dates={dates}
+          initialDay={day}
+          onClose={closePanel}
+          onSaved={onPlacesSaved}
+          onDone={onPlacesDone}
+        />
+      )}
+      {panel === "ai" && (
+        <AiPlannerDrawer
+          trip={trip}
+          dates={dates}
+          onClose={closePanel}
+          onApplied={(itinerary) => setItems(itinerary.items)}
+        />
+      )}
     </div>
   );
 }
+

@@ -1,7 +1,17 @@
 import axios, { isAxiosError } from "axios";
 import { clearSession, getSession } from "../auth/session";
 import type {
+  AddPlacePayload,
+  AiProposal,
+  AiProposeResponse,
   Airline,
+  ChatTurn,
+  ChecklistItem,
+  ItineraryCardInput,
+  ItineraryItem,
+  ItineraryResponse,
+  PackingLinkedItem,
+  PlaceKind,
   ApiErrorData,
   AuthSession,
   AuthUser,
@@ -104,6 +114,58 @@ export const getExchangeRates = (cityCodes: string[]) =>
       params: { city_codes: cityCodes.join(",") },
     })
     .then((res) => res.data);
+
+/* ------------------------------------------------------------------ *
+ * 여행 상세 일정 · 체크리스트 · 짐싸기 노트 · AI
+ * ------------------------------------------------------------------ */
+
+export const getItinerary = (tripId: number) =>
+  api.get<ItineraryResponse>(`/trips/${tripId}/itinerary/`).then((res) => res.data);
+
+/** 처음 열 때 항공편·숙소 카드를 한 번 저장한다 (이미 저장했으면 그대로 돌려준다) */
+export const initItinerary = (tripId: number, items: ItineraryCardInput[]) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/init/`, { items }).then((res) => res.data);
+
+/** 장소 직접 추가 (서버가 거리 기준으로 자리를 정한다) */
+export const addItineraryPlace = (tripId: number, payload: AddPlacePayload) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/`, payload).then((res) => res.data);
+
+export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/reorder/`, { day, ids }).then((res) => res.data);
+
+export const updateItineraryItem = (itemId: number, payload: { memo?: string; time?: string | null }) =>
+  api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
+
+export const deleteItineraryItem = (itemId: number) => api.delete<void>(`/itinerary-items/${itemId}/`);
+
+export const addChecklistItem = (itemId: number, text: string) =>
+  api.post<ChecklistItem>(`/itinerary-items/${itemId}/checklist/`, { text }).then((res) => res.data);
+
+export const updateChecklistItem = (checkId: number, payload: Partial<Omit<ChecklistItem, "id">>) =>
+  api.patch<ChecklistItem>(`/checklist-items/${checkId}/`, payload).then((res) => res.data);
+
+export const deleteChecklistItem = (checkId: number) => api.delete<void>(`/checklist-items/${checkId}/`);
+
+/** 짐싸기 노트 '일정 연동 항목' */
+export const getPackingNote = (tripId: number) =>
+  api.get<{ linked: PackingLinkedItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data);
+
+/** 일정 장소 자동완성 (유형별) */
+export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>
+  api
+    .get<HotelSuggestion[]>("/places/search/", {
+      params: { input: params.input, session_token: params.sessionToken, city_code: params.cityCode, kind: params.kind },
+    })
+    .then((res) => res.data);
+
+/** AI와 함께 만들기: 대화 -> 일정 변경 제안과 미리보기 (AI 응답이라 오래 걸릴 수 있다) */
+export const proposeAiPlan = (tripId: number, messages: ChatTurn[]) =>
+  api
+    .post<AiProposeResponse>(`/trips/${tripId}/ai/propose/`, { messages }, { timeout: 120_000 })
+    .then((res) => res.data);
+
+export const applyAiPlan = (tripId: number, proposal: AiProposal) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/ai/apply/`, { proposal }).then((res) => res.data);
 
 /* ------------------------------------------------------------------ *
  * 회원 (로그인 · 가입)

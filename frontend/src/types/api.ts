@@ -242,3 +242,106 @@ export interface ExchangeRatesResponse {
   /** 환율 기준 시각 (UTC 문자열) */
   updated_at: string;
 }
+
+/* ------------------------------------------------------------------ *
+ * 여행 상세 일정 (itinerary) · 체크리스트 · 짐싸기 노트 · AI
+ * ------------------------------------------------------------------ */
+
+export type ItineraryKind = "flight" | "hotel" | "airport" | "sight" | "restaurant" | "cafe";
+/** 직접 추가할 수 있는 장소 유형 */
+export type PlaceKind = Exclude<ItineraryKind, "flight">;
+
+/** 카드 안의 위치 (지도 핀). kind는 핀 색 */
+export interface ItineraryStop {
+  kind: "airport" | "hotel" | "place" | "city";
+  caption: string;
+  label: string;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+export interface ChecklistItem {
+  id: number;
+  text: string;
+  done: boolean;
+  /** 짐싸기 노트 '일정 연동 항목'에 표시 */
+  in_packing_note: boolean;
+}
+
+export interface ItineraryItem {
+  id: number;
+  day: ISODate;
+  order: number;
+  kind: ItineraryKind;
+  source: "auto" | "manual" | "ai";
+  title: string;
+  /** "HH:MM" 또는 null */
+  time: string | null;
+  /** 체크인·숙박·체크아웃·출국·귀국 */
+  time_label: string;
+  subtitle: string;
+  stops: ItineraryStop[];
+  place_id: string;
+  address: string;
+  phone: string;
+  /** 요일별 영업시간 문장 */
+  opening_hours: string[];
+  memo: string;
+  checklist: ChecklistItem[];
+}
+
+export interface ItineraryResponse {
+  initialized: boolean;
+  items: ItineraryItem[];
+}
+
+/** 처음 열 때 저장하는 항공편·숙소 카드 */
+export interface ItineraryCardInput {
+  day: ISODate;
+  kind: ItineraryKind;
+  title: string;
+  time: string;
+  time_label: string;
+  subtitle: string;
+  stops: ItineraryStop[];
+}
+
+export interface AddPlacePayload {
+  kind: PlaceKind;
+  day: ISODate;
+  time: string;
+  place_id: string;
+  session_token: string;
+}
+
+export interface PackingLinkedItem extends ChecklistItem {
+  item_id: number;
+  item_title: string;
+  day: ISODate;
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AiProposal {
+  additions: unknown[];
+  remove_item_ids: number[];
+  moves: unknown[];
+}
+
+export interface AiPreviewDay {
+  day: ISODate;
+  items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
+}
+
+export interface AiProposeResponse {
+  reply: string;
+  /** 적용할 때 그대로 돌려보낸다 */
+  proposal: AiProposal;
+  preview: AiPreviewDay[];
+  removed: { id: number; title: string }[];
+  /** 실제 장소를 찾지 못한 이름 */
+  unresolved: string[];
+}

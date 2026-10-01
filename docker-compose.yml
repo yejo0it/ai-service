@@ -41,6 +41,8 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+      # 여행 상세 'AI와 함께 만들기'(Claude). 비어 있으면 AI API가 503을 돌려준다.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8003:8000"
     volumes:

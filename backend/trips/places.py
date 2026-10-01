@@ -115,14 +115,36 @@ def _request(url, field_mask, body=None):
         raise PlacesError("숙소 정보를 불러오지 못했습니다.") from exc
 
 
+# 일정 장소 유형 -> Places 장소 유형(includedPrimaryTypes, 최대 5개)
+# 관광지는 전망대·거리·시장처럼 유형이 너무 다양해(예: 도쿄타워가 빠진다) 거르지 않는다.
+PLACE_TYPES = {
+    "hotel": ["lodging"],
+    "airport": ["airport"],
+    "restaurant": ["restaurant"],
+    "cafe": ["cafe", "coffee_shop", "bakery"],
+}
+
+# 장소 상세: 주소·좌표 + 전화번호·영업시간 (전화·영업시간은 Enterprise 등급 필드)
+PLACE_DETAIL_FIELDS = "displayName,formattedAddress,location,nationalPhoneNumber,regularOpeningHours"
+TEXT_SEARCH_FIELDS = ",".join(
+    f"places.{field}" for field in PLACE_DETAIL_FIELDS.split(",") + ["id"]
+)
+
+
 def autocomplete_hotels(query, session_token, city="", city_code=""):
     """숙소 자동완성 후보를 [{place_id, name, description}] 형태로 돌려준다."""
+    return autocomplete_places(query, session_token, city=city, city_code=city_code, kind="hotel")
+
+
+def autocomplete_places(query, session_token, city="", city_code="", kind=""):
+    """장소 자동완성 후보 [{place_id, name, description}]. kind를 주면 그 유형만 찾는다."""
     body = {
         "input": query,
         "sessionToken": session_token,
-        "includedPrimaryTypes": ["lodging"],
         "languageCode": "ko",
     }
+    if kind in PLACE_TYPES:
+        body["includedPrimaryTypes"] = PLACE_TYPES[kind]
     center = CITY_CENTERS.get(city_code.upper())
     if center:
         latitude, longitude = center
@@ -164,3 +186,47 @@ def hotel_details(place_id, session_token):
         "latitude": location.get("latitude"),
         "longitude": location.get("longitude"),
     }
+
+
+def _place_summary(place, place_id):
+    location = place.get("location", {})
+    return {
+        "place_id": place_id,
+        "name": place.get("displayName", {}).get("text", ""),
+        "address": place.get("formattedAddress", ""),
+        "latitude": location.get("latitude"),
+        "longitude": location.get("longitude"),
+        "phone": place.get("nationalPhoneNumber", ""),
+        "opening_hours": place.get("regularOpeningHours", {}).get("weekdayDescriptions", []),
+    }
+
+
+def place_details(place_id, session_token=""):
+    """일정 카드용 장소 상세: 이름·주소·좌표·전화번호·영업시간(요일별 문장)."""
+    params = {"languageCode": "ko"}
+    if session_token:
+        params["sessionToken"] = session_token
+    query = urllib.parse.urlencode(params)
+    place = urllib.parse.quote(place_id, safe="")
+    result = _request(f"{PLACES_BASE_URL}/places/{place}?{query}", PLACE_DETAIL_FIELDS)
+    return _place_summary(result, place_id)
+
+
+def search_place(text, latitude=None, longitude=None):
+    """
+    이름으로 장소 하나를 찾는다(AI가 고른 장소를 실제 장소로 확정할 때).
+    여행지 좌표가 있으면 그 주변을 우선한다. 찾지 못하면 None.
+    """
+    body = {"textQuery": text, "languageCode": "ko", "pageSize": 1}
+    if latitude is not None and longitude is not None:
+        body["locationBias"] = {
+            "circle": {
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": SEARCH_RADIUS_M,
+            }
+        }
+    result = _request(f"{PLACES_BASE_URL}/places:searchText", TEXT_SEARCH_FIELDS, body)
+    places = result.get("places", [])
+    if not places:
+        return None
+    return _place_summary(places[0], places[0].get("id", ""))

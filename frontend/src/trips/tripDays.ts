@@ -1,40 +1,9 @@
 import { findAirport } from "../onboarding/airports";
 import { findCityByCode } from "../onboarding/cities";
-import type { Airport, Hotel, Trip } from "../types/api";
+import type { Airport, Hotel, ItineraryCardInput, ItineraryItem, ItineraryStop, Trip } from "../types/api";
 import { addDays, parseISODate, toISODate } from "../utils/date";
 
-export type StopKind = "airport" | "hotel" | "city";
-
-/** 일정 카드 안의 위치 하나. 좌표가 있으면 지도 핀(번호)이 된다. */
-export interface Stop {
-  kind: StopKind;
-  /** 출발·도착·체크인 등 */
-  caption: string;
-  label: string;
-  lat?: number;
-  lng?: number;
-}
-
-export type ItineraryKind = "flight" | "hotel" | "place";
-
-/** 일정 카드 한 장 */
-export interface ItineraryItem {
-  id: string;
-  kind: ItineraryKind;
-  title: string;
-  /** 오른쪽 위 표기 (시각 또는 체크인·숙박·체크아웃) */
-  time: string;
-  subtitle?: string;
-  stops: Stop[];
-}
-
-export interface TripDay {
-  /** 0부터 (0 = 첫째 날) */
-  index: number;
-  /** "YYYY-MM-DD" */
-  date: string;
-  items: ItineraryItem[];
-}
+export type StopKind = ItineraryStop["kind"];
 
 /** 지도에 찍는 번호 핀 */
 export interface RoutePoint {
@@ -50,100 +19,97 @@ const ORDINALS = ["첫째", "둘째", "셋째", "넷째", "다섯째", "여섯�
 /** 0 -> "첫째 날", 10 -> "11일차" */
 export const dayLabel = (index: number) => (ORDINALS[index] ? `${ORDINALS[index]} 날` : `${index + 1}일차`);
 
-const airportStop = (airport: Airport | null | undefined, caption: string): Stop => {
+/** 여행 기간의 날짜들 ("YYYY-MM-DD") */
+export function tripDates(trip: Trip): string[] {
+  const dates: string[] = [];
+  for (let date = parseISODate(trip.start_date); toISODate(date) <= trip.end_date; date = addDays(date, 1)) {
+    dates.push(toISODate(date));
+  }
+  return dates;
+}
+
+const airportStop = (airport: Airport | null | undefined, caption: string): ItineraryStop => {
   const found = airport ? findAirport(airport.code, airport.name) : undefined;
-  return {
-    kind: "airport",
-    caption,
-    label: airport?.name ?? "공항 미지정",
-    lat: found?.lat,
-    lng: found?.lng,
-  };
+  return { kind: "airport", caption, label: airport?.name ?? "공항 미지정", lat: found?.lat, lng: found?.lng };
 };
 
-const hotelStop = (hotel: Hotel, caption: string): Stop => ({
-  kind: "hotel",
-  caption,
-  label: hotel.address || hotel.name,
-  lat: hotel.latitude ?? undefined,
-  lng: hotel.longitude ?? undefined,
-});
-
-const hotelItem = (hotel: Hotel, id: string, time: string, subtitle?: string): ItineraryItem => ({
-  id,
+const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): ItineraryCardInput => ({
+  day,
   kind: "hotel",
   title: hotel.name,
-  time,
+  time: "",
+  time_label: label,
   subtitle,
-  stops: [hotelStop(hotel, time)],
+  stops: [{ kind: "hotel", caption: label, label: hotel.address || hotel.name, lat: hotel.latitude, lng: hotel.longitude }],
 });
 
 /**
- * 여행 기간을 날짜별로 나누고, 각 날짜에 이미 등록된 항공편·숙소를 일정 카드로 만든다.
+ * 상세 화면을 처음 열 때 저장할 항공편·숙소 카드 (서버가 한 번만 저장한다).
  * - 가는 편: 출국일 / 오는 편: 귀국일
  * - 숙소: 체크인 날(체크인), 사이 날(숙박), 체크아웃 날(체크아웃)
  * 하루 안의 순서: 체크아웃 → 가는 편 → 숙박 → 체크인 → 오는 편
  */
-export function tripDays(trip: Trip): TripDay[] {
+export function initialCards(trip: Trip): ItineraryCardInput[] {
   const flight = trip.flight_info;
   const departureDate = flight?.departure_at?.slice(0, 10) || trip.start_date;
   const returnDate = flight?.return_arrival_at?.slice(0, 10) || trip.end_date;
   const hotels = [...trip.hotels].sort((a, b) => a.check_in.localeCompare(b.check_in));
+  const cards: ItineraryCardInput[] = [];
 
-  const days: TripDay[] = [];
-  for (let date = parseISODate(trip.start_date), index = 0; toISODate(date) <= trip.end_date; date = addDays(date, 1), index += 1) {
-    const iso = toISODate(date);
-    const items: ItineraryItem[] = [];
-
+  tripDates(trip).forEach((day) => {
     hotels
-      .filter((hotel) => hotel.check_out === iso && hotel.check_in !== iso)
-      .forEach((hotel) => items.push(hotelItem(hotel, `hotel-${hotel.id}-out`, "체크아웃")));
+      .filter((hotel) => hotel.check_out === day && hotel.check_in !== day)
+      .forEach((hotel) => cards.push(hotelCard(hotel, day, "체크아웃")));
 
-    if (flight && iso === departureDate) {
-      items.push({
-        id: "flight-out",
+    if (flight && day === departureDate) {
+      cards.push({
+        day,
         kind: "flight",
         title: `가는 편${flight.flight_number ? ` · ${flight.flight_number}` : ""}`,
         time: flight.departure_at?.slice(11, 16) ?? "",
+        time_label: "출국",
+        subtitle: "",
         stops: [airportStop(flight.departure_airport, "출발"), airportStop(flight.arrival_airport, "도착")],
       });
     }
 
     hotels
-      .filter((hotel) => hotel.check_in < iso && hotel.check_out !== null && iso < hotel.check_out)
-      .forEach((hotel) => items.push(hotelItem(hotel, `hotel-${hotel.id}-stay-${iso}`, "숙박")));
+      .filter((hotel) => hotel.check_in < day && hotel.check_out !== null && day < hotel.check_out)
+      .forEach((hotel) => cards.push(hotelCard(hotel, day, "숙박")));
 
     hotels
-      .filter((hotel) => hotel.check_in === iso)
-      .forEach((hotel) =>
-        items.push(
-          hotelItem(hotel, `hotel-${hotel.id}-in`, "체크인", hotel.nights ? `${hotel.nights}박` : undefined),
-        ),
-      );
+      .filter((hotel) => hotel.check_in === day)
+      .forEach((hotel) => cards.push(hotelCard(hotel, day, "체크인", hotel.nights ? `${hotel.nights}박` : "")));
 
-    if (flight && iso === returnDate && (flight.return_flight_number || flight.return_arrival_at)) {
-      items.push({
-        id: "flight-return",
+    if (flight && day === returnDate && (flight.return_flight_number || flight.return_arrival_at)) {
+      cards.push({
+        day,
         kind: "flight",
         title: `오는 편${flight.return_flight_number ? ` · ${flight.return_flight_number}` : ""}`,
         time: flight.return_arrival_at?.slice(11, 16) ?? "",
+        time_label: "귀국",
+        subtitle: "",
         stops: [
           airportStop(flight.return_departure_airport, "출발"),
           airportStop(flight.return_arrival_airport, "도착"),
         ],
       });
     }
-
-    days.push({ index, date: iso, items });
-  }
-  return days;
+  });
+  return cards;
 }
 
 /** 카드 안 위치의 키 (번호 조회용) */
-export const stopKey = (itemId: string, stopIndex: number) => `${itemId}:${stopIndex}`;
+export const stopKey = (itemId: number, stopIndex: number) => `${itemId}:${stopIndex}`;
+
+/** 출발지(한국) 쪽 공항: 가는 편의 출발 공항, 오는 편의 도착 공항. 지도에는 여행지 안의 이동만 그린다. */
+const isHomeAirport = (item: ItineraryItem, stopIndex: number) =>
+  item.kind === "flight" &&
+  ((item.time_label === "출국" && stopIndex === 0) ||
+    (item.time_label === "귀국" && stopIndex === item.stops.length - 1));
 
 /**
- * 카드 순서대로 좌표가 있는 위치에 1부터 번호를 매긴다.
+ * 카드 순서대로 좌표가 있는 위치에 1부터 번호를 매긴다(출발지 쪽 공항은 빼고 현지 공항부터).
  * 카드 순서를 바꾸면 지도 핀 번호도 따라 바뀐다.
  */
 export function numberStops(items: ItineraryItem[]): { points: RoutePoint[]; numbers: Map<string, number> } {
@@ -151,7 +117,7 @@ export function numberStops(items: ItineraryItem[]): { points: RoutePoint[]; num
   const numbers = new Map<string, number>();
   items.forEach((item) =>
     item.stops.forEach((stop, stopIndex) => {
-      if (stop.lat === undefined || stop.lng === undefined) return;
+      if (stop.lat == null || stop.lng == null || isHomeAirport(item, stopIndex)) return;
       const order = points.length + 1;
       numbers.set(stopKey(item.id, stopIndex), order);
       points.push({ order, kind: stop.kind, label: stop.label, lat: stop.lat, lng: stop.lng });

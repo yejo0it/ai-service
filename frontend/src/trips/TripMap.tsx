@@ -6,7 +6,8 @@ import type { RoutePoint, StopKind } from "./tripDays";
 export const PIN_STYLE: Record<StopKind, { hex: string; badge: string; label: string }> = {
   airport: { hex: "#6366f1", badge: "bg-indigo-500", label: "공항" },
   hotel: { hex: "#f59e0b", badge: "bg-amber-500", label: "숙소" },
-  city: { hex: "#10b981", badge: "bg-emerald-500", label: "여행지" },
+  place: { hex: "#10b981", badge: "bg-emerald-500", label: "장소" },
+  city: { hex: "#64748b", badge: "bg-slate-500", label: "여행지" },
 };
 
 interface TripMapProps {
