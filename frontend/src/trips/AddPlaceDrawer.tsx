@@ -23,6 +23,8 @@ interface AddPlaceDrawerProps {
   trip: Trip;
   dates: string[];
   initialDay: string;
+  /** 처음 선택된 유형 (기본 관광지) */
+  initialKind?: PlaceKind;
   onClose: () => void;
   /** 한 곳이 등록될 때마다 최신 일정 */
   onSaved: (itinerary: ItineraryResponse) => void;
@@ -43,8 +45,16 @@ const cityCodeFor = (trip: Trip, dayIndex: number, dayCount: number) => {
  * 유형을 바꿔도 입력한 검색어·장소·날짜·시간은 그대로 둔다.
  * 그날 안의 자리는 서버가 앞뒤 일정과의 거리(시간을 정하면 시간 순서)로 정한다.
  */
-export default function AddPlaceDrawer({ trip, dates, initialDay, onClose, onSaved, onDone }: AddPlaceDrawerProps) {
-  const [kind, setKind] = useState<PlaceKind>("sight");
+export default function AddPlaceDrawer({
+  trip,
+  dates,
+  initialDay,
+  initialKind = "sight",
+  onClose,
+  onSaved,
+  onDone,
+}: AddPlaceDrawerProps) {
+  const [kind, setKind] = useState<PlaceKind>(initialKind);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<HotelSuggestion | null>(null);
   const [suggestions, setSuggestions] = useState<HotelSuggestion[]>([]);
