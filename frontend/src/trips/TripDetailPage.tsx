@@ -9,7 +9,8 @@ import {
   toErrorMessage,
 } from "../api/client";
 import { ROUTES } from "../routes";
-import type { Airport, ItineraryItem, ItineraryResponse, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import { formatMeridiemTime } from "../components/pickers";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer from "./AiPlannerDrawer";
@@ -75,35 +76,126 @@ function FlightLeg({ label, airline, flightNumber, from, to, when, whenLabel }: 
   );
 }
 
-/** 기본 정보: 항공(출국·귀국 일시) · 여행지 · 숙소. 항공·숙소는 선택 입력이라 비어 있으면 안내를 보여준다. */
-function TripBasics({ trip }: { trip: Trip }) {
+/** 경로에서 추가한 숙소: 같은 숙소(장소 ID, 없으면 이름)를 묶고 그 숙소가 들어간 날짜들을 모은다. */
+interface RouteHotel {
+  key: string;
+  name: string;
+  address: string;
+  days: string[];
+}
+
+function routeHotels(trip: Trip, items: ItineraryItem[]): RouteHotel[] {
+  // 여행을 만들 때 등록한 숙소와 같은 곳은 이미 보여주므로 뺀다.
+  const registered = new Set(trip.hotels.flatMap((hotel) => [hotel.place_id, hotel.name].filter(Boolean)));
+  const groups = new Map<string, RouteHotel>();
+  items
+    .filter((item) => item.kind === "hotel" && item.source !== "auto")
+    .filter((item) => !registered.has(item.place_id) && !registered.has(item.title))
+    .forEach((item) => {
+      const key = item.place_id || item.title;
+      const group = groups.get(key) ?? { key, name: item.title, address: item.address, days: [] };
+      if (!group.days.includes(item.day)) group.days.push(item.day);
+      groups.set(key, group);
+    });
+  return [...groups.values()]
+    .map((group) => ({ ...group, days: [...group.days].sort() }))
+    .sort((a, b) => a.days[0].localeCompare(b.days[0]));
+}
+
+/** "11월 11일 (수)" 또는 "11월 11일 (수) ~ 11월 12일 (목)" */
+const dayRange = (days: string[]) =>
+  days.length > 1
+    ? `${formatMonthDay(days[0])} ~ ${formatMonthDay(days[days.length - 1])}`
+    : formatMonthDay(days[0]);
+
+/** 비어 있을 때: 안내 + 바로 추가 버튼 */
+function EmptyWithAction({ children, action, onClick }: { children: ReactNode; action: string; onClick?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
+      <p className="text-sm text-slate-400">{children}</p>
+      {onClick && (
+        <button
+          type="button"
+          onClick={onClick}
+          className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+        >
+          <i className="fas fa-plus mr-1 text-[10px]" aria-hidden="true" />
+          {action}
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface TripBasicsProps {
+  trip: Trip;
+  /** 저장된 일정 (불러오기 전이면 null) */
+  items: ItineraryItem[] | null;
+  /** 요약 카드에서 숙소·공항 직접 추가 열기 */
+  onAdd?: (kind: PlaceKind) => void;
+}
+
+/**
+ * 기본 정보: 항공(출국·귀국 일시) · 여행지 · 숙소.
+ * 여행을 만들 때 등록한 항공·숙소에 더해, 여행 경로에서 추가한 공항·숙소도 함께 보여준다.
+ * 항공·숙소는 선택 입력이라 비어 있으면 안내와 바로 추가 버튼을 보여준다.
+ */
+function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   const flight = trip.flight_info;
+  const routeItems = items ?? [];
+  const airports = routeItems
+    .filter((item) => item.kind === "airport" && item.source !== "auto")
+    .sort((a, b) => a.day.localeCompare(b.day) || a.order - b.order);
+  const hotels = routeHotels(trip, routeItems);
+  const addAirport = onAdd && (() => onAdd("airport"));
+  const addHotel = onAdd && (() => onAdd("hotel"));
+
   return (
     <div className={`${CARD_CLASS} space-y-4`}>
       <Section title="항공">
-        {flight ? (
+        {flight || airports.length > 0 ? (
           <div className="space-y-2">
-            <FlightLeg
-              label="가는 편"
-              airline={flight.airline}
-              flightNumber={flight.flight_number}
-              from={flight.departure_airport}
-              to={flight.arrival_airport}
-              when={formatDateTime(flight.departure_at)}
-              whenLabel="출국"
-            />
-            <FlightLeg
-              label="오는 편"
-              airline={flight.return_airline}
-              flightNumber={flight.return_flight_number}
-              from={flight.return_departure_airport}
-              to={flight.return_arrival_airport}
-              when={formatDateTime(flight.return_arrival_at)}
-              whenLabel="귀국"
-            />
+            {flight && (
+              <>
+                <FlightLeg
+                  label="가는 편"
+                  airline={flight.airline}
+                  flightNumber={flight.flight_number}
+                  from={flight.departure_airport}
+                  to={flight.arrival_airport}
+                  when={formatDateTime(flight.departure_at)}
+                  whenLabel="출국"
+                />
+                <FlightLeg
+                  label="오는 편"
+                  airline={flight.return_airline}
+                  flightNumber={flight.return_flight_number}
+                  from={flight.return_departure_airport}
+                  to={flight.return_arrival_airport}
+                  when={formatDateTime(flight.return_arrival_at)}
+                  whenLabel="귀국"
+                />
+              </>
+            )}
+            {airports.length > 0 && (
+              <ul className="space-y-2" aria-label="경로에서 추가한 공항">
+                {airports.map((item) => (
+                  <li key={item.id} className="rounded-xl bg-slate-50 px-3.5 py-3">
+                    <p className="truncate text-sm font-medium text-slate-800">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatMonthDay(item.day)}
+                      {item.time ? ` ${formatMeridiemTime(item.time)}` : ""}
+                    </p>
+                    {item.address && <p className="mt-0.5 break-words text-xs text-slate-400">{item.address}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
-          <Empty>등록된 항공권이 없어요. 날짜만 등록한 여행이에요.</Empty>
+          <EmptyWithAction action="공항 추가" onClick={addAirport}>
+            등록된 항공권이 없어요. 날짜만 등록한 여행이에요.
+          </EmptyWithAction>
         )}
       </Section>
 
@@ -126,7 +218,7 @@ function TripBasics({ trip }: { trip: Trip }) {
       </Section>
 
       <Section title="숙소">
-        {trip.hotels.length > 0 ? (
+        {trip.hotels.length > 0 || hotels.length > 0 ? (
           <ul className="space-y-2">
             {[...trip.hotels]
               .sort((a, b) => a.check_in.localeCompare(b.check_in))
@@ -143,9 +235,18 @@ function TripBasics({ trip }: { trip: Trip }) {
                   {hotel.address && <p className="mt-0.5 break-words text-xs text-slate-400">{hotel.address}</p>}
                 </li>
               ))}
+            {hotels.map((hotel) => (
+              <li key={hotel.key} className="rounded-xl bg-slate-50 px-3.5 py-3">
+                <p className="truncate text-sm font-medium text-slate-800">{hotel.name}</p>
+                <p className="mt-1 text-xs text-slate-500">{dayRange(hotel.days)}</p>
+                {hotel.address && <p className="mt-0.5 break-words text-xs text-slate-400">{hotel.address}</p>}
+              </li>
+            ))}
           </ul>
         ) : (
-          <Empty>등록된 숙소가 없어요.</Empty>
+          <EmptyWithAction action="숙소 추가" onClick={addHotel}>
+            등록된 숙소가 없어요.
+          </EmptyWithAction>
         )}
       </Section>
     </div>
@@ -246,6 +347,7 @@ export default function TripDetailPage() {
   const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
   const [panel, setPanel] = useState<Panel>(null);
+  const [addKind, setAddKind] = useState<PlaceKind>("sight");
 
   useEffect(() => {
     const id = Number(tripId);
@@ -393,13 +495,29 @@ export default function TripDetailPage() {
         </section>
 
         <div className="order-1 lg:order-2">
-          <TripBasics trip={trip} />
+          <TripBasics
+            trip={trip}
+            items={items}
+            onAdd={
+              items === null
+                ? undefined
+                : (kind) => {
+                    setAddKind(kind);
+                    setPanel("add");
+                  }
+            }
+          />
         </div>
 
         <section aria-label="여행 경로" className={`${CARD_CLASS} order-3 space-y-5 lg:col-span-2`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-base font-bold text-slate-900">여행 경로</h2>
-            <RouteMenu onOpen={setPanel} />
+            <RouteMenu
+              onOpen={(next) => {
+                setAddKind("sight");
+                setPanel(next);
+              }}
+            />
           </div>
           <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
           {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
@@ -427,6 +545,7 @@ export default function TripDetailPage() {
           trip={trip}
           dates={dates}
           initialDay={day}
+          initialKind={addKind}
           onClose={closePanel}
           onSaved={onPlacesSaved}
           onDone={onPlacesDone}
