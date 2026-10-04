@@ -62,6 +62,8 @@ export interface HotelPayload {
   place_id: string;
   latitude: number | null;
   longitude: number | null;
+  /** Google Places 전화번호 (없으면 빈 문자열) */
+  phone: string;
   city_code: string;
   check_in: ISODate;
   /** 체크아웃 미정이면 null */
@@ -128,6 +130,7 @@ export interface HotelDetail {
   address: string;
   latitude: number | null;
   longitude: number | null;
+  phone: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -304,6 +307,7 @@ export interface ItineraryCardInput {
   time_label: string;
   subtitle: string;
   stops: ItineraryStop[];
+  phone?: string;
 }
 
 export interface AddPlacePayload {

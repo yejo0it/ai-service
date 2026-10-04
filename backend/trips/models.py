@@ -122,6 +122,8 @@ class Hotel(TimeStampedModel):
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     latitude = models.FloatField("위도", null=True, blank=True)
     longitude = models.FloatField("경도", null=True, blank=True)
+    # Google Places 전화번호 (여행 상세 숙소 카드에 표시)
+    phone = models.CharField("전화번호", max_length=40, blank=True, default="")
     # 이 숙소가 속한 여행지(Trip.destinations의 city_code)
     city_code = models.CharField("도시코드", max_length=8, blank=True, default="")
     check_in = models.DateField("체크인")

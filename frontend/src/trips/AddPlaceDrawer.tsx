@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { addItineraryPlace, searchPlaces, toErrorMessage } from "../api/client";
+import { TimeField, formatMeridiemTime } from "../components/pickers";
 import type { HotelSuggestion, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMonthDay } from "../utils/date";
 import Drawer from "./Drawer";
@@ -241,7 +242,12 @@ export default function AddPlaceDrawer({ trip, dates, initialDay, onClose, onSav
             <label htmlFor="place-day" className="mb-2 block text-xs font-semibold text-slate-500">
               날짜
             </label>
-            <select id="place-day" value={day} onChange={(event) => setDay(event.target.value)} className={inputClass}>
+            <select
+              id="place-day"
+              value={day}
+              onChange={(event) => setDay(event.target.value)}
+              className={`${inputClass} py-3 text-base`}
+            >
               {dates.map((date, index) => (
                 <option key={date} value={date}>
                   {dayLabel(index)} · {formatMonthDay(date)}
@@ -250,16 +256,10 @@ export default function AddPlaceDrawer({ trip, dates, initialDay, onClose, onSav
             </select>
           </div>
           <div>
-            <label htmlFor="place-time" className="mb-2 block text-xs font-semibold text-slate-500">
+            <p className="mb-2 block text-xs font-semibold text-slate-500">
               시간 <span className="font-normal text-slate-400">(선택)</span>
-            </label>
-            <input
-              id="place-time"
-              type="time"
-              value={time}
-              onChange={(event) => setTime(event.target.value)}
-              className={inputClass}
-            />
+            </p>
+            <TimeField value={time} onChange={setTime} ariaLabel="시간 (선택)" placeholder="시간 미정" optional />
           </div>
         </div>
 
@@ -289,7 +289,7 @@ export default function AddPlaceDrawer({ trip, dates, initialDay, onClose, onSav
                     <p className="truncate text-sm font-medium text-slate-800">{item.place.name}</p>
                     <p className="text-xs text-slate-400">
                       {KIND_STYLE[item.kind].label} · {dayLabel(dates.indexOf(item.day))}
-                      {item.time && ` ${item.time}`}
+                      {item.time && ` ${formatMeridiemTime(item.time)}`}
                     </p>
                   </div>
                   <button

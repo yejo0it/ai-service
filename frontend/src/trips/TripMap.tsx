@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { hasMapsKey, loadGoogleMaps } from "../utils/googleMaps";
-import type { RoutePoint, StopKind } from "./tripDays";
+import type { PinKind, RoutePoint } from "./tripDays";
 
 /** 핀 색 (지도 마커는 CSS 클래스를 못 쓰므로 hex, 일정 카드의 번호는 같은 색의 Tailwind 클래스) */
-export const PIN_STYLE: Record<StopKind, { hex: string; badge: string; label: string }> = {
+export const PIN_STYLE: Record<PinKind, { hex: string; badge: string; label: string }> = {
   airport: { hex: "#6366f1", badge: "bg-indigo-500", label: "공항" },
   hotel: { hex: "#f59e0b", badge: "bg-amber-500", label: "숙소" },
-  place: { hex: "#10b981", badge: "bg-emerald-500", label: "장소" },
+  sight: { hex: "#10b981", badge: "bg-emerald-500", label: "관광지" },
+  restaurant: { hex: "#f43f5e", badge: "bg-rose-500", label: "식당" },
+  cafe: { hex: "#0ea5e9", badge: "bg-sky-500", label: "카페" },
   city: { hex: "#64748b", badge: "bg-slate-500", label: "여행지" },
 };
 

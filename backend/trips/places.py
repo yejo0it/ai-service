@@ -22,7 +22,7 @@ AUTOCOMPLETE_FIELDS = ",".join(
         "suggestions.placePrediction.structuredFormat.secondaryText.text",
     )
 )
-DETAILS_FIELDS = "formattedAddress,location"
+DETAILS_FIELDS = "formattedAddress,location,nationalPhoneNumber"
 # locationRestriction의 circle 반경 상한은 50km다.
 SEARCH_RADIUS_M = 50_000
 TIMEOUT_SECONDS = 5
@@ -175,7 +175,7 @@ def autocomplete_places(query, session_token, city="", city_code="", kind=""):
 
 
 def hotel_details(place_id, session_token):
-    """선택한 숙소의 주소·좌표. 같은 session token으로 호출해 세션을 종료한다."""
+    """선택한 숙소의 주소·좌표·전화번호. 같은 session token으로 호출해 세션을 종료한다."""
     query = urllib.parse.urlencode({"sessionToken": session_token, "languageCode": "ko"})
     place = urllib.parse.quote(place_id, safe="")
     result = _request(f"{PLACES_BASE_URL}/places/{place}?{query}", DETAILS_FIELDS)
@@ -185,6 +185,7 @@ def hotel_details(place_id, session_token):
         "address": result.get("formattedAddress", ""),
         "latitude": location.get("latitude"),
         "longitude": location.get("longitude"),
+        "phone": result.get("nationalPhoneNumber", ""),
     }
 
 

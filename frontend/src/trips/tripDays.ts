@@ -5,10 +5,19 @@ import { addDays, parseISODate, toISODate } from "../utils/date";
 
 export type StopKind = ItineraryStop["kind"];
 
+/** 핀 색 구분: 공항·숙소·여행지, 장소는 유형(관광지·식당·카페)별 */
+export type PinKind = Exclude<StopKind, "place"> | "sight" | "restaurant" | "cafe";
+
+/** 위치의 핀 색 구분. 장소는 카드 유형을 따른다. */
+export const pinKind = (item: ItineraryItem, stop: ItineraryStop): PinKind => {
+  if (stop.kind !== "place") return stop.kind;
+  return item.kind === "restaurant" || item.kind === "cafe" ? item.kind : "sight";
+};
+
 /** 지도에 찍는 번호 핀 */
 export interface RoutePoint {
   order: number;
-  kind: StopKind;
+  kind: PinKind;
   label: string;
   lat: number;
   lng: number;
@@ -41,6 +50,7 @@ const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): Iti
   time_label: label,
   subtitle,
   stops: [{ kind: "hotel", caption: label, label: hotel.address || hotel.name, lat: hotel.latitude, lng: hotel.longitude }],
+  phone: hotel.phone ?? "",
 });
 
 /**
@@ -120,7 +130,7 @@ export function numberStops(items: ItineraryItem[]): { points: RoutePoint[]; num
       if (stop.lat == null || stop.lng == null || isHomeAirport(item, stopIndex)) return;
       const order = points.length + 1;
       numbers.set(stopKey(item.id, stopIndex), order);
-      points.push({ order, kind: stop.kind, label: stop.label, lat: stop.lat, lng: stop.lng });
+      points.push({ order, kind: pinKind(item, stop), label: stop.label, lat: stop.lat, lng: stop.lng });
     }),
   );
   return { points, numbers };

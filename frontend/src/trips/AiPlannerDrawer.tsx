@@ -181,16 +181,11 @@ export default function AiPlannerDrawer({ trip, dates, onClose, onApplied }: AiP
               {trip.destination_label} 여행에 넣고 싶은 곳이나 바꾸고 싶은 일정을 편하게 말해 주세요. 가까운 곳끼리 묶어서
               배치해 드려요.
             </p>
-            <ul className="mt-3 space-y-1.5">
+            <p className="mt-3 text-xs font-semibold text-slate-400">이렇게 말해 보세요</p>
+            <ul className="mt-1.5 space-y-1.5" aria-label="예시 문장">
               {EXAMPLES.map((example) => (
-                <li key={example}>
-                  <button
-                    type="button"
-                    onClick={() => send(example)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50"
-                  >
-                    {example}
-                  </button>
+                <li key={example} className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                  {example}
                 </li>
               ))}
             </ul>

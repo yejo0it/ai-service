@@ -27,7 +27,6 @@ from .models import ChecklistItem, ItineraryItem, Trip
 from .packing import belongs_to_packing_note
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-KIND_LABELS = dict(ItineraryItem.Kind.choices)
 
 
 # ------------------------------------------------------------------ #
@@ -153,7 +152,7 @@ def place_card(detail, kind, time="", checklist=()):
         "title": detail["name"],
         "time": time or "",
         "time_label": "",
-        "subtitle": KIND_LABELS.get(kind, ""),
+        "subtitle": "",
         "stops": [
             {
                 "kind": stop_kind,

@@ -140,7 +140,7 @@ function TripBasics({ trip }: { trip: Trip }) {
                       {hotel.nights ? ` · ${hotel.nights}박` : ""}
                     </span>
                   </div>
-                  {hotel.address && <p className="mt-0.5 truncate text-xs text-slate-400">{hotel.address}</p>}
+                  {hotel.address && <p className="mt-0.5 break-words text-xs text-slate-400">{hotel.address}</p>}
                 </li>
               ))}
           </ul>
@@ -303,9 +303,6 @@ export default function TripDetailPage() {
       .catch((err: unknown) => setRouteError(toErrorMessage(err)));
   };
 
-  const onChange = (updated: ItineraryItem) =>
-    setItems((current) => (current ?? []).map((item) => (item.id === updated.id ? updated : item)));
-
   const closePanel = useCallback(() => setPanel(null), []);
 
   const onPlacesSaved = (itinerary: ItineraryResponse) => setItems(itinerary.items);
@@ -419,7 +416,6 @@ export default function TripDetailPage() {
                 numbers={numbers}
                 onReorder={onReorder}
                 onRemove={onRemove}
-                onChange={onChange}
               />
             )}
           </div>

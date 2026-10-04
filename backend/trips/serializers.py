@@ -107,6 +107,7 @@ class NestedHotelSerializer(serializers.ModelSerializer):
             "place_id",
             "latitude",
             "longitude",
+            "phone",
             "city_code",
             "check_in",
             "check_out",
