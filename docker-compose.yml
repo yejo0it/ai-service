@@ -41,6 +41,8 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+      # 여행 상세 'AI와 함께 만들기'(Claude). 비어 있으면 AI API가 503을 돌려준다.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8003:8000"
     volumes:
@@ -60,6 +62,8 @@ services:
       # 소셜 로그인 인가 URL에 쓰는 공개 client id (백엔드와 같은 값)
       VITE_KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       VITE_NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+      # 여행 상세 지도(Maps JavaScript API). 브라우저에 노출되므로 서버용 Places 키와 분리한다.
+      VITE_GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     ports:
       - "8002:8002"
     volumes:

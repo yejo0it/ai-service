@@ -26,6 +26,7 @@ export interface HotelDraft {
   address: string;
   latitude: number | null;
   longitude: number | null;
+  phone: string;
   city_code: string;
   check_in: string;
   check_out: string;

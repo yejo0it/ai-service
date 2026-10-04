@@ -9,7 +9,6 @@ import {
   type InputHTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 import DatePicker, { type ReactDatePickerCustomHeaderProps } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -29,6 +28,13 @@ import type {
   Stay,
   TripRange,
 } from "../types/onboarding";
+import {
+  POPOVER_CLASS,
+  PickerButton,
+  TimeColumns,
+  useOutsideClose,
+  type TimePart,
+} from "../components/pickers";
 import { findCityByName, searchCities, type CityOption } from "./cities";
 import { findAirlineByName, searchAirlines, type AirlineOption } from "./airlines";
 import { findAirportByName, searchAirports, type AirportOption } from "./airports";
@@ -71,6 +77,7 @@ const emptyHotel = ({ city = "", checkIn = "", checkOut = "" }: EmptyHotelOption
   address: "",
   latitude: null,
   longitude: null,
+  phone: "",
   city_code: "",
   check_in: checkIn,
   check_out: checkOut,
@@ -170,6 +177,7 @@ export function buildTripPayload(data: OnboardingData): TripPayload {
         place_id: hotel.place_id,
         latitude: hotel.latitude,
         longitude: hotel.longitude,
+        phone: hotel.phone,
         city_code: hotel.city_code,
         check_in: hotel.check_in,
         check_out: hotel.check_out || null,
@@ -657,74 +665,6 @@ const formatKoreanDate = (value: string) => {
   })`;
 };
 
-const HOURS = Array.from({ length: 24 }, (_, index) => pad2(index));
-const MINUTES = Array.from({ length: 12 }, (_, index) => pad2(index * 5));
-
-/** 팝오버 바깥을 누르면 닫는다. */
-function useOutsideClose(ref: RefObject<HTMLElement>, onClose: () => void) {
-  useEffect(() => {
-    const handle = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [ref, onClose]);
-}
-
-/** 달력/시간 팝오버를 여는 버튼. 좌측 아이콘 + 값 + 우측 쉐브론. */
-interface PickerButtonProps {
-  /** Font Awesome 클래스 (예: "far fa-calendar") */
-  icon: string;
-  /** 선택된 값 표기. 비어 있으면 placeholder를 보여준다. */
-  children: ReactNode;
-  placeholder: string;
-  open: boolean;
-  invalid?: boolean;
-  onClick: () => void;
-  ariaLabel: string;
-}
-
-function PickerButton({
-  icon,
-  children,
-  placeholder,
-  open,
-  invalid,
-  onClick,
-  ariaLabel,
-}: PickerButtonProps) {
-  const filled = Boolean(children);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      aria-expanded={open}
-      className={`flex w-full items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left text-base transition-colors ${
-        invalid
-          ? "border-rose-400"
-          : open
-            ? "border-indigo-500 ring-2 ring-indigo-100"
-            : "border-slate-200 hover:border-slate-300"
-      }`}
-    >
-      <i className={`${icon} shrink-0 text-slate-400`} aria-hidden="true" />
-      <span className={`flex-1 truncate ${filled ? "text-slate-900" : "text-slate-400"}`}>
-        {filled ? children : placeholder}
-      </span>
-      <i
-        className={`fas fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform ${
-          open ? "rotate-180" : ""
-        }`}
-        aria-hidden="true"
-      />
-    </button>
-  );
-}
-
-const POPOVER_CLASS =
-  "pin-calendar absolute left-0 z-30 mt-1.5 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl";
-
 // react-datepicker 기본 로케일이 영문이라, 요일만 한글로 바꿔 표기한다.
 // (date-fns ko 로케일은 직접 의존하지 않는 패키지라 끌어다 쓰지 않는다)
 const WEEKDAY_KO: Record<string, string> = {
@@ -767,75 +707,6 @@ function CalendarHeader({ date, decreaseMonth, increaseMonth }: ReactDatePickerC
   );
 }
 
-/** 열릴 때 선택된 항목이 목록 가운데로 오도록 스크롤한다(페이지는 움직이지 않게 직접 계산). */
-function useScrollToSelected(
-  listRef: RefObject<HTMLDivElement>,
-  itemRef: RefObject<HTMLButtonElement>,
-  hasSelection: boolean,
-) {
-  // 열릴 때, 그리고 날짜를 골라 기본 시각이 처음 채워질 때 스크롤한다(누를 때마다 목록이 튀지 않게).
-  useEffect(() => {
-    const list = listRef.current;
-    const item = itemRef.current;
-    if (!list || !item) return;
-    list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
-  }, [listRef, itemRef, hasSelection]);
-}
-
-/** 시·분을 각각 세로로 스크롤해 고르는 목록. */
-interface TimeColumnsProps {
-  /** "00"~"23", 아직 고르지 않았으면 빈 문자열 */
-  hour: string;
-  /** "00"~"55"(5분 단위), 아직 고르지 않았으면 빈 문자열 */
-  minute: string;
-  /** part는 이번에 누른 목록(시 또는 분) */
-  onPick: (hour: string, minute: string, part: "hour" | "minute") => void;
-}
-
-function TimeColumns({ hour, minute, onPick }: TimeColumnsProps) {
-  const hourList = useRef<HTMLDivElement>(null);
-  const hourItem = useRef<HTMLButtonElement>(null);
-  const minuteList = useRef<HTMLDivElement>(null);
-  const minuteItem = useRef<HTMLButtonElement>(null);
-  useScrollToSelected(hourList, hourItem, Boolean(hour));
-  useScrollToSelected(minuteList, minuteItem, Boolean(minute));
-
-  const cell = (
-    value: string,
-    active: boolean,
-    onClick: () => void,
-    ref: RefObject<HTMLButtonElement>,
-  ) => (
-    <button
-      key={value}
-      ref={active ? ref : undefined}
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-lg px-4 py-1.5 text-center text-sm tabular-nums transition-colors ${
-        active ? "bg-indigo-200 font-semibold text-indigo-800" : "text-slate-600 hover:bg-slate-100"
-      }`}
-    >
-      {value}
-    </button>
-  );
-
-  return (
-    <div className="flex gap-1">
-      <div ref={hourList} className="max-h-48 w-16 space-y-0.5 overflow-y-auto pr-1">
-        {HOURS.map((item) =>
-          cell(item, item === hour, () => onPick(item, minute || "00", "hour"), hourItem),
-        )}
-      </div>
-      <div className="w-px bg-slate-100" />
-      <div ref={minuteList} className="max-h-48 w-16 space-y-0.5 overflow-y-auto pr-1">
-        {MINUTES.map((item) =>
-          cell(item, item === minute, () => onPick(hour || "09", item, "minute"), minuteItem),
-        )}
-      </div>
-    </div>
-  );
-}
-
 /**
  * 출국·귀국 일시. '날짜만 등록'·'숙박 기간'과 같은 버튼 + 달력 팝오버이고, 팝오버 안에서 시·분까지 고른다.
  * 날짜를 고르면 열어 둔 채 시각을 고르게 하고(기본 09:00), 분까지 고르면 닫는다. 값은 "YYYY-MM-DDTHH:mm".
@@ -864,7 +735,7 @@ function DateTimeField({ value, onChange, minDate, error, ariaLabel }: DateTimeF
     onChange(iso ? `${iso}T${hour || "09"}:${minute || "00"}` : "");
   };
 
-  const pickTime = (nextHour: string, nextMinute: string, part: "hour" | "minute") => {
+  const pickTime = (nextHour: string, nextMinute: string, part: TimePart) => {
     if (!datePart) return;
     onChange(`${datePart}T${nextHour}:${nextMinute}`);
     if (part === "minute") setOpen(false);
@@ -900,11 +771,6 @@ function DateTimeField({ value, onChange, minDate, error, ariaLabel }: DateTimeF
                 datePart ? "" : "pointer-events-none opacity-40"
               }`}
             >
-              <div className="mb-1 flex gap-1 px-1 text-center text-[11px] font-medium text-slate-400">
-                <span className="w-16">시</span>
-                <span className="w-px" />
-                <span className="w-16">분</span>
-              </div>
               <TimeColumns hour={hour} minute={minute} onPick={pickTime} />
             </div>
           </div>
@@ -1519,6 +1385,7 @@ function HotelRow({
         address: detail.address,
         latitude: detail.latitude,
         longitude: detail.longitude,
+        phone: detail.phone ?? "",
       });
     } catch {
       onChange({ ...selection, place_id: "" });
@@ -1535,6 +1402,7 @@ function HotelRow({
       address: "",
       latitude: null,
       longitude: null,
+      phone: "",
       city_code: "",
     });
   };
@@ -1596,7 +1464,7 @@ function HotelRow({
           renderHint={hotelHint}
           // 다시 입력하면 이전 선택(주소·좌표)은 무효가 된다.
           onChange={(value) =>
-            onChange({ name: value, place_id: "", address: "", latitude: null, longitude: null })
+            onChange({ name: value, place_id: "", address: "", latitude: null, longitude: null, phone: "" })
           }
           onPick={pickHotel}
           placeholder={city ? `${city.city}의 숙소 검색` : "숙소 검색"}

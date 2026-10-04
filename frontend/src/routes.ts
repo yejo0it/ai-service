@@ -5,6 +5,7 @@ export const ROUTES = {
   HOME: "/",
   ONBOARDING: "/onboarding",
   MY_TRIPS: "/trips",
+  PACKING: "/packing",
   TRIP_DETAIL: "/trips/:tripId",
   LOGIN: "/login",
   SIGNUP: "/signup",

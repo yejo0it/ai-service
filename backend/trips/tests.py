@@ -311,6 +311,21 @@ class TripOwnershipTests(APITestCase):
         response = self.client.patch(f"/api/v1/trips/{trip.pk}/", {"color": "pink"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_deletes_own_trip_but_not_others(self):
+        mine = Trip.objects.create(
+            owner=self.user,
+            destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-10-12",
+            end_date="2026-10-17",
+        )
+        response = self.client.delete(f"/api/v1/trips/{mine.pk}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Trip.objects.filter(pk=mine.pk).exists())
+
+        response = self.client.delete(f"/api/v1/trips/{self.others_trip.pk}/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Trip.objects.filter(pk=self.others_trip.pk).exists())
+
     def test_cannot_read_or_add_hotel_to_others_trip(self):
         self.assertEqual(
             self.client.get(f"/api/v1/trips/{self.others_trip.pk}/").status_code,
