@@ -1,6 +1,7 @@
 import axios, { isAxiosError } from "axios";
 import { clearSession, getSession } from "../auth/session";
 import type {
+  AddFlightPayload,
   AddPlacePayload,
   AiProposal,
   AiProposeResponse,
@@ -126,8 +127,8 @@ export const getItinerary = (tripId: number) =>
 export const initItinerary = (tripId: number, items: ItineraryCardInput[]) =>
   api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/init/`, { items }).then((res) => res.data);
 
-/** 장소 직접 추가 (서버가 거리 기준으로 자리를 정한다) */
-export const addItineraryPlace = (tripId: number, payload: AddPlacePayload) =>
+/** 장소·항공편 직접 추가 (서버가 거리 기준으로 자리를 정한다) */
+export const addItineraryPlace = (tripId: number, payload: AddPlacePayload | AddFlightPayload) =>
   api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/`, payload).then((res) => res.data);
 
 export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>

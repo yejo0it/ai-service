@@ -6,9 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type InputHTMLAttributes,
-  type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import DatePicker, { type ReactDatePickerCustomHeaderProps } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -35,9 +32,9 @@ import {
   useOutsideClose,
   type TimePart,
 } from "../components/pickers";
+import { Field, SuggestInput } from "../components/formFields";
 import { findCityByName, searchCities, type CityOption } from "./cities";
-import { findAirlineByName, searchAirlines, type AirlineOption } from "./airlines";
-import { findAirportByName, searchAirports, type AirportOption } from "./airports";
+import { AirlineFlightFields, AirportInput, EMPTY_AIRPORT } from "./flightFields";
 
 /* ------------------------------------------------------------------ *
  * 온보딩 상태 (Step 1~3 입력값 누적)
@@ -82,8 +79,6 @@ const emptyHotel = ({ city = "", checkIn = "", checkOut = "" }: EmptyHotelOption
   check_in: checkIn,
   check_out: checkOut,
 });
-
-const EMPTY_AIRPORT: AirportDraft = { text: "", airport: null };
 
 const INITIAL_DATA: OnboardingData = {
   // Step 1
@@ -301,170 +296,6 @@ function ProgressBar({ step }: { step: number }) {
           />
         ))}
       </div>
-    </div>
-  );
-}
-
-interface FieldProps {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: ReactNode;
-}
-
-function Field({ label, error, hint, children }: FieldProps) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-      {hint && !error && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
-      {error && <span className="mt-1 block text-xs text-rose-600">{error}</span>}
-    </label>
-  );
-}
-
-const INPUT_CLASS =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-base text-slate-900 " +
-  "placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 " +
-  "focus:ring-indigo-100 disabled:bg-slate-50";
-
-type TextInputProps = InputHTMLAttributes<HTMLInputElement> & { error?: string };
-
-function TextInput({ error, ...props }: TextInputProps) {
-  const errorClass = error
-    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-100"
-    : "";
-  return <input {...props} className={`${INPUT_CLASS} ${errorClass}`} />;
-}
-
-/**
- * 입력하면 후보 목록을 드롭다운으로 보여주는 자동완성 입력.
- * 목록에 없는 값도 그대로 입력할 수 있고, 포커스만으로는 목록이 열리지 않는다.
- * 목록 선택만 허용하려면 onBlur에서 확정되지 않은 값을 정리한다.
- * `search`는 모듈 상수 함수를 넘겨야 useMemo가 유효하다.
- */
-type SuggestInputProps<T> = Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  "id" | "value" | "onChange" | "onBlur"
-> & {
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-  onPick: (item: T) => void;
-  /** 입력어로 후보를 찾는 동기 검색 (모듈 상수 함수) */
-  search?: (query: string) => T[];
-  /** 비동기 검색 결과. 넘기면 search 대신 그대로 후보로 쓴다. */
-  items?: T[];
-  keyOf: (item: T) => string;
-  renderLabel: (item: T) => ReactNode;
-  renderHint: (item: T) => ReactNode;
-  error?: string;
-  onBlur?: () => void;
-};
-
-function SuggestInput<T>({
-  id,
-  value,
-  onChange,
-  onPick,
-  search,
-  items,
-  keyOf,
-  renderLabel,
-  renderHint,
-  error,
-  onBlur,
-  ...inputProps
-}: SuggestInputProps<T>) {
-  const [open, setOpen] = useState(false);
-  const [highlight, setHighlight] = useState(0);
-
-  // items를 넘기면(비동기 검색 결과) search 대신 그대로 후보로 쓴다.
-  const suggestions = useMemo(() => items ?? search?.(value) ?? [], [items, search, value]);
-  const listId = `${id}-listbox`;
-
-  const pick = (item: T) => {
-    onPick(item);
-    setOpen(false);
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (suggestions.length === 0) return;
-    if (!open) {
-      // 포커스만으로는 열지 않으므로, ↓ 키로 명시적으로 열 수 있게 해준다.
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setHighlight(0);
-        setOpen(true);
-      }
-      return;
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setHighlight((current) => (current + 1) % suggestions.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setHighlight((current) => (current - 1 + suggestions.length) % suggestions.length);
-    } else if (event.key === "Enter") {
-      // 폼 제출(다음 단계)보다 목록 선택이 우선이다.
-      event.preventDefault();
-      pick(suggestions[Math.min(highlight, suggestions.length - 1)]);
-    } else if (event.key === "Escape") {
-      setOpen(false);
-    }
-  };
-
-  return (
-    <div className="relative">
-      <TextInput
-        {...inputProps}
-        value={value}
-        error={error}
-        onChange={(event) => {
-          onChange(event.target.value);
-          setHighlight(0);
-          setOpen(true);
-        }}
-        onKeyDown={handleKeyDown}
-        onBlur={() => {
-          setOpen(false);
-          onBlur?.();
-        }}
-        role="combobox"
-        aria-expanded={open && suggestions.length > 0}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        autoComplete="off"
-      />
-
-      {open && suggestions.length > 0 && (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {suggestions.map((item, position) => (
-            <li key={keyOf(item)} role="option" aria-selected={position === highlight}>
-              <button
-                type="button"
-                // onBlur보다 먼저 실행되어 목록이 닫히는 것을 막는다.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => pick(item)}
-                onMouseEnter={() => setHighlight(position)}
-                className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
-                  position === highlight ? "bg-indigo-50 text-indigo-700" : "text-slate-700"
-                }`}
-              >
-                {/* 줄 수는 renderLabel이 정한다(항공사는 국문/영문 2줄). */}
-                <span className="min-w-0 flex-1">{renderLabel(item)}</span>
-                <span className="shrink-0 text-xs tabular-nums text-slate-400">
-                  {renderHint(item)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -779,175 +610,6 @@ function DateTimeField({ value, onChange, minDate, error, ariaLabel }: DateTimeF
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/* 공항: 목록에서 고른 공항만 확정한다(직접 입력 불가). */
-
-const airportKey = (item: AirportOption) => item.id;
-const airportHint = (item: AirportOption) => item.code;
-const airportLabel = (item: AirportOption) => (
-  <span className="block">
-    <span className="block truncate">{item.name}</span>
-    <span className="block truncate text-xs text-slate-400">{item.city}</span>
-  </span>
-);
-
-interface AirportInputProps {
-  id: string;
-  label: string;
-  /** 가는 편·오는 편 칸을 구분하는 스크린 리더용 이름 */
-  ariaLabel: string;
-  value: AirportDraft;
-  error?: string;
-  onChange: (value: AirportDraft) => void;
-}
-
-/**
- * 공항 검색 자동완성. 목록에서 골라야 확정되고, 고르지 않고 포커스를 떠나면
- * 공항명이 정확히 일치할 때만 확정하고 아니면 입력을 비우고 안내한다.
- */
-function AirportInput({ id, label, ariaLabel, value, error, onChange }: AirportInputProps) {
-  const [rejected, setRejected] = useState("");
-
-  const confirm = () => {
-    const typed = value.text.trim();
-    if (value.airport || !typed) return;
-    const found = findAirportByName(typed);
-    onChange(found ? { text: found.name, airport: found } : EMPTY_AIRPORT);
-    setRejected(found ? "" : typed);
-  };
-
-  const message = rejected ? `'${rejected}'은(는) 목록에 없는 공항이에요.` : error;
-  return (
-    <Field label={label} error={message}>
-      <SuggestInput
-        id={id}
-        value={value.text}
-        error={message}
-        search={searchAirports}
-        keyOf={airportKey}
-        renderLabel={airportLabel}
-        renderHint={airportHint}
-        onChange={(text) => {
-          onChange({ text, airport: null });
-          setRejected("");
-        }}
-        onPick={(item) => {
-          onChange({ text: item.name, airport: item });
-          setRejected("");
-        }}
-        onBlur={confirm}
-        placeholder="예) 인천"
-        aria-label={ariaLabel}
-      />
-    </Field>
-  );
-}
-
-const airlineKey = (airline: AirlineOption) => airline.code;
-const airlineHint = (airline: AirlineOption) => airline.code;
-
-// 항공사 칸이 절반 너비라 국문/영문을 두 줄로 나눠 잘리지 않게 한다.
-const airlineLabel = (airline: AirlineOption) => (
-  <span className="block">
-    <span className="block truncate">{airline.name}</span>
-    {airline.name_en && (
-      <span className="block truncate text-xs text-slate-400">{airline.name_en}</span>
-    )}
-  </span>
-);
-
-/** 항공사 자동완성 + IATA 코드가 앞에 붙는 편명 입력 한 쌍. */
-interface AirlineFlightFieldsProps {
-  id: string;
-  airlineLabelText: string;
-  flightLabelText: string;
-  airline: string;
-  airlineCode: string;
-  /** IATA 코드를 뺀 편명 숫자 */
-  flightNumber: string;
-  /** '귀국 항공사 동일'이면 항공사 칸을 읽기 전용으로 둔다. */
-  disabled?: boolean;
-  airlineError?: string;
-  flightError?: string;
-  onAirlineChange: (airline: AirlineSelection) => void;
-  onFlightNumberChange: (value: string) => void;
-}
-
-function AirlineFlightFields({
-  id,
-  airlineLabelText,
-  flightLabelText,
-  airline,
-  airlineCode,
-  flightNumber,
-  disabled = false,
-  airlineError,
-  flightError,
-  onAirlineChange,
-  onFlightNumberChange,
-}: AirlineFlightFieldsProps) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <Field label={airlineLabelText} error={airlineError}>
-        {disabled ? (
-          // '귀국 항공사 동일'이면 출국 값이 그대로 채워진 읽기 전용 입력.
-          <TextInput value={airline} disabled readOnly aria-label={airlineLabelText} />
-        ) : (
-          <SuggestInput
-            id={id}
-            value={airline}
-            error={airlineError}
-            search={searchAirlines}
-            keyOf={airlineKey}
-            renderLabel={airlineLabel}
-            renderHint={airlineHint}
-            // 목록에 없는 항공사도 입력할 수 있다. 이름이 맞으면 IATA 코드를 채워준다.
-            onChange={(value) =>
-              onAirlineChange({
-                name: value,
-                code: findAirlineByName(value)?.code ?? "",
-              })
-            }
-            onPick={(item) => onAirlineChange({ name: item.name, code: item.code })}
-            placeholder="예) 대한항공"
-            aria-label={airlineLabelText}
-          />
-        )}
-      </Field>
-
-      <Field label={flightLabelText} error={flightError}>
-        <div
-          className={`flex items-center rounded-xl border focus-within:ring-2 focus-within:ring-indigo-100 ${
-            flightError
-              ? "border-rose-400 focus-within:border-rose-500"
-              : "border-slate-200 focus-within:border-indigo-500"
-          }`}
-        >
-          <span
-            className={`w-11 shrink-0 rounded-l-xl border-r py-3 text-center text-base font-semibold tabular-nums ${
-              airlineCode
-                ? "border-slate-200 text-slate-600"
-                : "border-slate-100 text-slate-300"
-            } ${disabled ? "bg-slate-50" : "bg-white"}`}
-            aria-hidden="true"
-          >
-            {airlineCode || "--"}
-          </span>
-          <input
-            value={flightNumber}
-            onChange={(event) =>
-              onFlightNumberChange(event.target.value.replace(/\D/g, "").slice(0, 4))
-            }
-            inputMode="numeric"
-            placeholder="001"
-            aria-label={flightLabelText}
-            className="w-full min-w-0 rounded-r-xl bg-transparent px-3 py-3 text-base tabular-nums text-slate-900 placeholder:text-slate-400 focus:outline-none"
-          />
-        </div>
-      </Field>
     </div>
   );
 }

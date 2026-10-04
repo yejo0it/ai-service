@@ -1,7 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { addItineraryPlace, searchPlaces, toErrorMessage } from "../api/client";
+import { COMPACT_LABEL_CLASS } from "../components/formFields";
 import { TimeField, formatMeridiemTime } from "../components/pickers";
-import type { HotelSuggestion, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import { AirlineFlightFields, AirportInput, EMPTY_AIRPORT } from "../onboarding/flightFields";
+import type {
+  AddFlightPayload,
+  AddPlacePayload,
+  HotelSuggestion,
+  ItineraryResponse,
+  PlaceKind,
+  Trip,
+} from "../types/api";
+import type { AirlineSelection, AirportDraft } from "../types/onboarding";
 import { formatMonthDay } from "../utils/date";
 import Drawer from "./Drawer";
 import { KIND_STYLE } from "./TripItinerary";
@@ -9,15 +19,31 @@ import { dayLabel } from "./tripDays";
 
 const KINDS: PlaceKind[] = ["sight", "restaurant", "cafe", "hotel", "airport"];
 
-/** 등록 대기 목록의 장소 하나. sessionToken은 그 장소를 고른 자동완성 세션 (등록 시 상세 조회로 세션을 끝낸다) */
-interface PendingPlace {
+/**
+ * 등록 대기 목록의 일정 하나 (장소 또는 항공편).
+ * 장소의 key는 그 장소를 고른 자동완성 세션 (등록 시 상세 조회로 세션을 끝낸다).
+ */
+interface PendingEntry {
   key: string;
   kind: PlaceKind;
-  place: HotelSuggestion;
-  day: string;
-  time: string;
-  sessionToken: string;
+  /** 목록에 보여줄 이름 */
+  name: string;
+  /** 이름 아래 설명 (항공편은 노선) */
+  detail: string;
+  /** 같은 날 같은 일정을 두 번 담지 않기 위한 값 */
+  identity: string;
+  payload: AddPlacePayload | AddFlightPayload;
 }
+
+const EMPTY_AIRLINE: AirlineSelection = { name: "", code: "" };
+
+/** 입력 칸 라벨 (항공편 칸도 날짜·시간과 같은 모양) */
+const LABEL_CLASS = COMPACT_LABEL_CLASS;
+
+const airportPayload = (draft: AirportDraft) => {
+  const airport = draft.airport!;
+  return { code: airport.code, name: airport.name, lat: airport.lat, lng: airport.lng };
+};
 
 interface AddPlaceDrawerProps {
   trip: Trip;
@@ -42,7 +68,8 @@ const cityCodeFor = (trip: Trip, dayIndex: number, dayCount: number) => {
 
 /**
  * 장소 직접 추가: 유형 · 장소 검색 · 날짜 · 시간(선택)을 입력해 목록에 쌓고, 한 번에 등록한다.
- * 유형을 바꿔도 입력한 검색어·장소·날짜·시간은 그대로 둔다.
+ * 공항은 새 여행 만들기의 항공권 입력을 재활용해 단일 노선 한 편(항공사 · 편명 · 출발 · 도착 공항)으로 받는다.
+ * 유형을 바꿔도 입력한 검색어·장소·항공편·날짜·시간은 그대로 둔다.
  * 그날 안의 자리는 서버가 앞뒤 일정과의 거리(시간을 정하면 시간 순서)로 정한다.
  */
 export default function AddPlaceDrawer({
@@ -62,16 +89,23 @@ export default function AddPlaceDrawer({
   const [day, setDay] = useState(initialDay);
   const [time, setTime] = useState("");
   const [sessionToken, setSessionToken] = useState(() => crypto.randomUUID());
-  const [pending, setPending] = useState<PendingPlace[]>([]);
+  const [airline, setAirline] = useState<AirlineSelection>(EMPTY_AIRLINE);
+  const [flightNumber, setFlightNumber] = useState("");
+  const [departure, setDeparture] = useState<AirportDraft>(EMPTY_AIRPORT);
+  const [arrival, setArrival] = useState<AirportDraft>(EMPTY_AIRPORT);
+  const flightSeq = useRef(0);
+  const [pending, setPending] = useState<PendingEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const cityCode = cityCodeFor(trip, Math.max(0, dates.indexOf(day)), dates.length);
 
-  // 입력어가 바뀌면 300ms 뒤 자동완성 (장소를 고른 뒤에는 멈춘다)
+  const isFlight = kind === "airport";
+
+  // 입력어가 바뀌면 300ms 뒤 자동완성 (장소를 고른 뒤, 항공편 입력 중에는 멈춘다)
   useEffect(() => {
     const keyword = query.trim();
-    if (selected || keyword.length < 2) {
+    if (isFlight || selected || keyword.length < 2) {
       setSuggestions([]);
       return undefined;
     }
@@ -93,29 +127,71 @@ export default function AddPlaceDrawer({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, selected, sessionToken, cityCode, kind]);
+  }, [query, selected, sessionToken, cityCode, kind, isFlight]);
 
-  /** 지금 입력 중인 장소 (장소를 골랐을 때만) */
-  const current = (): PendingPlace | null =>
-    selected ? { key: sessionToken, kind, place: selected, day, time, sessionToken } : null;
+  const flightReady = Boolean(departure.airport && arrival.airport);
+  const ready = isFlight ? flightReady : Boolean(selected);
 
-  const isDuplicate = (entry: PendingPlace) =>
-    pending.some((item) => item.place.place_id === entry.place.place_id && item.day === entry.day);
+  /** 지금 입력 중인 일정 (장소를 골랐거나, 항공편의 출발·도착 공항을 골랐을 때만) */
+  const current = (): PendingEntry | null => {
+    if (isFlight) {
+      if (!departure.airport || !arrival.airport) return null;
+      const number = flightNumber ? airline.code + flightNumber : "";
+      const name = [airline.name.trim(), number].filter(Boolean).join(" · ") || "항공편";
+      return {
+        key: `flight-${(flightSeq.current += 1)}`,
+        kind,
+        name,
+        detail: `${departure.airport.name} → ${arrival.airport.name}`,
+        identity: `${number}|${departure.airport.id}|${arrival.airport.id}|${day}`,
+        payload: {
+          kind: "flight",
+          day,
+          time,
+          airline: airline.name.trim(),
+          flight_number: number,
+          departure_airport: airportPayload(departure),
+          arrival_airport: airportPayload(arrival),
+        },
+      };
+    }
+    if (!selected) return null;
+    return {
+      key: sessionToken,
+      kind,
+      name: selected.name,
+      detail: "",
+      identity: `${selected.place_id}|${day}`,
+      payload: { kind, day, time, place_id: selected.place_id, session_token: sessionToken },
+    };
+  };
 
-  // 목록에 쌓고 장소·시간 입력만 비운다(유형·날짜는 다음 장소에도 그대로 쓴다).
+  const isDuplicate = (entry: PendingEntry) => pending.some((item) => item.identity === entry.identity);
+
+  /** 담은 일정의 입력만 비운다(유형·날짜·항공사는 다음 일정에도 그대로 쓴다). */
+  const clearCurrent = (entry: PendingEntry) => {
+    setTime("");
+    if (entry.payload.kind === "flight") {
+      setFlightNumber("");
+      setDeparture(EMPTY_AIRPORT);
+      setArrival(EMPTY_AIRPORT);
+    } else {
+      setSelected(null);
+      setQuery("");
+      setSessionToken(crypto.randomUUID());
+    }
+  };
+
   const addToList = () => {
     const entry = current();
     if (!entry) return;
     setError("");
     if (isDuplicate(entry)) {
-      setError("같은 날짜에 이미 담은 장소예요.");
+      setError(entry.payload.kind === "flight" ? "같은 날짜에 이미 담은 항공편이에요." : "같은 날짜에 이미 담은 장소예요.");
       return;
     }
     setPending((list) => [...list, entry]);
-    setSelected(null);
-    setQuery("");
-    setTime("");
-    setSessionToken(crypto.randomUUID());
+    clearCurrent(entry);
   };
 
   const submit = async (event: FormEvent) => {
@@ -127,33 +203,20 @@ export default function AddPlaceDrawer({
     setError("");
     for (const [index, item] of entries.entries()) {
       try {
-        onSaved(
-          await addItineraryPlace(trip.id, {
-            kind: item.kind,
-            day: item.day,
-            time: item.time,
-            place_id: item.place.place_id,
-            session_token: item.sessionToken,
-          }),
-        );
+        onSaved(await addItineraryPlace(trip.id, item.payload));
       } catch (err) {
-        // 등록하지 못한 장소부터 목록에 남겨 다시 시도할 수 있게 한다.
+        // 등록하지 못한 일정부터 목록에 남겨 다시 시도할 수 있게 한다.
         setPending(entries.slice(index));
-        if (entry) {
-          setSelected(null);
-          setQuery("");
-          setTime("");
-          setSessionToken(crypto.randomUUID());
-        }
-        setError(`${item.place.name}: ${toErrorMessage(err)}`);
+        if (entry) clearCurrent(entry);
+        setError(`${item.name}: ${toErrorMessage(err)}`);
         setSaving(false);
         return;
       }
     }
-    onDone(entries[0].day);
+    onDone(entries[0].payload.day);
   };
 
-  const total = pending.length + (selected ? 1 : 0);
+  const total = pending.length + (ready ? 1 : 0);
   const inputClass =
     "w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100";
 
@@ -198,65 +261,100 @@ export default function AddPlaceDrawer({
           </div>
         </fieldset>
 
-        <div>
-          <label htmlFor="place-query" className="mb-2 block text-xs font-semibold text-slate-500">
-            장소 검색
-          </label>
-          {selected ? (
-            <div className="flex items-start justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{selected.name}</p>
-                <p className="truncate text-xs text-slate-500">{selected.description}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="shrink-0 text-xs font-medium text-indigo-600 hover:underline"
-              >
-                다시 검색
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                id="place-query"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={`${KIND_STYLE[kind].label} 이름을 입력하세요`}
-                autoComplete="off"
-                className={inputClass}
+        {isFlight ? (
+          <div className="space-y-3">
+            <AirlineFlightFields
+              id="flight-airline"
+              airlineLabelText="항공사"
+              flightLabelText="편명"
+              airline={airline.name}
+              airlineCode={airline.code}
+              flightNumber={flightNumber}
+              onAirlineChange={setAirline}
+              onFlightNumberChange={setFlightNumber}
+              compact
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <AirportInput
+                id="flight-departure"
+                label="출발 공항"
+                ariaLabel="출발 공항"
+                value={departure}
+                onChange={setDeparture}
+                compact
               />
-              {suggestions.length > 0 && (
-                <ul className="mt-1.5 overflow-hidden rounded-xl border border-slate-200" aria-label="검색 결과">
-                  {suggestions.map((item) => (
-                    <li key={item.place_id} className="border-t border-slate-100 first:border-t-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelected(item)}
-                        className="block w-full px-3 py-2.5 text-left hover:bg-slate-50"
-                      >
-                        <span className="block truncate text-sm font-medium text-slate-800">{item.name}</span>
-                        <span className="block truncate text-xs text-slate-400">{item.description}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {searchError && <p className="mt-1.5 text-xs text-rose-600">{searchError}</p>}
-            </>
-          )}
-        </div>
+              <AirportInput
+                id="flight-arrival"
+                label="도착 공항"
+                ariaLabel="도착 공항"
+                value={arrival}
+                onChange={setArrival}
+                compact
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label htmlFor="place-query" className={LABEL_CLASS}>
+              장소 검색
+            </label>
+            {selected ? (
+              <div className="flex items-start justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{selected.name}</p>
+                  <p className="truncate text-xs text-slate-500">{selected.description}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="shrink-0 text-xs font-medium text-indigo-600 hover:underline"
+                >
+                  다시 검색
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  id="place-query"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={`${KIND_STYLE[kind].label} 이름을 입력하세요`}
+                  autoComplete="off"
+                  className={inputClass}
+                />
+                {suggestions.length > 0 && (
+                  <ul className="mt-1.5 overflow-hidden rounded-xl border border-slate-200" aria-label="검색 결과">
+                    {suggestions.map((item) => (
+                      <li key={item.place_id} className="border-t border-slate-100 first:border-t-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelected(item)}
+                          className="block w-full px-3 py-2.5 text-left hover:bg-slate-50"
+                        >
+                          <span className="block truncate text-sm font-medium text-slate-800">{item.name}</span>
+                          <span className="block truncate text-xs text-slate-400">{item.description}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {searchError && <p className="mt-1.5 text-xs text-rose-600">{searchError}</p>}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="place-day" className="mb-2 block text-xs font-semibold text-slate-500">
+            <label htmlFor="place-day" className={LABEL_CLASS}>
               날짜
             </label>
             <select
               id="place-day"
               value={day}
               onChange={(event) => setDay(event.target.value)}
-              className={`${inputClass} py-3 text-base`}
+              // 기본 select는 줄 높이 때문에 1px 커서 다른 칸(42px)과 맞춘다.
+              className={`${inputClass} h-[42px]`}
             >
               {dates.map((date, index) => (
                 <option key={date} value={date}>
@@ -266,21 +364,28 @@ export default function AddPlaceDrawer({
             </select>
           </div>
           <div>
-            <p className="mb-2 block text-xs font-semibold text-slate-500">
+            <p className={LABEL_CLASS}>
               시간 <span className="font-normal text-slate-400">(선택)</span>
             </p>
-            <TimeField value={time} onChange={setTime} ariaLabel="시간 (선택)" placeholder="시간 미정" optional />
+            <TimeField
+              value={time}
+              onChange={setTime}
+              ariaLabel="시간 (선택)"
+              placeholder="시간 미정"
+              optional
+              compact
+            />
           </div>
         </div>
 
         <button
           type="button"
           onClick={addToList}
-          disabled={!selected || saving}
+          disabled={!ready || saving}
           className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
         >
           <i className="fas fa-plus text-xs" aria-hidden="true" />
-          장소 더 추가하기
+          {isFlight ? "항공편 더 추가하기" : "장소 더 추가하기"}
         </button>
 
         {pending.length > 0 && (
@@ -296,17 +401,17 @@ export default function AddPlaceDrawer({
                     <i className={KIND_STYLE[item.kind].icon} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800">{item.place.name}</p>
-                    <p className="text-xs text-slate-400">
-                      {KIND_STYLE[item.kind].label} · {dayLabel(dates.indexOf(item.day))}
-                      {item.time && ` ${formatMeridiemTime(item.time)}`}
+                    <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                    <p className="truncate text-xs text-slate-400">
+                      {item.detail || KIND_STYLE[item.kind].label} · {dayLabel(dates.indexOf(item.payload.day))}
+                      {item.payload.time && ` ${formatMeridiemTime(item.payload.time)}`}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setPending((list) => list.filter((entry) => entry.key !== item.key))}
                     disabled={saving}
-                    aria-label={`${item.place.name} 빼기`}
+                    aria-label={`${item.name} 빼기`}
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs text-slate-300 hover:text-rose-500"
                   >
                     <i className="fas fa-times" aria-hidden="true" />
