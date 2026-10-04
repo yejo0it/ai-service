@@ -187,6 +187,44 @@ class AddPlaceSerializer(serializers.Serializer):
     session_token = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class FlightAirportSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=4, required=False, allow_blank=True, default="")
+    name = serializers.CharField(max_length=100)
+    lat = serializers.FloatField(required=False, allow_null=True, default=None)
+    lng = serializers.FloatField(required=False, allow_null=True, default=None)
+
+
+class AddFlightSerializer(serializers.Serializer):
+    """공항(항공편) 직접 추가: 단일 노선 한 편"""
+
+    kind = serializers.ChoiceField(choices=["flight"])
+    day = serializers.DateField()
+    time = serializers.RegexField(TIME_PATTERN, required=False, allow_blank=True, default="")
+    airline = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    flight_number = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
+    departure_airport = FlightAirportSerializer()
+    arrival_airport = FlightAirportSerializer()
+
+
+def flight_card(data):
+    """항공편 입력 -> 항공편 카드 (출발 공항 -> 도착 공항)"""
+    title = " · ".join(part for part in (data["airline"], data["flight_number"]) if part) or "항공편"
+
+    def stop(airport, caption):
+        return {"kind": "airport", "caption": caption, "label": airport["name"],
+                "lat": airport["lat"], "lng": airport["lng"]}
+
+    return {
+        "kind": ItineraryItem.Kind.FLIGHT,
+        "title": title,
+        "time": data["time"],
+        "time_label": "",
+        "subtitle": "",
+        "stops": [stop(data["departure_airport"], "출발"), stop(data["arrival_airport"], "도착")],
+        "checklist": [],
+    }
+
+
 class ItineraryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -196,18 +234,22 @@ class ItineraryView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         trip = owned_trip(request, pk)
-        serializer = AddPlaceSerializer(data=request.data)
+        is_flight = request.data.get("kind") == "flight"
+        serializer = (AddFlightSerializer if is_flight else AddPlaceSerializer)(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         if not trip.start_date <= data["day"] <= trip.end_date:
             return Response({"day": ["여행 기간 안의 날짜를 선택해 주세요."]}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            detail = places.place_details(data["place_id"], data["session_token"])
-        except places.PlacesError as exc:
-            return Response({"detail": str(exc)}, status=exc.status_code)
+        if is_flight:
+            card = flight_card(data)
+        else:
+            try:
+                detail = places.place_details(data["place_id"], data["session_token"])
+            except places.PlacesError as exc:
+                return Response({"detail": str(exc)}, status=exc.status_code)
+            card = place_card(detail, data["kind"], data["time"])
 
         days = days_map(trip)
-        card = place_card(detail, data["kind"], data["time"])
         card["day"] = data["day"]
         place_cards(trip, days, [card])
         save_days(trip, days, ItineraryItem.Source.MANUAL)

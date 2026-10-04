@@ -310,6 +310,17 @@ export interface ItineraryCardInput {
   phone?: string;
 }
 
+/** 공항(항공편) 직접 추가: 단일 노선 한 편 */
+export interface AddFlightPayload {
+  kind: "flight";
+  day: ISODate;
+  time: string;
+  airline: string;
+  flight_number: string;
+  departure_airport: { code: string; name: string; lat: number; lng: number };
+  arrival_airport: { code: string; name: string; lat: number; lng: number };
+}
+
 export interface AddPlacePayload {
   kind: PlaceKind;
   day: ISODate;

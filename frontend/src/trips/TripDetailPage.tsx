@@ -143,9 +143,10 @@ interface TripBasicsProps {
 function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   const flight = trip.flight_info;
   const routeItems = items ?? [];
-  const airports = routeItems
-    .filter((item) => item.kind === "airport" && item.source !== "auto")
-    .sort((a, b) => a.day.localeCompare(b.day) || a.order - b.order);
+  const byDayOrder = (a: ItineraryItem, b: ItineraryItem) => a.day.localeCompare(b.day) || a.order - b.order;
+  // 경로에서 추가한 항공편(출발 공항 -> 도착 공항)과 공항
+  const routeFlights = routeItems.filter((item) => item.kind === "flight" && item.source !== "auto").sort(byDayOrder);
+  const airports = routeItems.filter((item) => item.kind === "airport" && item.source !== "auto").sort(byDayOrder);
   const hotels = routeHotels(trip, routeItems);
   const addAirport = onAdd && (() => onAdd("airport"));
   const addHotel = onAdd && (() => onAdd("hotel"));
@@ -153,7 +154,7 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   return (
     <div className={`${CARD_CLASS} space-y-4`}>
       <Section title="항공">
-        {flight || airports.length > 0 ? (
+        {flight || routeFlights.length > 0 || airports.length > 0 ? (
           <div className="space-y-2">
             {flight && (
               <>
@@ -177,6 +178,17 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
                 />
               </>
             )}
+            {routeFlights.map((item) => (
+              <FlightLeg
+                key={item.id}
+                label="항공편"
+                airline={item.title}
+                from={item.stops[0] && { code: "", name: item.stops[0].label }}
+                to={item.stops[1] && { code: "", name: item.stops[1].label }}
+                when={`${formatMonthDay(item.day)}${item.time ? ` ${formatMeridiemTime(item.time)}` : ""}`}
+                whenLabel="출발"
+              />
+            ))}
             {airports.length > 0 && (
               <ul className="space-y-2" aria-label="경로에서 추가한 공항">
                 {airports.map((item) => (

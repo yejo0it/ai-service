@@ -84,6 +84,21 @@ class ItineraryTests(APITestCase):
         item = self.trip.itinerary_items.get(title="도쿄타워")
         self.assertEqual((item.source, item.phone, item.stops[0]["kind"]), ("manual", "03-0000-0000", "place"))
 
+    def test_add_flight_card(self):
+        self.init()
+        response = self.client.post(self.url(), {
+            "kind": "flight", "day": "2026-10-14", "time": "10:30", "airline": "피치항공", "flight_number": "MM101",
+            "departure_airport": {"code": "HND", "name": "하네다공항", "lat": 35.5494, "lng": 139.7798},
+            "arrival_airport": {"code": "KIX", "name": "간사이공항", "lat": 34.432, "lng": 135.2304},
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item = self.trip.itinerary_items.get(day="2026-10-14", kind="flight")
+        self.assertEqual((item.title, item.source, item.time.strftime("%H:%M")), ("피치항공 · MM101", "manual", "10:30"))
+        self.assertEqual([(s["caption"], s["label"]) for s in item.stops], [("출발", "하네다공항"), ("도착", "간사이공항")])
+
+        missing = self.client.post(self.url(), {"kind": "flight", "day": "2026-10-14"}, format="json")
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_untimed_place_goes_where_detour_is_smallest(self):
         self.init()
         self.add("아사쿠사", ASAKUSA, "2026-10-13")

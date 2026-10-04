@@ -46,6 +46,8 @@ interface PickerButtonProps {
   invalid?: boolean;
   onClick: () => void;
   ariaLabel: string;
+  /** 작은 버튼 (여행 상세 직접 추가) */
+  compact?: boolean;
 }
 
 export function PickerButton({
@@ -56,6 +58,7 @@ export function PickerButton({
   invalid,
   onClick,
   ariaLabel,
+  compact = false,
 }: PickerButtonProps) {
   const filled = Boolean(children);
   return (
@@ -64,7 +67,7 @@ export function PickerButton({
       onClick={onClick}
       aria-label={ariaLabel}
       aria-expanded={open}
-      className={`flex w-full items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left text-base transition-colors ${
+      className={`flex w-full items-center gap-2 rounded-xl border bg-white px-3 text-left transition-colors ${compact ? "py-2.5 text-sm" : "py-3 text-base"} ${
         invalid
           ? "border-rose-400"
           : open
@@ -217,9 +220,18 @@ interface TimeFieldProps {
   ariaLabel: string;
   placeholder?: string;
   optional?: boolean;
+  /** 작은 버튼 (여행 상세 직접 추가) */
+  compact?: boolean;
 }
 
-export function TimeField({ value, onChange, ariaLabel, placeholder = "시간 선택", optional = false }: TimeFieldProps) {
+export function TimeField({
+  value,
+  onChange,
+  ariaLabel,
+  placeholder = "시간 선택",
+  optional = false,
+  compact = false,
+}: TimeFieldProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -238,6 +250,7 @@ export function TimeField({ value, onChange, ariaLabel, placeholder = "시간 �
         open={open}
         placeholder={placeholder}
         ariaLabel={ariaLabel}
+        compact={compact}
         onClick={() => setOpen((previous) => !previous)}
       >
         {value ? formatMeridiemTime(value) : ""}
