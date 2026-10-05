@@ -5,6 +5,7 @@ import type {
   AddPlacePayload,
   AiProposal,
   AiProposeResponse,
+  AiRegistrationDraft,
   Airline,
   ChatTurn,
   ChecklistItem,
@@ -160,13 +161,17 @@ export const searchPlaces = (params: { input: string; sessionToken: string; city
     .then((res) => res.data);
 
 /** AI와 함께 만들기: 대화 -> 일정 변경 제안과 미리보기 (AI 응답이라 오래 걸릴 수 있다) */
-export const proposeAiPlan = (tripId: number, messages: ChatTurn[]) =>
+/** draft: 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 (다음 제안이 그 위에 이어서 고친다) */
+export const proposeAiPlan = (tripId: number, messages: ChatTurn[], draft?: AiRegistrationDraft) =>
   api
-    .post<AiProposeResponse>(`/trips/${tripId}/ai/propose/`, { messages }, { timeout: 120_000 })
+    .post<AiProposeResponse>(`/trips/${tripId}/ai/propose/`, { messages, draft }, { timeout: 120_000 })
     .then((res) => res.data);
 
+/** 적용 결과: 바뀐 일정 + (항공·숙소가 바뀌었을 수 있으므로) 여행 */
 export const applyAiPlan = (tripId: number, proposal: AiProposal) =>
-  api.post<ItineraryResponse>(`/trips/${tripId}/ai/apply/`, { proposal }).then((res) => res.data);
+  api
+    .post<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/ai/apply/`, { proposal })
+    .then((res) => res.data);
 
 /* ------------------------------------------------------------------ *
  * 회원 (로그인 · 가입)

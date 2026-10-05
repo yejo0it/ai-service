@@ -171,6 +171,10 @@ class AiPlanTests(ItineraryTests):
             ],
             remove_item_ids=[],
             moves=[],
+            form=None,
+            confirm=None,
+            flight=None,
+            hotel_change=None,
         )
 
     def search(self, text, *args):
@@ -212,3 +216,178 @@ class AiPlanTests(ItineraryTests):
                 format="json",
             )
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class AiRegistrationTests(APITestCase):
+    """AI와 함께 만들기: 항공·숙소 양식 안내, 수정/덮어쓰기 확인, 등록 (모델·장소 검색은 모킹)"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="reg@example.com", email="reg@example.com")
+        self.client.force_authenticate(self.user)
+        self.trip = Trip.objects.create(
+            owner=self.user, destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-11-10", end_date="2026-11-12", itinerary_initialized=True,
+        )
+
+    def plan(self, **changes):
+        fields = dict(reply="정리했어요.", additions=[], remove_item_ids=[], moves=[], form=None, confirm=None,
+                      flight=None, hotel_change=None)
+        fields.update(changes)
+        return ai_planner.PlanResponse(**fields)
+
+    def propose(self, plan, text="공항 등록하고 싶어"):
+        with mock.patch("trips.ai_planner.propose", return_value=plan), \
+                mock.patch("trips.places.search_place", return_value=detail("신주쿠 워싱턴 호텔", SHINJUKU, "h1")):
+            return self.client.post(
+                f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                {"messages": [{"role": "user", "content": text}]}, format="json",
+            )
+
+    def apply(self, proposal, auto_cards=()):
+        return self.client.post(
+            f"/api/v1/trips/{self.trip.pk}/ai/apply/",
+            {"proposal": {**proposal, "auto_cards": list(auto_cards)}}, format="json",
+        )
+
+    @staticmethod
+    def leg(**values):
+        fields = dict(departure_airport_code=None, departure_airport_name=None, arrival_airport_code=None,
+                      arrival_airport_name=None, airline=None, flight_number=None, arrival_time=None, date=None)
+        fields.update(values)
+        return ai_planner.FlightLegInput(**fields)
+
+    def test_form_when_not_registered(self):
+        response = self.propose(self.plan(form="flight"))
+        self.assertTrue(response.data["reply"].startswith("양식에 맞춰 작성해 주시면"))
+        self.assertIn("- 오는 날\n1. 출발: ", response.data["reply"])
+        hotel = self.propose(self.plan(form="hotel"), "숙소 등록하고 싶어").data["reply"]
+        self.assertIn("1. 숙소명: \n2. 체크인 날짜: \n3. 체크아웃 날짜: ", hotel)
+
+    def test_partial_flight_fills_given_fields_only(self):
+        change = ai_planner.FlightChange(
+            mode="replace",
+            outbound=self.leg(departure_airport_code="ICN", departure_airport_name="인천국제공항",
+                              arrival_airport_code="NRT", arrival_airport_name="나리타국제공항",
+                              airline="대한항공"),
+            return_leg=self.leg(departure_airport_code="HND", departure_airport_name="하네다공항",
+                                arrival_airport_code="GMP", arrival_airport_name="김포공항", airline="트리니티항공"),
+        )
+        response = self.propose(self.plan(flight=change))
+        flight = response.data["registration"]["flight"]
+        self.assertEqual(flight["departure_airport"], {"code": "ICN", "name": "인천국제공항"})
+        # 출발 시각은 받지 않으므로 날짜만 (가는 날 = 여행 첫날)
+        self.assertEqual((flight["airline"], flight["flight_number"], flight["departure_at"]), ("대한항공", "", "2026-11-10"))
+        self.assertNotIn("arrival_at", flight)  # 도착시간은 말하지 않았으므로 비워 둔다
+        self.assertEqual((flight["return_airline"], flight["return_arrival_at"]), ("트리니티항공", "2026-11-12"))
+        self.assertIsNone(self.trip.flight_info)  # 미리보기는 저장하지 않는다
+
+        auto = [{"day": "2026-11-10", "kind": "flight", "title": "가는 편", "time_label": "출국",
+                 "stops": [{"kind": "airport", "caption": "출발", "label": "인천국제공항", "lat": 37.4, "lng": 126.4}]},
+                {"day": "2026-11-12", "kind": "flight", "title": "오는 편", "time_label": "귀국", "stops": []}]
+        applied = self.apply(response.data["proposal"], auto)
+        self.assertEqual(applied.status_code, status.HTTP_200_OK)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.flight_info["return_departure_airport"]["name"], "하네다공항")
+        self.assertEqual(applied.data["trip"]["flight_info"]["airline"], "대한항공")
+        items = self.trip.itinerary_items.filter(kind="flight")
+        self.assertEqual(sorted((str(i.day), i.source) for i in items), [("2026-11-10", "auto"), ("2026-11-12", "auto")])
+
+    def test_confirm_before_changing_registered_flight(self):
+        self.trip.flight_info = {"airline": "대한항공", "flight_number": "KE703", "departure_at": "2026-11-10T09:00"}
+        self.trip.save()
+        change = ai_planner.FlightChange(mode="update", outbound=self.leg(flight_number="KE705"), return_leg=None)
+        response = self.propose(self.plan(confirm="flight", flight=change), "항공편 바꾸고 싶어")
+        self.assertTrue(response.data["reply"].startswith("이미 등록된 공항 정보가 있습니다."))
+        self.assertEqual(response.data["choices"], ["기존 정보 수정", "새로 입력(덮어쓰기)"])
+        self.assertFalse(response.data["proposal"]["flight_changed"])
+
+        # '기존 정보 수정': 말한 항목만 바꾸고 나머지는 유지
+        updated = self.propose(self.plan(flight=change), "기존 정보 수정").data["registration"]["flight"]
+        self.assertEqual((updated["airline"], updated["flight_number"], updated["departure_at"]),
+                         ("대한항공", "KE705", "2026-11-10T09:00"))
+        # '새로 입력(덮어쓰기)': 기존 항목을 지운다
+        replaced = ai_planner.FlightChange(mode="replace", outbound=self.leg(flight_number="OZ101"), return_leg=None)
+        flight = self.propose(self.plan(flight=replaced), "새로 입력(덮어쓰기)").data["registration"]["flight"]
+        self.assertEqual((flight.get("airline"), flight["flight_number"], flight["departure_at"]), (None, "OZ101", "2026-11-10"))
+
+    def hotel_input(self, **values):
+        fields = dict(hotel_id=None, name=None, search_query=None, check_in=None, check_out=None)
+        fields.update(values)
+        return ai_planner.HotelInput(**fields)
+
+    def test_hotel_register_edit_and_add(self):
+        new = ai_planner.HotelChange(mode="add", hotels=[self.hotel_input(
+            name="신주쿠 워싱턴 호텔", search_query="신주쿠 워싱턴 호텔 도쿄", check_in="2026-11-10")])
+        response = self.propose(self.plan(hotel_change=new), "숙소는 신주쿠 워싱턴 호텔, 10일 체크인")
+        hotels = response.data["registration"]["hotels"]
+        self.assertEqual([(h["name"], h["check_in"], h["check_out"], h["status"]) for h in hotels],
+                         [("신주쿠 워싱턴 호텔", "2026-11-10", "2026-11-12", "new")])
+        self.apply(response.data["proposal"])
+        hotel = self.trip.hotels.get()
+        self.assertEqual((hotel.phone, hotel.latitude), ("03-0000-0000", SHINJUKU[0]))
+
+        # 등록된 숙소: [기본 정보 수정] [새로운 숙소 추가]
+        confirm = self.propose(self.plan(confirm="hotel"), "숙소 바꾸고 싶어").data
+        self.assertTrue(confirm["reply"].startswith("이미 등록된 숙소 정보가 있습니다."))
+        self.assertEqual(confirm["choices"], ["기본 정보 수정", "새로운 숙소 추가"])
+
+        # 기본 정보 수정: 그 숙소의 말한 항목만
+        edit = ai_planner.HotelChange(mode="update", hotels=[self.hotel_input(hotel_id=hotel.id, check_out="2026-11-11")])
+        hotels = self.propose(self.plan(hotel_change=edit), "체크아웃 11일로").data["registration"]["hotels"]
+        self.assertEqual([(h["name"], h["check_out"], h["status"]) for h in hotels],
+                         [("신주쿠 워싱턴 호텔", "2026-11-11", "updated")])
+
+        # 새로운 숙소 추가: 기존 숙소는 그대로 두고 더한다
+        add = ai_planner.HotelChange(mode="add", hotels=[self.hotel_input(name="난바 호텔", search_query="난바 호텔 오사카",
+                                                                          check_in="2026-11-11")])
+        response = self.propose(self.plan(hotel_change=add), "새로운 숙소 추가")
+        self.assertEqual([(h["name"], h["status"]) for h in response.data["registration"]["hotels"]],
+                         [("신주쿠 워싱턴 호텔", "same"), ("신주쿠 워싱턴 호텔", "new")])
+        self.assertEqual(response.data["registration"]["removed_hotels"], [])
+
+    def test_follow_up_keeps_unapplied_changes(self):
+        """적용 전 제안(인천->나리타)에 이어 '도착 시간만' 고치면 앞선 변경이 유지된다"""
+        self.trip.flight_info = {"flight_number": "KE703", "departure_at": "2026-11-10T09:00",
+                                 "departure_airport": {"code": "GMP", "name": "김포공항"}}
+        self.trip.save()
+        route = ai_planner.FlightChange(mode="update", return_leg=None, outbound=self.leg(
+            departure_airport_code="ICN", departure_airport_name="인천국제공항",
+            arrival_airport_code="NRT", arrival_airport_name="나리타국제공항"))
+        first = self.propose(self.plan(flight=route), "출발지를 인천, 도착지를 나리타로 바꿔줘").data["proposal"]
+
+        arrival = ai_planner.FlightChange(mode="update", outbound=self.leg(arrival_time="09:00"), return_leg=None)
+        with mock.patch("trips.ai_planner.propose", return_value=self.plan(flight=arrival)) as propose:
+            response = self.client.post(
+                f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                {"messages": [{"role": "user", "content": "가는 날 도착 시간을 오전 9시로 변경해줘"}],
+                 "draft": {"flight_info": first["flight_info"]}}, format="json",
+            )
+        self.assertEqual(propose.call_args.args[4]["flight_info"]["departure_airport"]["code"], "ICN")
+        flight = response.data["proposal"]["flight_info"]
+        self.assertEqual((flight["departure_airport"]["name"], flight["arrival_airport"]["name"]), ("인천국제공항", "나리타국제공항"))
+        self.assertEqual((flight["arrival_at"], flight["departure_at"], flight["flight_number"]),
+                         ("2026-11-10T09:00", "2026-11-10T09:00", "KE703"))
+
+        # 이번에 항공을 바꾸지 않아도 적용 전 제안은 다음 제안에 그대로 이어진다
+        with mock.patch("trips.ai_planner.propose", return_value=self.plan()):
+            carried = self.client.post(
+                f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                {"messages": [{"role": "user", "content": "고마워"}], "draft": {"flight_info": flight}}, format="json",
+            ).data["proposal"]
+        self.assertTrue(carried["flight_changed"])
+        self.assertEqual(carried["flight_info"]["arrival_at"], "2026-11-10T09:00")
+
+    def test_auto_cards_replaced_around_user_items(self):
+        place = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=0, kind="sight", source="manual",
+                                             title="도쿄타워", stops=[])
+        old = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=1, kind="hotel", source="auto",
+                                           title="옛 호텔", time_label="체크인", stops=[])
+        change = ai_planner.FlightChange(mode="replace", outbound=self.leg(airline="대한항공"), return_leg=None)
+        proposal = self.propose(self.plan(flight=change)).data["proposal"]
+        auto = [{"day": "2026-11-10", "kind": "flight", "title": "가는 편", "time_label": "출국", "stops": []},
+                {"day": "2026-11-10", "kind": "hotel", "title": "새 호텔", "time_label": "체크인", "stops": []}]
+        self.apply(proposal, auto)
+        titles = list(self.trip.itinerary_items.filter(day="2026-11-10").values_list("title", flat=True))
+        self.assertEqual(titles, ["가는 편", "도쿄타워", "새 호텔"])
+        self.assertFalse(ItineraryItem.objects.filter(pk=old.pk).exists())
+        self.assertTrue(ItineraryItem.objects.filter(pk=place.pk, source="manual").exists())

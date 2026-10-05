@@ -340,10 +340,39 @@ export interface ChatTurn {
   content: string;
 }
 
+/** AI로 등록·수정할 숙소 (새 숙소는 id가 null) */
+export interface AiHotelProposal {
+  id: number | null;
+  name: string;
+  address: string;
+  place_id: string;
+  latitude: number | null;
+  longitude: number | null;
+  phone: string;
+  city_code: string;
+  check_in: ISODate;
+  check_out: ISODate | null;
+  nights: number | null;
+  status: "new" | "updated" | "same";
+}
+
 export interface AiProposal {
   additions: unknown[];
   remove_item_ids: number[];
   moves: unknown[];
+  /** 항공 등록 정보를 바꾸는지 (flight_info가 그 값) */
+  flight_changed: boolean;
+  flight_info: FlightInfo | null;
+  /** 바뀐 뒤의 숙소 전체 목록 (null이면 숙소는 그대로) */
+  hotels: AiHotelProposal[] | null;
+  /** 바뀐 항공·숙소로 다시 만든 경로의 자동 항공·숙소 카드 (적용할 때 프론트가 채운다) */
+  auto_cards?: ItineraryCardInput[];
+}
+
+/** 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 */
+export interface AiRegistrationDraft {
+  flight_info: FlightInfo | null;
+  hotels: AiHotelProposal[] | null;
 }
 
 export interface AiPreviewDay {
@@ -359,4 +388,12 @@ export interface AiProposeResponse {
   removed: { id: number; title: string }[];
   /** 실제 장소를 찾지 못한 이름 */
   unresolved: string[];
+  /** 답변 아래에 보여줄 선택 버튼 (예: 기존 정보 수정 / 새로 입력) */
+  choices: string[];
+  /** 항공·숙소 등록 미리보기 */
+  registration: {
+    flight: FlightInfo | null;
+    hotels: AiHotelProposal[] | null;
+    removed_hotels: { id: number; title: string }[];
+  };
 }

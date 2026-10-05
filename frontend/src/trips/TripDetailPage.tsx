@@ -13,7 +13,7 @@ import type { Airport, ItineraryItem, ItineraryResponse, PlaceKind, Trip } from 
 import { formatMeridiemTime } from "../components/pickers";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
-import AiPlannerDrawer from "./AiPlannerDrawer";
+import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
 import TripItinerary from "./TripItinerary";
 import TripMap from "./TripMap";
 import { cityPoints, dayLabel, initialCards, numberStops, tripDates } from "./tripDays";
@@ -359,6 +359,9 @@ export default function TripDetailPage() {
   const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
   const [panel, setPanel] = useState<Panel>(null);
+  // AI 대화는 창을 닫았다 열어도 이어진다(이 여행 화면에 있는 동안).
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
+  useEffect(() => setAiMessages([]), [tripId]);
   const [addKind, setAddKind] = useState<PlaceKind>("sight");
 
   useEffect(() => {
@@ -567,8 +570,13 @@ export default function TripDetailPage() {
         <AiPlannerDrawer
           trip={trip}
           dates={dates}
+          messages={aiMessages}
+          setMessages={setAiMessages}
           onClose={closePanel}
-          onApplied={(itinerary) => setItems(itinerary.items)}
+          onApplied={(itinerary, updatedTrip) => {
+            setItems(itinerary.items);
+            setTrip(updatedTrip);
+          }}
         />
       )}
     </div>

@@ -11,6 +11,7 @@
 - GET        /places/search/                 일정 장소 자동완성
 """
 
+import json
 import re
 from datetime import date, time as dtime
 
@@ -21,10 +22,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import ai_planner, places
+from . import ai_planner, places, registration
 from .itinerary_planner import CITY_CENTERS, day_anchor, place_cards, trip_days
 from .models import ChecklistItem, ItineraryItem, Trip
 from .packing import belongs_to_packing_note
+from .serializers import TripSerializer
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -110,7 +112,7 @@ def days_map(trip):
 def _model_fields(card, source):
     return {
         "kind": card["kind"],
-        "source": source,
+        "source": card.get("source") or source,
         "title": card["title"][:150],
         "time": dtime.fromisoformat(card["time"]) if card.get("time") else None,
         "time_label": card.get("time_label", ""),
@@ -431,14 +433,15 @@ def _day_of(days, index):
 
 def apply_changes(trip, days, additions, remove_ids, moves):
     """days에 삭제·이동·추가를 반영한다(미리보기와 적용이 같은 계산을 쓴다)."""
-    owned_ids = {card["id"] for cards in days.values() for card in cards}
+    # 새로 넣은 카드(자동 항공·숙소 카드 등)는 아직 id가 없다.
+    owned_ids = {card.get("id") for cards in days.values() for card in cards} - {None}
     for day in days:
-        days[day] = [card for card in days[day] if card["id"] not in set(remove_ids) & owned_ids]
+        days[day] = [card for card in days[day] if card.get("id") not in set(remove_ids) & owned_ids]
 
     moved_cards = []
     for move in moves:
         for day, cards in days.items():
-            card = next((c for c in cards if c["id"] == move["item_id"]), None)
+            card = next((c for c in cards if c.get("id") == move["item_id"]), None)
             if card:
                 cards.remove(card)
                 card["day"] = move["day"]
@@ -463,8 +466,9 @@ class AiProposeView(APIView):
 
         days = days_map(trip)
         ordered_days = sorted(days)
+        draft = _validated_draft(request.data.get("draft"))
         try:
-            plan = ai_planner.propose(trip, ordered_days, days, serializer.validated_data["messages"])
+            plan = ai_planner.propose(trip, ordered_days, days, serializer.validated_data["messages"], draft)
         except ai_planner.PlannerError as exc:
             return Response({"detail": str(exc)}, status=exc.status_code)
 
@@ -497,7 +501,39 @@ class AiProposeView(APIView):
             "additions": [dict(card) for card in additions],
             "remove_item_ids": remove_ids,
             "moves": moves,
+            "flight_changed": False,
+            "flight_info": None,
+            "hotels": None,
         }
+        reply, choices = plan.reply, []
+        flight_change, hotel_change = plan.flight, plan.hotel_change
+        if plan.confirm and registration.is_registered(trip, plan.confirm, draft):
+            # 이미 등록된 항공·숙소: 어떻게 바꿀지 먼저 묻는다(이번 답변에서는 바꾸지 않는다).
+            reply, choices = registration.confirm_text(plan.confirm), registration.CONFIRM_CHOICES[plan.confirm]
+            flight_change = None if plan.confirm == "flight" else flight_change
+            hotel_change = None if plan.confirm == "hotel" else hotel_change
+        elif plan.form:
+            reply = registration.FORMS[plan.form]
+
+        # 같은 대화의 적용 전 제안(draft)에 이어서 고친다. 이번에 바꾸지 않은 쪽도 제안에 그대로 이어 간다
+        # (가장 최근 제안만 적용하므로, 앞선 변경이 사라지지 않게).
+        removed_hotels, hotel_preview = [], None
+        if flight_change:
+            proposal["flight_changed"] = True
+            proposal["flight_info"] = registration.build_flight_info(trip, flight_change, draft.get("flight_info"))
+        elif draft.get("flight_info"):
+            proposal["flight_changed"] = True
+            proposal["flight_info"] = draft["flight_info"]
+        hotels = None
+        if hotel_change:
+            hotels, missing = registration.build_hotels(trip, hotel_change, draft.get("hotels"))
+            unresolved += missing
+        elif draft.get("hotels") is not None:
+            hotels, _ = registration.build_hotels(trip, ai_planner.HotelChange(mode="update", hotels=[]), draft["hotels"])
+        if hotels:
+            proposal["hotels"] = [_hotel_json(hotel) for hotel in hotels]
+            hotel_preview = proposal["hotels"]
+            removed_hotels = registration.removed_hotels(trip, hotels)
         apply_changes(trip, days, additions, remove_ids, moves)
         preview = [
             {
@@ -518,9 +554,15 @@ class AiProposeView(APIView):
         ]
         return Response(
             {
-                "reply": plan.reply,
+                "reply": reply,
+                "choices": choices,
                 "proposal": proposal,
                 "preview": preview,
+                "registration": {
+                    "flight": proposal["flight_info"] if proposal["flight_changed"] else None,
+                    "hotels": hotel_preview,
+                    "removed_hotels": removed_hotels,
+                },
                 "removed": [
                     {"id": item.id, "title": item.title}
                     for item in trip.itinerary_items.filter(id__in=remove_ids)
@@ -530,12 +572,77 @@ class AiProposeView(APIView):
         )
 
 
+def _validated_draft(raw):
+    """같은 대화의 적용 전 항공·숙소 제안 {"flight_info", "hotels"} (형식이 맞지 않는 쪽은 무시)"""
+    if not isinstance(raw, dict):
+        return {}
+    draft = {}
+    if raw.get("flight_info"):
+        serializer = AiFlightInfoSerializer(data=raw["flight_info"])
+        if serializer.is_valid():
+            draft["flight_info"] = json.loads(json.dumps(serializer.validated_data))
+    if raw.get("hotels"):
+        serializer = HotelProposalSerializer(data=raw["hotels"], many=True)
+        if serializer.is_valid():
+            draft["hotels"] = [dict(hotel) for hotel in serializer.validated_data]
+    return draft
+
+
+def _hotel_json(hotel):
+    """제안에 담는 숙소 (날짜는 문자열)"""
+    return {
+        **hotel,
+        "check_in": hotel["check_in"].isoformat(),
+        "check_out": hotel["check_out"].isoformat() if hotel["check_out"] else None,
+    }
+
+
 def _trip_center(trip):
     for dest in trip.destinations or []:
         center = CITY_CENTERS.get((dest.get("city_code") or "").upper())
         if center:
             return center
     return None
+
+
+STAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T([01]\d|2[0-3]):[0-5]\d)?$")
+
+
+class AiFlightInfoSerializer(serializers.Serializer):
+    """AI로 등록한 항공 정보 (말하지 않은 항목은 비어 있을 수 있다)"""
+
+    class Airport(serializers.Serializer):
+        code = serializers.CharField(max_length=3, allow_blank=True, default="")
+        name = serializers.CharField(max_length=60)
+
+    airline = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    flight_number = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    departure_at = serializers.RegexField(STAMP_PATTERN, required=False)
+    arrival_at = serializers.RegexField(STAMP_PATTERN, required=False, allow_null=True)
+    departure_airport = Airport(required=False, allow_null=True)
+    arrival_airport = Airport(required=False, allow_null=True)
+    return_departure_airport = Airport(required=False, allow_null=True)
+    return_arrival_airport = Airport(required=False, allow_null=True)
+    return_airline = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    return_flight_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    return_departure_at = serializers.RegexField(STAMP_PATTERN, required=False, allow_null=True)
+    return_arrival_at = serializers.RegexField(STAMP_PATTERN, required=False, allow_null=True)
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class HotelProposalSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(max_length=150)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    place_id = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    latitude = serializers.FloatField(required=False, allow_null=True, default=None)
+    longitude = serializers.FloatField(required=False, allow_null=True, default=None)
+    phone = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
+    city_code = serializers.CharField(max_length=8, required=False, allow_blank=True, default="")
+    check_in = serializers.DateField()
+    check_out = serializers.DateField(required=False, allow_null=True, default=None)
+    # 미리보기 표시용 (적용할 때는 쓰지 않는다)
+    status = serializers.ChoiceField(choices=["new", "updated", "same"], required=False, default="same")
 
 
 class ProposalSerializer(serializers.Serializer):
@@ -547,6 +654,18 @@ class ProposalSerializer(serializers.Serializer):
     additions = CardSerializer(many=True, default=list)
     remove_item_ids = serializers.ListField(child=serializers.IntegerField(), default=list)
     moves = Move(many=True, default=list)
+    # 항공·숙소 등록 (hotels가 null이면 숙소는 그대로)
+    flight_changed = serializers.BooleanField(default=False)
+    flight_info = AiFlightInfoSerializer(required=False, allow_null=True, default=None)
+    hotels = HotelProposalSerializer(many=True, required=False, allow_null=True, default=None)
+    # 바뀐 항공·숙소로 프론트가 다시 만든 경로의 자동 항공·숙소 카드
+    auto_cards = CardSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs):
+        for hotel in attrs.get("hotels") or []:
+            if hotel["check_out"] and hotel["check_out"] < hotel["check_in"]:
+                raise serializers.ValidationError({"hotels": "체크아웃은 체크인 이후여야 해요."})
+        return attrs
 
 
 class AiApplyView(APIView):
@@ -561,13 +680,25 @@ class AiApplyView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        registration_changed = data["flight_changed"] or data["hotels"] is not None
+        if data["flight_changed"]:
+            trip.flight_info = data["flight_info"] or None
+            trip.save(update_fields=["flight_info", "updated_at"])
+        if data["hotels"] is not None:
+            registration.save_hotels(trip, data["hotels"])
+
         days = days_map(trip)
+        removed_ids = set(data["remove_item_ids"])
+        if registration_changed:
+            removed_ids |= registration.replace_auto_cards(trip, days, [dict(card) for card in data["auto_cards"]])
         additions = [dict(card) for card in data["additions"]]
         for card in additions:
             if card.get("day") not in days:
                 card["day"] = None
         moves = [m for m in data["moves"] if m["day"] in days]
         apply_changes(trip, days, additions, data["remove_item_ids"], moves)
-        trip.itinerary_items.filter(id__in=data["remove_item_ids"]).delete()
+        trip.itinerary_items.filter(id__in=removed_ids).delete()
         save_days(trip, days, ItineraryItem.Source.AI)
-        return itinerary_response(trip)
+        response = itinerary_response(trip)
+        response.data["trip"] = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
+        return response
