@@ -269,3 +269,58 @@ def replace_auto_cards(trip, days, cards):
         middle = [card for card in new if card not in start and card not in end]
         days[day] = start + days[day] + middle + end
     return auto_ids
+
+
+# ------------------------------------------------------------------ #
+# 경로에서 자동 항공·숙소 카드를 지웠을 때 등록 정보 맞추기
+# ------------------------------------------------------------------ #
+
+OUTBOUND_KEYS = ("airline", "flight_number", "departure_at", "arrival_at", "departure_airport", "arrival_airport")
+RETURN_KEYS = tuple(f"return_{key}" for key in OUTBOUND_KEYS)
+
+
+def _registered_hotel(trip, item):
+    """자동 숙소 카드에 해당하는 등록 숙소 (이름이 같고 그날이 숙박 기간 안인 숙소)"""
+    for hotel in trip.hotels.filter(name=item.title):
+        if hotel.check_in <= item.day and (hotel.check_out is None or item.day <= hotel.check_out):
+            return hotel
+    return None
+
+
+HOTEL_ENDS = ("체크인", "체크아웃")
+
+
+def sync_after_card_delete(trip, item):
+    """
+    경로에서 자동 생성된 항공·숙소 카드(item)를 지우기 전에 등록 정보를 맞춘다.
+    (바뀌었는지, 함께 지울 다른 카드 id 목록)을 돌려준다.
+    - 가는 편(출국)·오는 편(귀국) 카드: 그 편의 항목만 지운다. 두 편 모두 없으면 항공 미등록.
+    - 숙소 체크인·체크아웃 카드: 그 숙소를 지우고, 그 숙소의 체크인·숙박·체크아웃 카드도 함께 지운다
+      (화면에서 사용자에게 먼저 확인한다). 숙박 카드만 지울 때는 숙소 정보를 그대로 둔다.
+    """
+    if item.source != ItineraryItem.Source.AUTO:
+        return False, []
+    if item.kind == ItineraryItem.Kind.FLIGHT:
+        keys = {"출국": OUTBOUND_KEYS, "귀국": RETURN_KEYS}.get(item.time_label)
+        if not keys or not trip.flight_info:
+            return False, []
+        info = {key: value for key, value in trip.flight_info.items() if key not in keys}
+        # 여행 응답 형식상 편명·출국 일시 키는 있어야 하므로 비워서 둔다(화면은 빈 값을 '없음'으로 본다).
+        info.setdefault("flight_number", "")
+        info.setdefault("departure_at", "")
+        trip.flight_info = info if any(info.get(key) for key in OUTBOUND_KEYS + RETURN_KEYS) else None
+        trip.save(update_fields=["flight_info", "updated_at"])
+        return True, []
+    if item.kind == ItineraryItem.Kind.HOTEL and item.time_label in HOTEL_ENDS:
+        hotel = _registered_hotel(trip, item)
+        if hotel is None:
+            return False, []
+        others = list(
+            trip.itinerary_items.filter(source=ItineraryItem.Source.AUTO, kind=ItineraryItem.Kind.HOTEL, title=item.title,
+                                        day__gte=hotel.check_in, day__lte=hotel.check_out or trip.end_date)
+            .exclude(pk=item.pk)
+            .values_list("id", flat=True)
+        )
+        hotel.delete()
+        return True, others
+    return False, []

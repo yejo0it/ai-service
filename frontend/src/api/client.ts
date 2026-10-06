@@ -138,7 +138,15 @@ export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
 export const updateItineraryItem = (itemId: number, payload: { memo?: string; time?: string | null }) =>
   api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
 
-export const deleteItineraryItem = (itemId: number) => api.delete<void>(`/itinerary-items/${itemId}/`);
+/**
+ * 일정 카드 삭제. 여행 등록 정보에서 만든 항공·숙소 카드를 지우면 서버가 등록 정보도 맞추고
+ * 바뀐 여행과 함께 지운 카드 id들을 돌려준다(그 밖에는 null).
+ * 숙소 체크인·체크아웃 카드는 그 숙소의 다른 카드까지 지워진다.
+ */
+export const deleteItineraryItem = (itemId: number) =>
+  api
+    .delete<{ trip: Trip; removed_ids: number[] } | "">(`/itinerary-items/${itemId}/`)
+    .then((res) => (res.data && typeof res.data === "object" ? res.data : null));
 
 export const addChecklistItem = (itemId: number, text: string) =>
   api.post<ChecklistItem>(`/itinerary-items/${itemId}/checklist/`, { text }).then((res) => res.data);

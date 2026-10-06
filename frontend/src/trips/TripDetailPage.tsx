@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   deleteItineraryItem,
@@ -142,6 +142,19 @@ interface TripBasicsProps {
  */
 function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   const flight = trip.flight_info;
+  // 경로에서 가는 편·오는 편 카드를 지우면 그 편의 정보가 비워진다. 남은 편만 보여준다.
+  const hasOutbound = Boolean(
+    flight &&
+      (flight.departure_airport || flight.arrival_airport || flight.airline || flight.flight_number || flight.departure_at),
+  );
+  const hasReturn = Boolean(
+    flight &&
+      (flight.return_departure_airport ||
+        flight.return_arrival_airport ||
+        flight.return_airline ||
+        flight.return_flight_number ||
+        flight.return_arrival_at),
+  );
   const routeItems = items ?? [];
   const byDayOrder = (a: ItineraryItem, b: ItineraryItem) => a.day.localeCompare(b.day) || a.order - b.order;
   // 경로에서 추가한 항공편(출발 공항 -> 도착 공항)과 공항
@@ -154,29 +167,29 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   return (
     <div className={`${CARD_CLASS} space-y-4`}>
       <Section title="항공">
-        {flight || routeFlights.length > 0 || airports.length > 0 ? (
+        {hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
           <div className="space-y-2">
-            {flight && (
-              <>
-                <FlightLeg
-                  label="가는 편"
-                  airline={flight.airline}
-                  flightNumber={flight.flight_number}
-                  from={flight.departure_airport}
-                  to={flight.arrival_airport}
-                  when={formatDateTime(flight.departure_at)}
-                  whenLabel="출국"
-                />
-                <FlightLeg
-                  label="오는 편"
-                  airline={flight.return_airline}
-                  flightNumber={flight.return_flight_number}
-                  from={flight.return_departure_airport}
-                  to={flight.return_arrival_airport}
-                  when={formatDateTime(flight.return_arrival_at)}
-                  whenLabel="귀국"
-                />
-              </>
+            {flight && hasOutbound && (
+              <FlightLeg
+                label="가는 편"
+                airline={flight.airline}
+                flightNumber={flight.flight_number}
+                from={flight.departure_airport}
+                to={flight.arrival_airport}
+                when={formatDateTime(flight.departure_at)}
+                whenLabel="출국"
+              />
+            )}
+            {flight && hasReturn && (
+              <FlightLeg
+                label="오는 편"
+                airline={flight.return_airline}
+                flightNumber={flight.return_flight_number}
+                from={flight.return_departure_airport}
+                to={flight.return_arrival_airport}
+                when={formatDateTime(flight.return_arrival_at)}
+                whenLabel="귀국"
+              />
             )}
             {routeFlights.map((item) => (
               <FlightLeg
@@ -261,6 +274,58 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
           </EmptyWithAction>
         )}
       </Section>
+    </div>
+  );
+}
+
+/** 숙소 정보까지 지우는 카드 (등록 숙소의 체크인·체크아웃 카드) */
+const removesHotel = (item: ItineraryItem) =>
+  item.source === "auto" && item.kind === "hotel" && (item.time_label === "체크인" || item.time_label === "체크아웃");
+
+/** 숙소 체크인·체크아웃 카드를 지우기 전 확인: 숙소 정보와 그 숙소의 카드가 모두 지워진다. */
+function HotelDeleteDialog({ item, onCancel, onConfirm }: { item: ItineraryItem; onCancel: () => void; onConfirm: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && onCancel();
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={onCancel}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="hotel-delete-title"
+        aria-describedby="hotel-delete-description"
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+      >
+        <h2 id="hotel-delete-title" className="text-base font-bold text-slate-900">
+          숙소 정보를 삭제할까요?
+        </h2>
+        <p id="hotel-delete-description" className="mt-2 text-sm leading-relaxed text-slate-600">
+          '{item.title}'의 {item.time_label} 카드를 지우면 이 숙소 정보가 아예 삭제돼요. 
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+          >
+            삭제
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -359,6 +424,7 @@ export default function TripDetailPage() {
   const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
   const [panel, setPanel] = useState<Panel>(null);
+  const [hotelDelete, setHotelDelete] = useState<ItineraryItem | null>(null);
   // AI 대화는 창을 닫았다 열어도 이어진다(이 여행 화면에 있는 동안).
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   useEffect(() => setAiMessages([]), [tripId]);
@@ -413,12 +479,25 @@ export default function TripDetailPage() {
       });
   };
 
-  const onRemove = (id: number) => {
+  const removeCard = (id: number) => {
     setRouteError("");
     deleteItineraryItem(id)
-      .then(() => setItems((current) => (current ?? []).filter((item) => item.id !== id)))
+      .then((result) => {
+        const removed = new Set(result?.removed_ids ?? [id]);
+        setItems((current) => (current ?? []).filter((item) => !removed.has(item.id)));
+        // 항공·숙소 카드를 지우면 요약 카드도 바뀐 등록 정보로 맞춘다.
+        if (result) setTrip(result.trip);
+      })
       .catch((err: unknown) => setRouteError(toErrorMessage(err)));
   };
+
+  // 숙소 체크인·체크아웃 카드는 숙소 정보까지 지우므로 먼저 확인한다.
+  const onRemove = (id: number) => {
+    const item = items?.find((card) => card.id === id);
+    if (item && removesHotel(item)) setHotelDelete(item);
+    else removeCard(id);
+  };
+  const cancelHotelDelete = useCallback(() => setHotelDelete(null), []);
 
   const closePanel = useCallback(() => setPanel(null), []);
 
@@ -555,6 +634,16 @@ export default function TripDetailPage() {
         </section>
       </div>
 
+      {hotelDelete && (
+        <HotelDeleteDialog
+          item={hotelDelete}
+          onCancel={cancelHotelDelete}
+          onConfirm={() => {
+            removeCard(hotelDelete.id);
+            setHotelDelete(null);
+          }}
+        />
+      )}
       {panel === "add" && day && (
         <AddPlaceDrawer
           trip={trip}

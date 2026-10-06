@@ -319,9 +319,22 @@ class ItineraryItemView(APIView):
         item.save(update_fields=[*allowed.keys(), "updated_at"])
         return Response(ItineraryItemSerializer(item).data)
 
+    @transaction.atomic
     def delete(self, request, item_id):
-        self.get_item(request, item_id).delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        """
+        카드를 지운다. 여행 등록 정보에서 만든 항공·숙소 카드면 등록 정보(요약 카드)도 맞추고,
+        바뀐 여행과 함께 지운 다른 카드 id를 돌려준다(200). 그 밖에는 204.
+        (숙소 체크인·체크아웃 카드는 그 숙소의 다른 카드까지 지우므로 화면에서 먼저 확인받는다.)
+        """
+        item = self.get_item(request, item_id)
+        trip = item.trip
+        changed, other_ids = registration.sync_after_card_delete(trip, item)
+        trip.itinerary_items.filter(id__in=other_ids).delete()
+        item.delete()
+        if not changed:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        trip_data = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
+        return Response({"trip": trip_data, "removed_ids": [item_id, *other_ids]})
 
 
 class ChecklistCreateView(APIView):
