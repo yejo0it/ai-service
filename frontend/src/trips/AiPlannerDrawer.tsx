@@ -216,7 +216,8 @@ export default function AiPlannerDrawer({ trip, dates, messages, setMessages, on
 
   /** 가장 최근 제안이 아직 적용 전이면 그 항공·숙소 (다음 제안의 바탕) */
   const pendingDraft = (): AiRegistrationDraft | undefined => {
-    const last = [...messages].reverse().find((message) => message.result);
+    // 바뀌는 내용이 없는 답변(거절·단순 안내)은 건너뛰고, 가장 최근 제안을 본다.
+    const last = [...messages].reverse().find((message) => message.result && hasProposalChanges(message.result.proposal));
     const proposal = last?.result?.proposal;
     if (!proposal || last.applied || (!proposal.flight_changed && proposal.hotels === null)) return undefined;
     return { flight_info: proposal.flight_changed ? proposal.flight_info : null, hotels: proposal.hotels };
@@ -284,7 +285,10 @@ export default function AiPlannerDrawer({ trip, dates, messages, setMessages, on
   };
 
   // 가장 최근 제안만 적용할 수 있다 (이전 제안은 일정이 바뀌었을 수 있다).
-  const lastResultIndex = messages.map((message) => Boolean(message.result)).lastIndexOf(true);
+  // 바뀌는 내용이 없는 답변(거절·단순 안내)은 앞선 제안을 가리지 않는다.
+  const lastResultIndex = messages
+    .map((message) => Boolean(message.result && hasProposalChanges(message.result.proposal)))
+    .lastIndexOf(true);
 
   return (
     <Drawer

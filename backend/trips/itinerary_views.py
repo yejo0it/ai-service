@@ -22,7 +22,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import ai_planner, places, registration
+from . import ai_planner, chat_guard, places, registration
 from .itinerary_planner import CITY_CENTERS, day_anchor, place_cards, trip_days
 from .models import ChecklistItem, ItineraryItem, Trip
 from .packing import belongs_to_packing_note
@@ -477,13 +477,21 @@ class AiProposeView(APIView):
         serializer = ConversationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        messages = serializer.validated_data["messages"]
+        # 시스템 지시를 무시·공개하라는 뻔한 입력은 모델을 부르지 않고 바로 거절한다.
+        if chat_guard.looks_like_injection(messages[-1]["content"]):
+            return _refusal_response()
+
         days = days_map(trip)
         ordered_days = sorted(days)
         draft = _validated_draft(request.data.get("draft"))
         try:
-            plan = ai_planner.propose(trip, ordered_days, days, serializer.validated_data["messages"], draft)
+            plan = ai_planner.propose(trip, ordered_days, days, messages, draft)
         except ai_planner.PlannerError as exc:
             return Response({"detail": str(exc)}, status=exc.status_code)
+        # 여행과 관계없는 요청: 정해진 문구로 거절하고 아무것도 바꾸지 않는다.
+        if plan.off_topic:
+            return _refusal_response()
 
         additions, unresolved = [], []
         for addition in plan.additions:
@@ -583,6 +591,25 @@ class AiProposeView(APIView):
                 "unresolved": unresolved,
             }
         )
+
+
+def _refusal_response():
+    """응답 범위 밖 요청에 대한 거절 (변경 제안 없음)"""
+    return Response(
+        {
+            "reply": chat_guard.REFUSAL,
+            "refused": True,
+            "choices": [],
+            "proposal": {
+                "additions": [], "remove_item_ids": [], "moves": [],
+                "flight_changed": False, "flight_info": None, "hotels": None,
+            },
+            "preview": [],
+            "removed": [],
+            "unresolved": [],
+            "registration": {"flight": None, "hotels": None, "removed_hotels": []},
+        }
+    )
 
 
 def _validated_draft(raw):
