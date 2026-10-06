@@ -391,3 +391,75 @@ class AiRegistrationTests(APITestCase):
         self.assertEqual(titles, ["가는 편", "도쿄타워", "새 호텔"])
         self.assertFalse(ItineraryItem.objects.filter(pk=old.pk).exists())
         self.assertTrue(ItineraryItem.objects.filter(pk=place.pk, source="manual").exists())
+
+
+class RouteDeleteSyncTests(APITestCase):
+    """경로에서 자동 항공·숙소 카드를 지우면 요약(여행 등록 정보)도 맞춘다"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="sync@example.com", email="sync@example.com")
+        self.client.force_authenticate(self.user)
+        self.trip = Trip.objects.create(
+            owner=self.user, destinations=[{"city": "도쿄", "city_code": "TYO"}],
+            start_date="2026-11-10", end_date="2026-11-13", itinerary_initialized=True,
+            flight_info={
+                "airline": "대한항공", "flight_number": "KE703", "departure_at": "2026-11-10T09:00",
+                "departure_airport": {"code": "ICN", "name": "인천"}, "arrival_airport": {"code": "NRT", "name": "나리타"},
+                "return_airline": "대한항공", "return_flight_number": "KE704", "return_arrival_at": "2026-11-13T18:00",
+                "return_departure_airport": {"code": "NRT", "name": "나리타"},
+                "return_arrival_airport": {"code": "ICN", "name": "인천"},
+            },
+        )
+        self.hotel = Hotel.objects.create(trip=self.trip, name="신주쿠 호텔", address="", check_in="2026-11-10",
+                                          check_out="2026-11-13")
+
+    def card(self, day, kind, title, label, source="auto"):
+        return ItineraryItem.objects.create(trip=self.trip, day=day, order=0, kind=kind, source=source, title=title,
+                                            time_label=label, stops=[])
+
+    def delete(self, item):
+        return self.client.delete(f"/api/v1/itinerary-items/{item.pk}/")
+
+    def test_flight_legs(self):
+        outbound = self.card("2026-11-10", "flight", "가는 편", "출국")
+        inbound = self.card("2026-11-13", "flight", "오는 편", "귀국")
+        response = self.delete(outbound)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        flight = response.data["trip"]["flight_info"]
+        self.assertEqual((flight["departure_airport"], flight["flight_number"], flight["departure_at"]), (None, "", None))
+        self.assertEqual(flight["return_flight_number"], "KE704")  # 오는 편은 그대로
+
+        self.delete(inbound)
+        self.trip.refresh_from_db()
+        self.assertIsNone(self.trip.flight_info)
+
+    def hotel_cards(self):
+        return [self.card("2026-11-10", "hotel", "신주쿠 호텔", "체크인"),
+                self.card("2026-11-11", "hotel", "신주쿠 호텔", "숙박"),
+                self.card("2026-11-12", "hotel", "신주쿠 호텔", "숙박"),
+                self.card("2026-11-13", "hotel", "신주쿠 호텔", "체크아웃")]
+
+    def test_stay_card_keeps_hotel(self):
+        cards = self.hotel_cards()
+        self.assertEqual(self.delete(cards[1]).status_code, status.HTTP_204_NO_CONTENT)
+        self.hotel.refresh_from_db()
+        self.assertEqual((str(self.hotel.check_in), str(self.hotel.check_out)), ("2026-11-10", "2026-11-13"))
+
+    def test_check_in_or_out_card_removes_hotel_and_its_cards(self):
+        for index in (0, 3):
+            with self.subTest(card=index):
+                Hotel.objects.filter(trip=self.trip).delete()
+                ItineraryItem.objects.filter(trip=self.trip).delete()
+                self.hotel = Hotel.objects.create(trip=self.trip, name="신주쿠 호텔", address="",
+                                                  check_in="2026-11-10", check_out="2026-11-13")
+                other = self.card("2026-11-11", "sight", "도쿄타워", "", source="manual")
+                cards = self.hotel_cards()
+                response = self.delete(cards[index])
+                self.assertEqual(response.data["trip"]["hotels"], [])
+                self.assertEqual(sorted(response.data["removed_ids"]), sorted(card.pk for card in cards))
+                self.assertEqual(list(self.trip.itinerary_items.values_list("pk", flat=True)), [other.pk])
+
+    def test_route_added_cards_do_not_touch_registration(self):
+        manual = self.card("2026-11-11", "hotel", "신주쿠 호텔", "", source="manual")
+        self.assertEqual(self.delete(manual).status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(Hotel.objects.filter(pk=self.hotel.pk).exists())
