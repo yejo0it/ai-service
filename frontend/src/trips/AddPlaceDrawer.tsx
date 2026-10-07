@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { addItineraryPlace, searchPlaces, toErrorMessage } from "../api/client";
+import { toISODate } from "../components/calendar";
 import { COMPACT_LABEL_CLASS } from "../components/formFields";
 import { TimeField, formatMeridiemTime } from "../components/pickers";
 import { AirlineFlightFields, AirportInput, EMPTY_AIRPORT } from "../onboarding/flightFields";
+import { StayRangeField, formatShortDate, isNightTaken } from "../onboarding/stayRange";
 import type {
   AddFlightPayload,
+  AddHotelStayPayload,
   AddPlacePayload,
   HotelSuggestion,
   ItineraryResponse,
   PlaceKind,
   Trip,
 } from "../types/api";
-import type { AirlineSelection, AirportDraft } from "../types/onboarding";
+import type { AirlineSelection, AirportDraft, Stay } from "../types/onboarding";
 import { formatMonthDay } from "../utils/date";
 import Drawer from "./Drawer";
 import { KIND_STYLE } from "./TripItinerary";
@@ -30,9 +33,13 @@ interface PendingEntry {
   name: string;
   /** 이름 아래 설명 (항공편은 노선) */
   detail: string;
+  /** 날짜·시간 (숙소는 숙박 기간) 표기 */
+  when: string;
+  /** 등록 후 보여줄 날짜 (숙소는 체크인 날) */
+  day: string;
   /** 같은 날 같은 일정을 두 번 담지 않기 위한 값 */
   identity: string;
-  payload: AddPlacePayload | AddFlightPayload;
+  payload: AddPlacePayload | AddFlightPayload | AddHotelStayPayload;
 }
 
 const EMPTY_AIRLINE: AirlineSelection = { name: "", code: "" };
@@ -53,7 +60,7 @@ interface AddPlaceDrawerProps {
   initialKind?: PlaceKind;
   onClose: () => void;
   /** 한 곳이 등록될 때마다 최신 일정 */
-  onSaved: (itinerary: ItineraryResponse) => void;
+  onSaved: (itinerary: ItineraryResponse & { trip?: Trip }) => void;
   /** 모두 등록했을 때 (첫 장소의 날짜를 보여준다) */
   onDone: (day: string) => void;
 }
@@ -69,6 +76,7 @@ const cityCodeFor = (trip: Trip, dayIndex: number, dayCount: number) => {
 /**
  * 장소 직접 추가: 유형 · 장소 검색 · 날짜 · 시간(선택)을 입력해 목록에 쌓고, 한 번에 등록한다.
  * 공항은 새 여행 만들기의 항공권 입력을 재활용해 단일 노선 한 편(항공사 · 편명 · 출발 · 도착 공항)으로 받는다.
+ * 숙소는 새 여행 만들기의 숙소 입력처럼 숙박 기간(체크인~체크아웃, 여행 기간 안)을 받아 여행 숙소로 등록한다.
  * 유형을 바꿔도 입력한 검색어·장소·항공편·날짜·시간은 그대로 둔다.
  * 그날 안의 자리는 서버가 앞뒤 일정과의 거리(시간을 정하면 시간 순서)로 정한다.
  */
@@ -94,11 +102,16 @@ export default function AddPlaceDrawer({
   const [departure, setDeparture] = useState<AirportDraft>(EMPTY_AIRPORT);
   const [arrival, setArrival] = useState<AirportDraft>(EMPTY_AIRPORT);
   const flightSeq = useRef(0);
+  const [checkIn, setCheckIn] = useState("");
+  const [checkOut, setCheckOut] = useState("");
   const [pending, setPending] = useState<PendingEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const cityCode = cityCodeFor(trip, Math.max(0, dates.indexOf(day)), dates.length);
+  const isHotel = kind === "hotel";
+  // 검색 위치 편향: 숙소는 체크인 날, 그 밖에는 고른 날의 여행지
+  const searchDay = isHotel && checkIn ? checkIn : day;
+  const cityCode = cityCodeFor(trip, Math.max(0, dates.indexOf(searchDay)), dates.length);
 
   const isFlight = kind === "airport";
 
@@ -130,7 +143,27 @@ export default function AddPlaceDrawer({
   }, [query, selected, sessionToken, cityCode, kind, isFlight]);
 
   const flightReady = Boolean(departure.airport && arrival.airport);
-  const ready = isFlight ? flightReady : Boolean(selected);
+  const stayReady = Boolean(checkIn && checkOut);
+  // 이미 묵는 밤(등록된 숙소 + 등록 대기 목록의 숙소)은 고를 수 없다. 체크아웃 미정 숙소는 체크인 하룻밤으로 본다.
+  const takenStays: Stay[] = [
+    ...trip.hotels.map((hotel) => ({
+      id: `hotel-${hotel.id}`,
+      check_in: hotel.check_in,
+      check_out: hotel.check_out ?? toISODate(new Date(new Date(`${hotel.check_in}T00:00:00`).getTime() + 86400000)),
+    })),
+    ...pending.flatMap((entry) =>
+      "check_in" in entry.payload
+        ? [{ id: entry.key, check_in: entry.payload.check_in, check_out: entry.payload.check_out }]
+        : [],
+    ),
+  ];
+  const hasFreeNight = dates.slice(0, -1).some((date) => !isNightTaken(date, takenStays));
+  const ready = isFlight ? flightReady : Boolean(selected) && (!isHotel || stayReady);
+  const dayText = (value: string, at = "") => `${dayLabel(dates.indexOf(value))}${at ? ` ${formatMeridiemTime(at)}` : ""}`;
+  const stayText = (start: string, end: string) => {
+    const nights = Math.round((new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000);
+    return `${formatShortDate(start)} ~ ${formatShortDate(end)} · ${nights}박`;
+  };
 
   /** 지금 입력 중인 일정 (장소를 골랐거나, 항공편의 출발·도착 공항을 골랐을 때만) */
   const current = (): PendingEntry | null => {
@@ -141,6 +174,8 @@ export default function AddPlaceDrawer({
       return {
         key: `flight-${(flightSeq.current += 1)}`,
         kind,
+        when: dayText(day, time),
+        day,
         name,
         detail: `${departure.airport.name} → ${arrival.airport.name}`,
         identity: `${number}|${departure.airport.id}|${arrival.airport.id}|${day}`,
@@ -156,11 +191,33 @@ export default function AddPlaceDrawer({
       };
     }
     if (!selected) return null;
+    if (isHotel) {
+      if (!checkIn || !checkOut) return null;
+      return {
+        key: sessionToken,
+        kind,
+        name: selected.name,
+        detail: "",
+        when: stayText(checkIn, checkOut),
+        day: checkIn,
+        identity: `${selected.place_id}|${checkIn}`,
+        payload: {
+          kind: "hotel",
+          place_id: selected.place_id,
+          session_token: sessionToken,
+          city_code: cityCode ?? "",
+          check_in: checkIn,
+          check_out: checkOut,
+        },
+      };
+    }
     return {
       key: sessionToken,
       kind,
       name: selected.name,
       detail: "",
+      when: dayText(day, time),
+      day,
       identity: `${selected.place_id}|${day}`,
       payload: { kind, day, time, place_id: selected.place_id, session_token: sessionToken },
     };
@@ -171,6 +228,10 @@ export default function AddPlaceDrawer({
   /** 담은 일정의 입력만 비운다(유형·날짜·항공사는 다음 일정에도 그대로 쓴다). */
   const clearCurrent = (entry: PendingEntry) => {
     setTime("");
+    if ("check_in" in entry.payload) {
+      setCheckIn("");
+      setCheckOut("");
+    }
     if (entry.payload.kind === "flight") {
       setFlightNumber("");
       setDeparture(EMPTY_AIRPORT);
@@ -213,7 +274,7 @@ export default function AddPlaceDrawer({
         return;
       }
     }
-    onDone(entries[0].payload.day);
+    onDone(entries[0].day);
   };
 
   const total = pending.length + (ready ? 1 : 0);
@@ -344,39 +405,63 @@ export default function AddPlaceDrawer({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        {isHotel ? (
           <div>
-            <label htmlFor="place-day" className={LABEL_CLASS}>
-              날짜
-            </label>
-            <select
-              id="place-day"
-              value={day}
-              onChange={(event) => setDay(event.target.value)}
-              // 기본 select는 줄 높이 때문에 1px 커서 다른 칸(42px)과 맞춘다.
-              className={`${inputClass} h-[42px]`}
-            >
-              {dates.map((date, index) => (
-                <option key={date} value={date}>
-                  {dayLabel(index)} · {formatMonthDay(date)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className={LABEL_CLASS}>
-              시간 <span className="font-normal text-slate-400">(선택)</span>
-            </p>
-            <TimeField
-              value={time}
-              onChange={setTime}
-              ariaLabel="시간 (선택)"
-              placeholder="시간 미정"
-              optional
+            <p className={LABEL_CLASS}>숙박 기간</p>
+            <StayRangeField
+              checkIn={checkIn}
+              checkOut={checkOut}
+              min={trip.start_date}
+              max={trip.end_date}
+              otherStays={takenStays}
+              ariaLabel="숙박 기간"
               compact
+              onChange={(start, end) => {
+                setCheckIn(start);
+                setCheckOut(end);
+              }}
             />
+            <p className={`mt-1.5 text-xs ${hasFreeNight ? "text-slate-400" : "text-rose-600"}`}>
+              {hasFreeNight
+                ? `여행 기간(${formatMonthDay(trip.start_date)} ~ ${formatMonthDay(trip.end_date)}) 안에서, 다른 숙소와 겹치지 않게 고를 수 있어요.`
+                : "여행 기간의 모든 밤에 이미 숙소가 있어요. 기존 숙소를 지우거나 기간을 바꾼 뒤 추가해 주세요."}
+            </p>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="place-day" className={LABEL_CLASS}>
+                날짜
+              </label>
+              <select
+                id="place-day"
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                // 기본 select는 줄 높이 때문에 1px 커서 다른 칸(42px)과 맞춘다.
+                className={`${inputClass} h-[42px]`}
+              >
+                {dates.map((date, index) => (
+                  <option key={date} value={date}>
+                    {dayLabel(index)} · {formatMonthDay(date)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className={LABEL_CLASS}>
+                시간 <span className="font-normal text-slate-400">(선택)</span>
+              </p>
+              <TimeField
+                value={time}
+                onChange={setTime}
+                ariaLabel="시간 (선택)"
+                placeholder="시간 미정"
+                optional
+                compact
+              />
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
@@ -385,7 +470,7 @@ export default function AddPlaceDrawer({
           className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
         >
           <i className="fas fa-plus text-xs" aria-hidden="true" />
-          {isFlight ? "항공편 더 추가하기" : "장소 더 추가하기"}
+          {isFlight ? "항공편 더 추가하기" : isHotel ? "숙소 더 추가하기" : "장소 더 추가하기"}
         </button>
 
         {pending.length > 0 && (
@@ -403,8 +488,7 @@ export default function AddPlaceDrawer({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
                     <p className="truncate text-xs text-slate-400">
-                      {item.detail || KIND_STYLE[item.kind].label} · {dayLabel(dates.indexOf(item.payload.day))}
-                      {item.payload.time && ` ${formatMeridiemTime(item.payload.time)}`}
+                      {item.detail || KIND_STYLE[item.kind].label} · {item.when}
                     </p>
                   </div>
                   <button
@@ -424,7 +508,9 @@ export default function AddPlaceDrawer({
 
         <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500">
           <i className="fas fa-route mr-1.5 text-slate-400" aria-hidden="true" />
-          그날 일정 중 이동 거리가 가장 적게 늘어나는 자리에 넣어요. 시간을 정하면 시간 순서에 맞춰 넣어요.
+          {isHotel
+            ? "체크인·숙박·체크아웃 카드가 경로에 함께 들어가고, 요약의 숙소 정보에도 등록돼요."
+            : "그날 일정 중 이동 거리가 가장 적게 늘어나는 자리에 넣어요. 시간을 정하면 시간 순서에 맞춰 넣어요."}
         </p>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </form>
