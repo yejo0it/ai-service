@@ -1,13 +1,12 @@
 /**
  * 여행지 자동완성용 도시 검색.
- * 도시 목록(CITIES)은 backend/data/cities.json에서 생성한 citiesData.ts에 있다(직접 수정하지 않는다).
+ * 도시 목록은 src/data/cities.json에 있다. `scripts/generate_cities.py`가 backend/data/cities.json에서 생성하므로
+ * 직접 수정하지 않는다.
  * city_code는 서비스 자체 도시 id다(예: 도쿄=tokyo, 하코네=hakone). IATA 도시 코드가 없는 소도시도 있다.
  */
 
+import cities from "../data/cities.json";
 import type { Destination } from "../types/api";
-import { CITIES } from "./citiesData";
-
-export { CITIES };
 
 /** 자동완성 후보 도시. 여행지(Destination) + 도시 중심 좌표(여행 상세 지도용) + 검색어. */
 export interface CityOption extends Destination {
@@ -15,11 +14,15 @@ export interface CityOption extends Destination {
   iata: string | null;
   /** 소속 도·현 (예: 가나가와현). 자동완성 안내와 검색에 쓴다. 모르면 빈 문자열. */
   admin1: string;
+  /** 목록 묶음 (한국, 일본 ...) */
+  region: string;
   /** 영문명 등 검색어 */
   aliases: string[];
   lat: number;
   lng: number;
 }
+
+export const CITIES: CityOption[] = cities;
 
 /**
  * 도시 키로 도시 찾기 (지도 좌표용).
