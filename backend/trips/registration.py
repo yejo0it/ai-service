@@ -15,7 +15,8 @@ import re
 from datetime import date
 
 from . import places
-from .itinerary_planner import CITY_CENTERS, END_LABELS, START_LABELS
+from .cities import trip_center
+from .itinerary_planner import END_LABELS, START_LABELS
 from .models import ItineraryItem
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -142,17 +143,9 @@ def _hotel_dict(hotel):
     }
 
 
-def _trip_center(trip):
-    for dest in trip.destinations or []:
-        center = CITY_CENTERS.get((dest.get("city_code") or "").upper())
-        if center:
-            return center
-    return (None, None)
-
-
 def _find_hotel(trip, query):
     try:
-        return places.search_place(query, *_trip_center(trip))
+        return places.search_place(query, *(trip_center(trip) or (None, None)))
     except places.PlacesError:
         return None
 

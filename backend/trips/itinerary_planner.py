@@ -14,7 +14,7 @@
 import math
 from datetime import date
 
-from .places import CITY_CENTERS
+from . import cities
 
 # 시작·끝에 고정되는 카드 (time_label 기준)
 START_LABELS = {"출국", "체크아웃", "숙박"}
@@ -103,11 +103,7 @@ def day_anchor(trip, day, cards):
     points = [p for card in cards for p in _located(card.get("stops", []))]
     if points:
         return (sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points))
-    for dest in trip.destinations or []:
-        center = CITY_CENTERS.get((dest.get("city_code") or "").upper())
-        if center:
-            return center
-    return None
+    return cities.trip_center(trip)
 
 
 def _capacity(cards):

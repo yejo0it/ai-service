@@ -3,6 +3,7 @@ import datetime
 from django.db import transaction
 from rest_framework import serializers
 
+from .cities import normalize_key
 from .models import Hotel, Trip, Airline
 
 
@@ -28,15 +29,16 @@ class DestinationSerializer(serializers.Serializer):
     """Trip.destinations(JSONField)의 각 여행지 항목을 검증한다."""
 
     city = serializers.CharField(max_length=100)
+    # 도시 키: 서비스 자체 도시 id (예: "tokyo"). 예전 IATA 도시 코드가 오면 id로 바꿔 저장한다.
     city_code = serializers.CharField(
-        max_length=8, required=False, allow_blank=True, default=""
+        max_length=32, required=False, allow_blank=True, default=""
     )
 
     def validate_city(self, value):
         return value.strip()
 
     def validate_city_code(self, value):
-        return value.strip().upper()
+        return normalize_key(value)
 
 
 class AirportSerializer(serializers.Serializer):

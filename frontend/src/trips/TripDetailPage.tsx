@@ -251,7 +251,6 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
                 {index > 0 && <i className="fas fa-arrow-right text-[10px] text-slate-300" aria-hidden="true" />}
                 <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
                   {dest.city}
-                  {dest.city_code && <span className="ml-1 text-indigo-400">{dest.city_code}</span>}
                 </span>
               </li>
             ))}

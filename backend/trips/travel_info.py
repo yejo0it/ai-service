@@ -2,7 +2,7 @@
 홈 위젯용 여행지 정보: 날씨(Open-Meteo)와 환율(ExchangeRate-API open access).
 
 둘 다 API 키가 필요 없는 무료 서비스다. 외부 호출을 줄이려고 결과를 캐시한다.
-- 날씨: 도시 중심 좌표(places.CITY_CENTERS)로 현재 날씨와 16일 일별 예보를 받는다. 30분 캐시.
+- 날씨: 도시 중심 좌표(cities.city_center)로 현재 날씨와 16일 일별 예보를 받는다. 30분 캐시.
 - 환율: 원화(KRW) 기준 환율을 하루 한 번 갱신하는 서비스라 6시간 캐시한다(실시간 시세가 아니다).
   출처 표기 필요: https://www.exchangerate-api.com
 """
@@ -14,44 +14,13 @@ import urllib.request
 
 from django.core.cache import cache
 
-from .places import CITY_CENTERS
+from . import cities
 
 TIMEOUT_SECONDS = 5
 WEATHER_CACHE_SECONDS = 30 * 60
 EXCHANGE_CACHE_SECONDS = 6 * 60 * 60
 FORECAST_DAYS = 16  # Open-Meteo 무료 예보 최대 일수
 
-# 도시코드 -> 현지 통화. 캄보디아는 여행 중 달러를 주로 쓰므로 USD로 둔다.
-CITY_CURRENCY = {
-    **dict.fromkeys(["SEL", "PUS", "CJU"], "KRW"),
-    **dict.fromkeys(["TYO", "OSA", "NGO", "FUK", "SPK", "OKA", "SDJ", "HIJ", "KOJ", "TAK"], "JPY"),
-    **dict.fromkeys(["BJS", "SHA", "CAN", "TAO", "SIA"], "CNY"),
-    "HKG": "HKD", "MFM": "MOP", "TPE": "TWD", "KHH": "TWD",
-    **dict.fromkeys(["BKK", "CNX", "HKT"], "THB"),
-    "SIN": "SGD", "KUL": "MYR", "BKI": "MYR",
-    **dict.fromkeys(["HAN", "SGN", "DAD", "CXR", "PQC"], "VND"),
-    **dict.fromkeys(["MNL", "CEB", "MPH"], "PHP"),
-    "DPS": "IDR", "JKT": "IDR", "PNH": "USD", "REP": "USD", "VTE": "LAK", "RGN": "MMK",
-    "DEL": "INR", "BOM": "INR", "KTM": "NPR", "CMB": "LKR", "MLE": "MVR",
-    "ULN": "MNT", "ALA": "KZT", "TAS": "UZS",
-    "DXB": "AED", "AUH": "AED", "DOH": "QAR", "IST": "TRY", "TLV": "ILS",
-    **dict.fromkeys(
-        ["PAR", "ROM", "MIL", "VCE", "FLR", "NAP", "BCN", "MAD", "LIS", "OPO", "AMS", "BRU",
-         "BER", "MUC", "FRA", "VIE", "HEL", "DUB", "ATH", "ZAG", "DBV"],
-        "EUR",
-    ),
-    "LON": "GBP", "EDI": "GBP", "PRG": "CZK", "BUD": "HUF", "ZRH": "CHF", "GVA": "CHF",
-    "CPH": "DKK", "STO": "SEK", "OSL": "NOK", "REK": "ISK", "WAW": "PLN", "MOW": "RUB",
-    **dict.fromkeys(
-        ["NYC", "LAX", "SFO", "LAS", "SEA", "CHI", "WAS", "BOS", "MIA", "ORL", "HNL", "GUM", "SPN"],
-        "USD",
-    ),
-    "YVR": "CAD", "YTO": "CAD", "MEX": "MXN", "CUN": "MXN", "SAO": "BRL", "RIO": "BRL",
-    "BUE": "ARS", "LIM": "PEN",
-    **dict.fromkeys(["SYD", "MEL", "BNE", "OOL", "CNS"], "AUD"),
-    "AKL": "NZD", "ZQN": "NZD", "NAN": "FJD",
-    "CAI": "EGP", "CPT": "ZAR", "JNB": "ZAR", "NBO": "KES", "RAK": "MAD",
-}
 
 # 통화 -> (한글 이름, 표시 단위, 국기). 단위가 100인 통화는 은행 고시처럼 100단위로 보여준다.
 CURRENCIES = {
@@ -89,9 +58,12 @@ def _get_json(url):
 
 
 def weather(city_code):
-    """현재 날씨와 일별 예보. weather_code는 WMO 날씨 코드(프론트가 아이콘으로 바꾼다)."""
-    code = city_code.upper()
-    center = CITY_CENTERS.get(code)
+    """
+    현재 날씨와 일별 예보. weather_code는 WMO 날씨 코드(프론트가 아이콘으로 바꾼다).
+    city_code는 도시 id(예전 IATA 도시 코드도 된다).
+    """
+    code = cities.normalize_key(city_code)
+    center = cities.city_center(code)
     if not center:
         raise TravelInfoError("날씨를 지원하지 않는 도시예요.", status_code=404)
 
@@ -154,7 +126,7 @@ def exchange_rates(city_codes):
     """
     currencies = []
     for code in city_codes:
-        currency = CITY_CURRENCY.get(code.upper())
+        currency = cities.city_currency(code)
         if currency and currency != "KRW" and currency not in currencies:
             currencies.append(currency)
     if not currencies:
