@@ -424,3 +424,25 @@ class CityDataTests(APITestCase):
         self.assertEqual(cities.city_center("hakone"), (hakone["lat"], hakone["lng"]))
         self.assertEqual(cities.city_currency("hakone"), "JPY")
         self.assertEqual(cities.city_currency("phnom-penh"), "USD")
+
+    def test_korea_and_japan_coverage(self):
+        from . import cities
+
+        rows = cities.all_cities()
+        korea = [row for row in rows if row["country"] == "KR"]
+        japan = [row for row in rows if row["country"] == "JP"]
+        # 한국: 특별·광역·특별자치시 8 + 시·군 154, 일본: 현청 소재지 + 관광 도시·마을
+        self.assertGreaterEqual(len(korea), 162)
+        self.assertGreaterEqual(len(japan), 100)
+        for row in korea + japan:
+            with self.subTest(city=row["id"]):
+                self.assertTrue(row.get("admin1"), "한국·일본 도시는 소속 도·현이 있어야 한다")
+        # 같은 이름은 도·현으로 구분하고, 광역시 광주는 그대로 둔다.
+        names = {row["id"]: row["name"] for row in korea}
+        self.assertEqual(names["gwangju"], "광주")
+        self.assertEqual(names["gwangju-gyeonggi"], "광주(경기)")
+        self.assertEqual((names["goseong-gangwon"], names["goseong-gyeongnam"]), ("고성(강원)", "고성(경남)"))
+        self.assertEqual(len({(row["country"], row["name"]) for row in rows}), len(rows))
+        # 행정 이름(가평군)과 영문명으로도 찾을 수 있게 검색어가 들어 있다.
+        self.assertIn("가평군", cities.get_city("gapyeong")["aliases"])
+        self.assertEqual(cities.get_city("niseko")["admin1"], "홋카이도")

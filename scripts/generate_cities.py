@@ -25,6 +25,7 @@ HEADER = """\
  *
  * city_code: 서비스 자체 도시 id (예: "tokyo"). IATA 도시 코드가 없는 소도시도 있다.
  * iata: IATA 도시 코드 (없으면 null). 검색과 예전 데이터 호환에만 쓴다.
+ * admin1: 소속 도·현 (예: 가나가와현). 자동완성 안내와 검색에 쓴다. 모르면 빈 문자열.
  * aliases: 영문명 등 검색어
  */
 
@@ -45,6 +46,7 @@ def render() -> str:
             "city": city["name"],
             "city_code": city["id"],
             "iata": city["iata"],
+            "admin1": city.get("admin1", ""),
             "aliases": city["aliases"],
             "lat": city["lat"],
             "lng": city["lng"],

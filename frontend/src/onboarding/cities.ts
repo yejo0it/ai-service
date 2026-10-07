@@ -13,6 +13,8 @@ export { CITIES };
 export interface CityOption extends Destination {
   /** IATA 도시 코드 (없으면 null). 검색과 예전 데이터 호환에만 쓴다. */
   iata: string | null;
+  /** 소속 도·현 (예: 가나가와현). 자동완성 안내와 검색에 쓴다. 모르면 빈 문자열. */
+  admin1: string;
   /** 영문명 등 검색어 */
   aliases: string[];
   lat: number;
@@ -34,8 +36,10 @@ export function findCityByName(name: string): CityOption | undefined {
 }
 
 /**
- * 입력어로 도시를 검색한다. 한글 도시명 · 영문명 · IATA 도시 코드로 찾으며,
- * 앞글자가 일치하는 항목을 먼저 보여준다. ('도' -> 도쿄, 도하 / 'hako' -> 하코네 / 'TYO' -> 도쿄)
+ * 입력어로 도시를 검색한다. 한글 도시명 · 영문명 · IATA 도시 코드로 찾고, 이름이 정확히 같은 도시,
+ * 앞글자가 일치하는 도시 순으로 보여준다.
+ * 소속 도·현으로도 찾는다(도시 이름으로 찾은 결과 뒤에 붙인다).
+ * 예) '도' -> 도쿄, 도하 / 'hako' -> 하코네 / 'TYO' -> 도쿄 / '가나가와' -> 요코하마, 하코네
  */
 export function searchCities(query: string, limit = 6): CityOption[] {
   const keyword = query.trim();
@@ -43,12 +47,16 @@ export function searchCities(query: string, limit = 6): CityOption[] {
 
   const lower = keyword.toLowerCase();
   const upper = keyword.toUpperCase();
+  const exact: CityOption[] = [];
   const prefix: CityOption[] = [];
   const partial: CityOption[] = [];
+  const byRegion: CityOption[] = [];
 
   for (const city of CITIES) {
     const aliases = city.aliases.map((alias) => alias.toLowerCase());
-    if (
+    if (city.city === keyword) {
+      exact.push(city);
+    } else if (
       city.city.startsWith(keyword) ||
       aliases.some((alias) => alias.startsWith(lower)) ||
       (city.iata !== null && city.iata.startsWith(upper))
@@ -56,7 +64,9 @@ export function searchCities(query: string, limit = 6): CityOption[] {
       prefix.push(city);
     } else if (city.city.includes(keyword) || aliases.some((alias) => alias.includes(lower))) {
       partial.push(city);
+    } else if (keyword.length >= 2 && city.admin1.startsWith(keyword)) {
+      byRegion.push(city);
     }
   }
-  return [...prefix, ...partial].slice(0, limit);
+  return [...exact, ...prefix, ...partial, ...byRegion].slice(0, limit);
 }

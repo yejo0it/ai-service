@@ -313,8 +313,8 @@ function ProgressBar({ step }: { step: number }) {
  * ------------------------------------------------------------------ */
 
 const cityKey = (city: CityOption) => city.city_code;
-// 도시 키(자체 id)는 화면에 보여주지 않는다.
-const cityHint = () => null;
+// 도시 키(자체 id)는 보여주지 않고, 같은 이름을 구분하도록 소속 도·현을 보여준다.
+const cityHint = (city: CityOption) => city.admin1 || null;
 const cityLabel = (city: CityOption) => <span className="block truncate">{city.city}</span>;
 
 /** 타임라인 노드. 입력된 행은 채워진 핀, 빈 행은 흐린 핀으로 표시한다. */
