@@ -127,7 +127,7 @@ def korea():
             "kind": KR_METROS[key], "admin1": value(row, "ko"), "point": point(row), "notes": [],
         })
         if key == "Q41283":
-            items[key]["notes"].append("Wikidata에 2026-07-01 해산(전남광주통합특별시)으로 기록 - 여행지 이름 '광주'로 유지")
+            items[key]["notes"].append("Wikidata에 2026-07-01 해산(전남광주통합특별시)으로 기록 - 광주광역시로 유지")
     for row in rows:
         if qid(row, "item") in items:
             continue
@@ -138,9 +138,8 @@ def korea():
         admin = value(row, "adminKo")
         # 소속 도: 대한민국(국가) 같은 상위 값보다 도·광역시를 고른다.
         if admin in KR_ADMIN_SHORT and not item["admin1"]:
-            item["admin1"] = admin
-            if admin == "전남광주통합특별시":
-                item["notes"].append("소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'")
+            # Wikidata의 전남광주통합특별시(2026-07-01~) 소속은 확인 전까지 전라남도로 표기한다.
+            item["admin1"] = "전라남도" if admin == "전남광주통합특별시" else admin
     for item in items.values():
         name = re.sub(r"(특별자치시|특별시|광역시)$", "", item["raw_ko"])
         if item["kind"] in ("시", "군"):

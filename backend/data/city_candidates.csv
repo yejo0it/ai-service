@@ -187,7 +187,7 @@ new,KR,cheongdo,청도,경상북도,군,청도군,Cheongdo County,35.6436,128.74
 new,KR,cheongsong,청송,경상북도,군,청송군,Cheongsong County,36.4328,129.06,Q50331,
 new,KR,chilgok,칠곡,경상북도,군,칠곡군,Chilgok County,35.9944,128.3997,Q50334,
 new,KR,pohang,포항,경상북도,시,포항시,Pohang,36.0322,129.365,Q42157,
-new,KR,gwangju,광주,광주광역시,광역시,광주광역시,Gwangju,35.1667,126.9167,Q41283,Wikidata에 2026-07-01 해산(전남광주통합특별시)으로 기록 - 여행지 이름 '광주'로 유지
+new,KR,gwangju,광주,광주광역시,광역시,광주광역시,Gwangju,35.1667,126.9167,Q41283,Wikidata에 2026-07-01 해산(전남광주통합특별시)으로 기록 - 광주광역시로 유지
 new,KR,gunwi,군위,대구광역시,군,군위군,Gunwi County,36.2347,128.5728,Q50215,
 new,KR,dalseong,달성,대구광역시,군,달성군,Dalseong County,35.7667,128.4333,Q50239,
 new,KR,daegu,대구,대구광역시,광역시,대구광역시,Daegu,35.8717,128.6017,Q20927,
@@ -201,28 +201,28 @@ new,KR,ulju,울주,울산광역시,군,울주군,Ulju County,35.54,129.2,Q50313,
 new,KR,ganghwa,강화,인천광역시,군,강화군,Ganghwa County,37.7389,126.4894,Q50205,
 new,KR,ongjin,옹진,인천광역시,군,옹진군,Ongjin County,37.2139,126.1783,Q50310,
 new,KR,incheon,인천,인천광역시,광역시,인천광역시,Incheon,37.4639,126.6486,Q20934,
-new,KR,gangjin,강진,전남광주통합특별시,군,강진군,Gangjin County,34.6406,126.77,Q50204,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,goheung,고흥,전남광주통합특별시,군,고흥군,Goheung County,34.5833,127.3333,Q50211,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,gokseong,곡성,전남광주통합특별시,군,곡성군,Gokseong County,35.2808,127.2953,Q50212,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,gwangyang,광양,전남광주통합특별시,시,광양시,Gwangyang,34.9403,127.7017,Q42067,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,gurye,구례,전남광주통합특별시,군,구례군,Gurye County,35.2094,127.4644,Q50214,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,naju,나주,전남광주통합특별시,시,나주시,Naju,35.0283,126.7175,Q42083,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,damyang,담양,전남광주통합특별시,군,담양군,Damyang County,35.3189,126.9839,Q50240,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,mokpo,목포,전남광주통합특별시,시,목포시,Mokpo,34.7936,126.3886,Q42094,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,muan,무안,전남광주통합특별시,군,무안군,Muan County,34.9897,126.4714,Q50241,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,boseong,보성,전남광주통합특별시,군,보성군,Boseong County,34.7706,127.0817,Q50243,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,suncheon,순천,전남광주통합특별시,시,순천시,Suncheon,34.9506,127.4875,Q42112,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,sinan,신안,전남광주통합특별시,군,신안군,Sinan County,34.8311,126.0987,Q50252,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,yeosu,여수,전남광주통합특별시,시,여수시,Yeosu,34.7607,127.6622,Q42125,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,yeonggwang,영광,전남광주통합특별시,군,영광군,Yeonggwang County,35.275,126.5094,Q50259,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,yeongam,영암,전남광주통합특별시,군,영암군,Yeongam County,34.7983,126.7,Q50262,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,wando,완도,전남광주통합특별시,군,완도군,Wando County,34.3142,126.7531,Q50311,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,jangseong,장성,전남광주통합특별시,군,장성군,Jangseong County,35.3273,126.7682,Q50320,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,jangheung,장흥,전남광주통합특별시,군,장흥군,Jangheung County,34.6844,126.9075,Q50322,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,jindo,진도,전남광주통합특별시,군,진도군,Jindo County,34.4831,126.2619,Q50325,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,hampyeong,함평,전남광주통합특별시,군,함평군,Hampyeong County,35.1164,126.5322,Q50340,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,haenam,해남,전남광주통합특별시,군,해남군,Haenam County,34.5742,126.5975,Q50342,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
-new,KR,hwasun,화순,전남광주통합특별시,군,화순군,Hwasun County,35.0594,126.985,Q50345,소속이 Wikidata 기준 전남광주통합특별시(2026-07-01~) - 표시는 '전남'
+new,KR,gangjin,강진,전라남도,군,강진군,Gangjin County,34.6406,126.77,Q50204,
+new,KR,goheung,고흥,전라남도,군,고흥군,Goheung County,34.5833,127.3333,Q50211,
+new,KR,gokseong,곡성,전라남도,군,곡성군,Gokseong County,35.2808,127.2953,Q50212,
+new,KR,gwangyang,광양,전라남도,시,광양시,Gwangyang,34.9403,127.7017,Q42067,
+new,KR,gurye,구례,전라남도,군,구례군,Gurye County,35.2094,127.4644,Q50214,
+new,KR,naju,나주,전라남도,시,나주시,Naju,35.0283,126.7175,Q42083,
+new,KR,damyang,담양,전라남도,군,담양군,Damyang County,35.3189,126.9839,Q50240,
+new,KR,mokpo,목포,전라남도,시,목포시,Mokpo,34.7936,126.3886,Q42094,
+new,KR,muan,무안,전라남도,군,무안군,Muan County,34.9897,126.4714,Q50241,
+new,KR,boseong,보성,전라남도,군,보성군,Boseong County,34.7706,127.0817,Q50243,
+new,KR,suncheon,순천,전라남도,시,순천시,Suncheon,34.9506,127.4875,Q42112,
+new,KR,sinan,신안,전라남도,군,신안군,Sinan County,34.8311,126.0987,Q50252,
+new,KR,yeosu,여수,전라남도,시,여수시,Yeosu,34.7607,127.6622,Q42125,
+new,KR,yeonggwang,영광,전라남도,군,영광군,Yeonggwang County,35.275,126.5094,Q50259,
+new,KR,yeongam,영암,전라남도,군,영암군,Yeongam County,34.7983,126.7,Q50262,
+new,KR,wando,완도,전라남도,군,완도군,Wando County,34.3142,126.7531,Q50311,
+new,KR,jangseong,장성,전라남도,군,장성군,Jangseong County,35.3273,126.7682,Q50320,
+new,KR,jangheung,장흥,전라남도,군,장흥군,Jangheung County,34.6844,126.9075,Q50322,
+new,KR,jindo,진도,전라남도,군,진도군,Jindo County,34.4831,126.2619,Q50325,
+new,KR,hampyeong,함평,전라남도,군,함평군,Hampyeong County,35.1164,126.5322,Q50340,
+new,KR,haenam,해남,전라남도,군,해남군,Haenam County,34.5742,126.5975,Q50342,
+new,KR,hwasun,화순,전라남도,군,화순군,Hwasun County,35.0594,126.985,Q50345,
 new,KR,gochang,고창,전북특별자치도,군,고창군,Gochang County,35.4333,126.7,Q50210,
 new,KR,gunsan,군산,전북특별자치도,시,군산시,Gunsan,35.9786,126.7114,Q42074,
 new,KR,gimje,김제,전북특별자치도,시,김제시,Gimje,35.8017,126.8889,Q42077,

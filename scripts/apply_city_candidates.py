@@ -9,7 +9,7 @@
 - status merge:<id>: 이미 있는 도시다. 이름·좌표는 그대로 두고 소속 도·현(admin1)만 채운다.
 - 다른 status(review 등)는 넣지 않는다.
 - 검색어(aliases): 영문 이름(행정 단위 단어를 뺀 것)과, 표시 이름과 다른 한국어 행정 이름(예: 가평군).
-- 여러 번 돌려도 결과가 같다(이미 있는 id는 다시 추가하지 않는다).
+- 여러 번 돌려도 결과가 같다(이미 있는 id는 다시 추가하지 않고, 소속 도·현만 CSV에 맞춘다).
 
 표준 라이브러리만 사용한다.
 """
@@ -51,7 +51,12 @@ def main():
                 city["admin1"] = row["admin1"]
                 merged += 1
             continue
-        if status != "new" or row["id"] in by_id:
+        if status != "new":
+            continue
+        if row["id"] in by_id:
+            # 이미 넣은 도시: 검수 후 바뀐 소속 도·현만 맞춘다.
+            if row["admin1"]:
+                by_id[row["id"]]["admin1"] = row["admin1"]
             continue
         aliases = [alias for alias in (english(row["en"]), row["raw_ko"]) if alias and alias != row["name"]]
         city = {
