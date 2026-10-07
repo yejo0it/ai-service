@@ -108,6 +108,25 @@ const dayRange = (days: string[]) =>
     ? `${formatMonthDay(days[0])} ~ ${formatMonthDay(days[days.length - 1])}`
     : formatMonthDay(days[0]);
 
+/** 요약 카드의 숙소 한 곳: 숙소명 / 묵는 기간 / 주소를 한 줄씩 (긴 숙소명도 자르지 않고 줄바꿈) */
+function HotelSummary({ name, period, address }: { name: string; period: string; address: string }) {
+  return (
+    <li className="flex flex-col gap-1 rounded-xl bg-slate-50 px-3.5 py-3">
+      <p className="break-words text-sm font-semibold text-slate-800">{name}</p>
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        <i className="far fa-calendar text-[11px] text-slate-400" aria-hidden="true" />
+        {period}
+      </p>
+      {address && (
+        <p className="flex gap-1.5 break-words text-xs text-slate-400">
+          <i className="fas fa-map-marker-alt mt-0.5 text-[11px] text-slate-300" aria-hidden="true" />
+          <span className="min-w-0">{address}</span>
+        </p>
+      )}
+    </li>
+  );
+}
+
 /** 비어 있을 때: 안내 + 바로 추가 버튼 */
 function EmptyWithAction({ children, action, onClick }: { children: ReactNode; action: string; onClick?: () => void }) {
   return (
@@ -248,24 +267,17 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
             {[...trip.hotels]
               .sort((a, b) => a.check_in.localeCompare(b.check_in))
               .map((hotel) => (
-                <li key={hotel.id} className="rounded-xl bg-slate-50 px-3.5 py-3">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-slate-800">{hotel.name}</span>
-                    <span className="shrink-0 text-xs text-slate-500">
-                      {formatMonthDay(hotel.check_in)}
-                      {hotel.check_out ? ` ~ ${formatMonthDay(hotel.check_out)}` : ""}
-                      {hotel.nights ? ` · ${hotel.nights}박` : ""}
-                    </span>
-                  </div>
-                  {hotel.address && <p className="mt-0.5 break-words text-xs text-slate-400">{hotel.address}</p>}
-                </li>
+                <HotelSummary
+                  key={hotel.id}
+                  name={hotel.name}
+                  period={`${formatMonthDay(hotel.check_in)}${hotel.check_out ? ` ~ ${formatMonthDay(hotel.check_out)}` : ""}${
+                    hotel.nights ? ` · ${hotel.nights}박` : ""
+                  }`}
+                  address={hotel.address}
+                />
               ))}
             {hotels.map((hotel) => (
-              <li key={hotel.key} className="rounded-xl bg-slate-50 px-3.5 py-3">
-                <p className="truncate text-sm font-medium text-slate-800">{hotel.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{dayRange(hotel.days)}</p>
-                {hotel.address && <p className="mt-0.5 break-words text-xs text-slate-400">{hotel.address}</p>}
-              </li>
+              <HotelSummary key={hotel.key} name={hotel.name} period={dayRange(hotel.days)} address={hotel.address} />
             ))}
           </ul>
         ) : (
