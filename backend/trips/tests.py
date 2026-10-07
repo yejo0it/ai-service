@@ -407,7 +407,7 @@ class CityDataTests(APITestCase):
                 self.assertRegex(row["id"], r"^[a-z][a-z0-9-]{1,31}$")
                 self.assertTrue(row["name"])
                 self.assertTrue(-90 <= row["lat"] <= 90 and -180 <= row["lng"] <= 180)
-                self.assertIn(row["country"], cities.COUNTRY_CURRENCY)
+                self.assertIn(row["country"], cities.country_currencies())
 
     def test_lookup_by_id_and_legacy_iata(self):
         from . import cities
@@ -446,3 +446,16 @@ class CityDataTests(APITestCase):
         # 행정 이름(가평군)과 영문명으로도 찾을 수 있게 검색어가 들어 있다.
         self.assertIn("가평군", cities.get_city("gapyeong")["aliases"])
         self.assertEqual(cities.get_city("niseko")["admin1"], "홋카이도")
+
+    def test_currency_data(self):
+        from . import reference_data
+
+        data = reference_data.load("currencies.json")
+        for country, currency in data["country_currency"].items():
+            with self.subTest(country=country):
+                if currency != "KRW":
+                    self.assertIn(currency, data["currencies"])
+        for code, info in data["currencies"].items():
+            with self.subTest(currency=code):
+                self.assertEqual(set(info), {"name", "unit", "flag"})
+                self.assertIn(info["unit"], (1, 100))

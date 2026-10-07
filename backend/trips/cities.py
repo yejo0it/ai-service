@@ -3,36 +3,20 @@
 
 - 도시 키(id)는 서비스 자체 id다(예: "tokyo", "hakone"). IATA 도시 코드가 없는 소도시도 등록할 수 있다.
 - 예전에 저장된 IATA 도시 코드(예: "TYO")로 찾아도 같은 도시를 돌려준다.
-- 파일은 처음 쓸 때 한 번만 읽어 메모리에 둔다(정적 참조 데이터라 DB 조회가 필요 없다).
+- 파일은 처음 쓸 때 한 번만 읽어 메모리에 둔다(정적 참조 데이터라 DB 조회가 필요 없다, reference_data).
   cities.json을 바꾸면 백엔드를 다시 시작해야 반영된다(개발 서버는 .py 변경에만 자동으로 다시 시작한다).
+- 나라별 현지 통화는 backend/data/currencies.json의 country_currency에 있다.
 """
 
-import json
 from functools import lru_cache
-from pathlib import Path
 
-from django.conf import settings
-
-CITIES_PATH = Path(settings.BASE_DIR) / "data" / "cities.json"
-
-# 나라 -> 현지 통화 (환율 위젯). 캄보디아는 여행 중 달러를 주로 쓰므로 USD로 둔다.
-COUNTRY_CURRENCY = {
-    "AE": "AED", "AR": "ARS", "AT": "EUR", "AU": "AUD", "BE": "EUR", "BR": "BRL", "CA": "CAD", "CH": "CHF",
-    "CN": "CNY", "CZ": "CZK", "DE": "EUR", "DK": "DKK", "EG": "EGP", "ES": "EUR", "FI": "EUR", "FJ": "FJD",
-    "FR": "EUR", "GB": "GBP", "GR": "EUR", "GU": "USD", "HK": "HKD", "HR": "EUR", "HU": "HUF", "ID": "IDR",
-    "IE": "EUR", "IL": "ILS", "IN": "INR", "IS": "ISK", "IT": "EUR", "JP": "JPY", "KE": "KES", "KH": "USD",
-    "KR": "KRW", "KZ": "KZT", "LA": "LAK", "LK": "LKR", "MA": "MAD", "MM": "MMK", "MN": "MNT", "MO": "MOP",
-    "MP": "USD", "MV": "MVR", "MX": "MXN", "MY": "MYR", "NL": "EUR", "NO": "NOK", "NP": "NPR", "NZ": "NZD",
-    "PE": "PEN", "PH": "PHP", "PL": "PLN", "PT": "EUR", "QA": "QAR", "RU": "RUB", "SE": "SEK", "SG": "SGD",
-    "TH": "THB", "TR": "TRY", "TW": "TWD", "US": "USD", "UZ": "UZS", "VN": "VND", "ZA": "ZAR",
-}
+from . import reference_data
 
 
 @lru_cache(maxsize=1)
 def _index():
     """{id: 도시}, {IATA 도시 코드: id}"""
-    with open(CITIES_PATH, encoding="utf-8") as file:
-        cities = json.load(file)
+    cities = reference_data.load("cities.json")
     by_id = {city["id"]: city for city in cities}
     by_iata = {city["iata"]: city["id"] for city in cities if city.get("iata")}
     return by_id, by_iata
@@ -65,7 +49,12 @@ def city_center(key):
 
 def city_currency(key):
     city = get_city(key)
-    return COUNTRY_CURRENCY.get(city["country"]) if city else None
+    return country_currencies().get(city["country"]) if city else None
+
+
+def country_currencies():
+    """나라 코드 -> 현지 통화 코드 (캄보디아는 여행 중 달러를 주로 써서 USD)"""
+    return reference_data.load("currencies.json")["country_currency"]
 
 
 def trip_center(trip):
