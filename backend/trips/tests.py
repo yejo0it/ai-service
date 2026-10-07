@@ -49,13 +49,13 @@ class OnboardingAPITests(APITestCase):
         self.assertEqual(response.data["nights"], 4)
         self.assertEqual(len(response.data["hotels"]), 1)
 
-        # 여행지는 입력 순서대로 list[dict] 그대로 저장/응답된다.
+        # 여행지는 입력 순서대로 저장된다. 도시 키는 자체 도시 id로 맞춘다(예전 IATA 도시 코드 -> id).
         trip = Trip.objects.get(pk=response.data["id"])
         self.assertEqual(
             trip.destinations,
             [
-                {"city": "도쿄", "city_code": "TYO"},
-                {"city": "오사카", "city_code": "OSA"},
+                {"city": "도쿄", "city_code": "tokyo"},
+                {"city": "오사카", "city_code": "osaka"},
             ],
         )
         self.assertEqual(response.data["destinations"], trip.destinations)
@@ -229,8 +229,8 @@ class OnboardingAPITests(APITestCase):
         self.assertEqual(
             trip.destinations,
             [
-                {"city": "도쿄", "city_code": "TYO"},
-                {"city": "나고야", "city_code": "NGO"},
+                {"city": "도쿄", "city_code": "tokyo"},
+                {"city": "나고야", "city_code": "nagoya"},
             ],
         )
 
@@ -389,3 +389,38 @@ class TravelInfoTests(APITestCase):
         self.client.force_authenticate(None)
         response = self.client.get("/api/v1/travel-info/weather/", {"city_code": "TYO"})
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class CityDataTests(APITestCase):
+    """도시 데이터(backend/data/cities.json): 자체 도시 id, 예전 IATA 도시 코드 호환, 나라별 통화"""
+
+    def test_data_is_valid(self):
+        from . import cities
+
+        rows = cities.all_cities()
+        ids = [row["id"] for row in rows]
+        self.assertEqual(len(ids), len(set(ids)))
+        iatas = [row["iata"] for row in rows if row["iata"]]
+        self.assertEqual(len(iatas), len(set(iatas)))
+        for row in rows:
+            with self.subTest(city=row["id"]):
+                self.assertRegex(row["id"], r"^[a-z][a-z0-9-]{1,31}$")
+                self.assertTrue(row["name"])
+                self.assertTrue(-90 <= row["lat"] <= 90 and -180 <= row["lng"] <= 180)
+                self.assertIn(row["country"], cities.COUNTRY_CURRENCY)
+
+    def test_lookup_by_id_and_legacy_iata(self):
+        from . import cities
+
+        self.assertEqual(cities.get_city("tokyo")["name"], "도쿄")
+        self.assertEqual(cities.get_city("TYO")["id"], "tokyo")
+        self.assertEqual(cities.get_city("tyo")["id"], "tokyo")
+        self.assertEqual(cities.normalize_key("NGO"), "nagoya")
+        self.assertEqual(cities.normalize_key(" Unknown "), "unknown")
+        self.assertIsNone(cities.city_center("XXX"))
+        # IATA 도시 코드가 없는 소도시
+        hakone = cities.get_city("hakone")
+        self.assertIsNone(hakone["iata"])
+        self.assertEqual(cities.city_center("hakone"), (hakone["lat"], hakone["lng"]))
+        self.assertEqual(cities.city_currency("hakone"), "JPY")
+        self.assertEqual(cities.city_currency("phnom-penh"), "USD")

@@ -23,7 +23,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import ai_planner, chat_guard, places, registration
-from .itinerary_planner import CITY_CENTERS, day_anchor, place_cards, trip_days
+from .cities import normalize_key, trip_center
+from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ChecklistItem, ItineraryItem, Trip
 from .packing import belongs_to_packing_note
 from .serializers import TripSerializer
@@ -195,7 +196,7 @@ class AddHotelStaySerializer(serializers.Serializer):
     kind = serializers.ChoiceField(choices=["hotel"])
     place_id = serializers.CharField(max_length=255)
     session_token = serializers.CharField(required=False, allow_blank=True, default="")
-    city_code = serializers.CharField(max_length=8, required=False, allow_blank=True, default="")
+    city_code = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
     check_in = serializers.DateField()
     check_out = serializers.DateField()
 
@@ -302,7 +303,7 @@ def _add_hotel_stay(request, trip):
     hotel = trip.hotels.create(
         name=(detail.get("name") or "")[:150], address=(detail.get("address") or "")[:255],
         place_id=data["place_id"], latitude=detail.get("latitude"), longitude=detail.get("longitude"),
-        phone=(detail.get("phone") or "")[:40], city_code=data["city_code"],
+        phone=(detail.get("phone") or "")[:40], city_code=normalize_key(data["city_code"]),
         check_in=data["check_in"], check_out=data["check_out"],
     )
     days = days_map(trip)
@@ -552,7 +553,7 @@ class AiProposeView(APIView):
         additions, unresolved = [], []
         for addition in plan.additions:
             day = _day_of(days, addition.day_index)
-            anchor = day_anchor(trip, day, days[day]) if day else _trip_center(trip)
+            anchor = day_anchor(trip, day, days[day]) if day else trip_center(trip)
             try:
                 detail = places.search_place(addition.search_query, *(anchor or (None, None)))
             except places.PlacesError:
@@ -693,14 +694,6 @@ def _hotel_json(hotel):
     }
 
 
-def _trip_center(trip):
-    for dest in trip.destinations or []:
-        center = CITY_CENTERS.get((dest.get("city_code") or "").upper())
-        if center:
-            return center
-    return None
-
-
 STAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T([01]\d|2[0-3]):[0-5]\d)?$")
 
 
@@ -734,7 +727,7 @@ class HotelProposalSerializer(serializers.Serializer):
     latitude = serializers.FloatField(required=False, allow_null=True, default=None)
     longitude = serializers.FloatField(required=False, allow_null=True, default=None)
     phone = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
-    city_code = serializers.CharField(max_length=8, required=False, allow_blank=True, default="")
+    city_code = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
     check_in = serializers.DateField()
     check_out = serializers.DateField(required=False, allow_null=True, default=None)
     # 미리보기 표시용 (적용할 때는 쓰지 않는다)

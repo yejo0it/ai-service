@@ -75,7 +75,7 @@ export function RouteTimeline({ trip }: RouteTimelineProps) {
     ...cities.map((dest, index) => ({
       key: `${dest.city}-${index}`,
       label: dest.city,
-      sub: dest.city_code,
+      sub: "",
       tone: "city" as const,
     })),
     { key: "end", label: "귀국", sub: formatShortDot(trip.end_date), tone: "edge" as const },

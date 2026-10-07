@@ -25,6 +25,7 @@ export type ApiErrorData = string | { detail?: string; [field: string]: unknown 
 /** 여행지 한 곳. city_code는 IATA 도시 코드(예: TYO)이며 없으면 빈 문자열. */
 export interface Destination {
   city: string;
+  /** 서비스 자체 도시 id (예: "tokyo"). 화면에는 보여주지 않는다. */
   city_code: string;
 }
 

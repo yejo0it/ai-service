@@ -44,7 +44,8 @@ class Trip(TimeStampedModel):
         PURPLE = "purple", "보라"
         GRAY = "gray", "회색"
 
-    # [{"city": "도쿄", "city_code": "TYO"}, {"city": "오사카", "city_code": "OSA"}]
+    # [{"city": "도쿄", "city_code": "tokyo"}, {"city": "오사카", "city_code": "osaka"}]
+    # city_code는 서비스 자체 도시 id(backend/data/cities.json)다. IATA 코드가 없는 소도시도 있다.
     # 도시 이동 순서를 그대로 유지하므로 list 순서가 곧 여행 동선이다.
     destinations = models.JSONField(
         "여행지",
@@ -125,7 +126,7 @@ class Hotel(TimeStampedModel):
     # Google Places 전화번호 (여행 상세 숙소 카드에 표시)
     phone = models.CharField("전화번호", max_length=40, blank=True, default="")
     # 이 숙소가 속한 여행지(Trip.destinations의 city_code)
-    city_code = models.CharField("도시코드", max_length=8, blank=True, default="")
+    city_code = models.CharField("도시코드", max_length=32, blank=True, default="")
     check_in = models.DateField("체크인")
     # 체크아웃 미정(막날 공항 이동 등)인 경우를 위해 Nullable.
     check_out = models.DateField("체크아웃", null=True, blank=True)
