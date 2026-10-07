@@ -189,6 +189,22 @@ class AddPlaceSerializer(serializers.Serializer):
     session_token = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class AddHotelStaySerializer(serializers.Serializer):
+    """숙소 직접 추가: 숙박 기간(체크인~체크아웃)과 함께 여행 숙소로 등록한다."""
+
+    kind = serializers.ChoiceField(choices=["hotel"])
+    place_id = serializers.CharField(max_length=255)
+    session_token = serializers.CharField(required=False, allow_blank=True, default="")
+    city_code = serializers.CharField(max_length=8, required=False, allow_blank=True, default="")
+    check_in = serializers.DateField()
+    check_out = serializers.DateField()
+
+    def validate(self, attrs):
+        if attrs["check_out"] <= attrs["check_in"]:
+            raise serializers.ValidationError({"check_out": ["체크아웃은 체크인 다음 날 이후로 선택해 주세요."]})
+        return attrs
+
+
 class FlightAirportSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=4, required=False, allow_blank=True, default="")
     name = serializers.CharField(max_length=100)
@@ -236,6 +252,8 @@ class ItineraryView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         trip = owned_trip(request, pk)
+        if request.data.get("kind") == "hotel" and request.data.get("check_in"):
+            return _add_hotel_stay(request, trip)
         is_flight = request.data.get("kind") == "flight"
         serializer = (AddFlightSerializer if is_flight else AddPlaceSerializer)(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -256,6 +274,44 @@ class ItineraryView(APIView):
         place_cards(trip, days, [card])
         save_days(trip, days, ItineraryItem.Source.MANUAL)
         return itinerary_response(trip)
+
+
+def _add_hotel_stay(request, trip):
+    """
+    숙소를 숙박 기간과 함께 여행 숙소로 등록하고, 경로에 체크인·숙박·체크아웃 카드를 끼운다.
+    요약 카드도 바뀌므로 일정과 함께 바뀐 여행을 돌려준다.
+    """
+    serializer = AddHotelStaySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    if not (trip.start_date <= data["check_in"] and data["check_out"] <= trip.end_date):
+        return Response({"check_in": ["여행 기간 안의 날짜로 선택해 주세요."]}, status=status.HTTP_400_BAD_REQUEST)
+    # 다른 숙소가 묵는 밤과 겹치면 안 된다(체크아웃 날은 다음 숙소의 체크인으로 쓸 수 있다).
+    for other in trip.hotels.all():
+        other_out = other.check_out or date.fromordinal(other.check_in.toordinal() + 1)
+        if other.check_in < data["check_out"] and data["check_in"] < other_out:
+            return Response(
+                {"check_in": [f"'{other.name}' 숙박 기간과 겹쳐요. 겹치지 않는 날짜로 선택해 주세요."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    try:
+        detail = places.place_details(data["place_id"], data["session_token"])
+    except places.PlacesError as exc:
+        return Response({"detail": str(exc)}, status=exc.status_code)
+
+    hotel = trip.hotels.create(
+        name=(detail.get("name") or "")[:150], address=(detail.get("address") or "")[:255],
+        place_id=data["place_id"], latitude=detail.get("latitude"), longitude=detail.get("longitude"),
+        phone=(detail.get("phone") or "")[:40], city_code=data["city_code"],
+        check_in=data["check_in"], check_out=data["check_out"],
+    )
+    days = days_map(trip)
+    registration.insert_auto_cards(days, registration.hotel_cards(trip, hotel))
+    save_days(trip, days, ItineraryItem.Source.AUTO)
+    response = itinerary_response(trip)
+    response.data["trip"] = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
+    return response
+
 
 
 class ItineraryInitView(APIView):

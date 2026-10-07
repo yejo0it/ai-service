@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import DatePicker, { type ReactDatePickerCustomHeaderProps } from "react-datepicker";
+import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { createTrip, getHotelDetails, searchHotels, toErrorMessage } from "../api/client";
 import type { Airport, HotelSuggestion, Trip, TripPayload } from "../types/api";
@@ -32,9 +32,17 @@ import {
   useOutsideClose,
   type TimePart,
 } from "../components/pickers";
+import {
+  CalendarHeader,
+  formatKoreanDate,
+  formatWeekDay,
+  fromISODate,
+  toISODate,
+} from "../components/calendar";
 import { Field, SuggestInput } from "../components/formFields";
 import { findCityByName, searchCities, type CityOption } from "./cities";
 import { AirlineFlightFields, AirportInput, EMPTY_AIRPORT } from "./flightFields";
+import { StayRangeField, isNightTaken, stayLimitFrom } from "./stayRange";
 
 /* ------------------------------------------------------------------ *
  * 온보딩 상태 (Step 1~3 입력값 누적)
@@ -475,69 +483,6 @@ const DATE_MODES: { key: DateMode; label: string }[] = [
   { key: "dates", label: "날짜만 등록" },
 ];
 
-const pad2 = (value: number) => String(value).padStart(2, "0");
-
-/** Date -> "2026-10-01" */
-const toISODate = (date: Date | null) =>
-  date ? `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` : "";
-
-/** "2026-10-01" -> Date (타임존 밀림을 피하려고 로컬 자정으로 만든다) */
-const fromISODate = (value: string | undefined): Date | null =>
-  value ? new Date(`${value}T00:00:00`) : null;
-
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-/** "2026-10-01" -> "2026년 10월 1일 (목)" */
-const formatKoreanDate = (value: string) => {
-  const date = fromISODate(value);
-  if (!date) return "";
-  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${
-    WEEKDAYS[date.getDay()]
-  })`;
-};
-
-// react-datepicker 기본 로케일이 영문이라, 요일만 한글로 바꿔 표기한다.
-// (date-fns ko 로케일은 직접 의존하지 않는 패키지라 끌어다 쓰지 않는다)
-const WEEKDAY_KO: Record<string, string> = {
-  Sunday: "일",
-  Monday: "월",
-  Tuesday: "화",
-  Wednesday: "수",
-  Thursday: "목",
-  Friday: "금",
-  Saturday: "토",
-};
-const formatWeekDay = (name: string) => WEEKDAY_KO[name] ?? name.slice(0, 1);
-
-/** 달력 상단의 ‹ 2026년 10월 › 헤더. */
-function CalendarHeader({ date, decreaseMonth, increaseMonth }: ReactDatePickerCustomHeaderProps) {
-  const navClass =
-    "flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent";
-  return (
-    <div className="mb-1 flex items-center justify-between px-1">
-      <button
-        type="button"
-        onClick={decreaseMonth}
-        aria-label="이전 달"
-        className={navClass}
-      >
-        <i className="fas fa-chevron-left text-xs" aria-hidden="true" />
-      </button>
-      <span className="text-sm font-semibold text-slate-800">
-        {date.getFullYear()}년 {date.getMonth() + 1}월
-      </span>
-      <button
-        type="button"
-        onClick={increaseMonth}
-        aria-label="다음 달"
-        className={navClass}
-      >
-        <i className="fas fa-chevron-right text-xs" aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
 /**
  * 출국·귀국 일시. '날짜만 등록'·'숙박 기간'과 같은 버튼 + 달력 팝오버이고, 팝오버 안에서 시·분까지 고른다.
  * 날짜를 고르면 열어 둔 채 시각을 고르게 하고(기본 09:00), 분까지 고르면 닫는다. 값은 "YYYY-MM-DDTHH:mm".
@@ -873,127 +818,12 @@ const hotelLabel = (hotel: HotelSuggestion) => (
   </span>
 );
 
-/** "2026-10-01" -> "10월 1일 (목)" */
-const formatShortDate = (value: string) => formatKoreanDate(value).replace(/^\d+년 /, "");
-
 /** "2026-10-26" -> "2026-10-27" */
 const nextDay = (value: string) => {
   const date = new Date(`${value}T00:00:00`);
   date.setDate(date.getDate() + 1);
   return toISODate(date);
 };
-
-/** 다른 숙소가 이미 묵는 밤인지. 체크아웃 날은 비어 있으므로 다음 숙소의 체크인으로 쓸 수 있다. */
-const isNightTaken = (date: string, stays: Stay[]) =>
-  stays.some((stay) => stay.check_in <= date && date < stay.check_out);
-
-/** start에 체크인했을 때 가장 늦은 체크아웃 날. 뒤 숙소의 체크인 날 또는 여행 종료일이다. */
-const stayLimitFrom = (start: string, stays: Stay[], end: string) =>
-  stays.reduce(
-    (limit, stay) => (stay.check_in > start && stay.check_in < limit ? stay.check_in : limit),
-    end,
-  );
-
-/**
- * 체크인~체크아웃 범위 선택. 두 날짜를 모두 고르면 바로 반영하고 닫는다.
- * 다른 숙소(otherStays)가 묵는 밤은 고를 수 없고, 그 사이의 빈 구간은 자유롭게 고를 수 있다.
- */
-interface StayRangeFieldProps {
-  checkIn: string;
-  checkOut: string;
-  /** 여행 시작일 */
-  min: string;
-  /** 여행 종료일 */
-  max: string;
-  /** 다른 숙소들의 숙박 기간. 이미 묵는 밤은 고를 수 없다. */
-  otherStays: Stay[];
-  error?: string;
-  ariaLabel: string;
-  onChange: (checkIn: string, checkOut: string) => void;
-}
-
-function StayRangeField({
-  checkIn,
-  checkOut,
-  min,
-  max,
-  otherStays,
-  error,
-  ariaLabel,
-  onChange,
-}: StayRangeFieldProps) {
-  const [open, setOpen] = useState(false);
-  const [temp, setTemp] = useState<[Date | null, Date | null]>([null, null]);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-  useOutsideClose(wrapperRef, close);
-
-  const toggle = () => {
-    setTemp([fromISODate(checkIn), fromISODate(checkOut)]);
-    setOpen((previous) => !previous);
-  };
-
-  const pick = ([start, end]: [Date | null, Date | null]) => {
-    setTemp([start, end]);
-    if (start && end) {
-      onChange(toISODate(start), toISODate(end));
-      setOpen(false);
-    }
-  };
-
-  // 체크인을 고른 뒤에는 그 뒤로 이어서 묵을 수 있는 날까지만 체크아웃으로 고를 수 있다.
-  // 체크인보다 앞선 날을 누르면 체크인을 다시 고르는 것이다.
-  const lastDay = max || "9999-12-31";
-  const filterDate = (date: Date) => {
-    const value = toISODate(date);
-    const start = temp[0] && !temp[1] ? toISODate(temp[0]) : "";
-    if (start && value === start) return false;
-    if (start && value > start) return value <= stayLimitFrom(start, otherStays, lastDay);
-    return value < lastDay && !isNightTaken(value, otherStays);
-  };
-
-  const checkInDate = fromISODate(checkIn);
-  const checkOutDate = fromISODate(checkOut);
-  const nights =
-    checkInDate && checkOutDate
-      ? Math.round((checkOutDate.getTime() - checkInDate.getTime()) / 86400000)
-      : 0;
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <PickerButton
-        icon="far fa-calendar"
-        open={open}
-        invalid={Boolean(error)}
-        placeholder="체크인 ~ 체크아웃"
-        ariaLabel={ariaLabel}
-        onClick={toggle}
-      >
-        {checkIn && checkOut
-          ? `${formatShortDate(checkIn)} ~ ${formatShortDate(checkOut)} · ${nights}박`
-          : ""}
-      </PickerButton>
-
-      {open && (
-        // Field가 <label>이라 날짜 클릭이 PickerButton으로 전달돼 달력이 닫히는 것을 막는다.
-        <div className={POPOVER_CLASS} onClick={(event) => event.preventDefault()}>
-          <DatePicker
-            selectsRange
-            inline
-            minDate={fromISODate(min) ?? undefined}
-            maxDate={fromISODate(max) ?? undefined}
-            startDate={temp[0]}
-            endDate={temp[1]}
-            filterDate={filterDate}
-            onChange={pick}
-            renderCustomHeader={CalendarHeader}
-            formatWeekDay={formatWeekDay}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
 
 /** 숙소 한 칸: (여행지 선택) + 숙소 검색 + 자동 매핑된 주소 + 숙박 기간. */
 interface HotelRowProps {

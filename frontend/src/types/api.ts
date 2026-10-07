@@ -321,6 +321,16 @@ export interface AddFlightPayload {
   arrival_airport: { code: string; name: string; lat: number; lng: number };
 }
 
+/** 숙소 직접 추가: 숙박 기간과 함께 여행 숙소로 등록 */
+export interface AddHotelStayPayload {
+  kind: "hotel";
+  place_id: string;
+  session_token: string;
+  city_code: string;
+  check_in: ISODate;
+  check_out: ISODate;
+}
+
 export interface AddPlacePayload {
   kind: PlaceKind;
   day: ISODate;

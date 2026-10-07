@@ -501,7 +501,11 @@ export default function TripDetailPage() {
 
   const closePanel = useCallback(() => setPanel(null), []);
 
-  const onPlacesSaved = (itinerary: ItineraryResponse) => setItems(itinerary.items);
+  const onPlacesSaved = (itinerary: ItineraryResponse & { trip?: Trip }) => {
+    setItems(itinerary.items);
+    // 숙소를 숙박 기간과 함께 등록하면 요약 카드(숙소)도 바뀐다.
+    if (itinerary.trip) setTrip(itinerary.trip);
+  };
 
   const onPlacesDone = (addedDay: string) => {
     setDayIndex(Math.max(0, dates.indexOf(addedDay)));

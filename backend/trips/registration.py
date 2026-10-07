@@ -324,3 +324,52 @@ def sync_after_card_delete(trip, item):
         hotel.delete()
         return True, others
     return False, []
+
+
+# ------------------------------------------------------------------ #
+# 장소 직접 추가로 숙소 등록 (체크인~체크아웃)
+# ------------------------------------------------------------------ #
+
+def hotel_cards(trip, hotel):
+    """
+    등록 숙소 -> 경로의 숙소 카드 (프론트 initialCards의 숙소 카드와 같은 모양).
+    체크인 날(체크인, 'N박'), 사이 날(숙박), 체크아웃 날(체크아웃). 여행 기간 밖의 날은 만들지 않는다.
+    """
+    cards = []
+    total = (hotel.check_out - hotel.check_in).days if hotel.check_out else 0
+    for offset in range(total + 1):
+        day = date.fromordinal(hotel.check_in.toordinal() + offset)
+        if not trip.start_date <= day <= trip.end_date:
+            continue
+        label = "체크인" if offset == 0 else ("체크아웃" if offset == total else "숙박")
+        cards.append({
+            "day": day,
+            "kind": ItineraryItem.Kind.HOTEL,
+            "source": ItineraryItem.Source.AUTO,
+            "title": hotel.name,
+            "time": "",
+            "time_label": label,
+            "subtitle": f"{total}박" if label == "체크인" and total else "",
+            "stops": [{"kind": "hotel", "caption": label, "label": hotel.address or hotel.name,
+                       "lat": hotel.latitude, "lng": hotel.longitude}],
+            "phone": hotel.phone,
+        })
+    return cards
+
+
+def insert_auto_cards(days, cards):
+    """
+    자동 숙소 카드를 그날 일정에 끼운다(다른 카드는 그대로).
+    체크아웃은 맨 앞, 숙박은 그날 시작 카드들(체크아웃·출국·숙박) 뒤, 체크인은 귀국편 앞(없으면 맨 뒤).
+    """
+    for card in cards:
+        cards_of_day = days.setdefault(card["day"], [])
+        label = card["time_label"]
+        if label == "체크아웃":
+            index = 0
+        elif label in START_LABELS:
+            index = next((i for i, c in enumerate(cards_of_day) if c.get("time_label") not in START_LABELS),
+                         len(cards_of_day))
+        else:
+            index = next((i for i, c in enumerate(cards_of_day) if c.get("time_label") == "귀국"), len(cards_of_day))
+        cards_of_day.insert(index, card)
