@@ -371,8 +371,20 @@ class ItineraryReorderView(APIView):
         return itinerary_response(trip)
 
 
+# 장소를 다시 검색해 바꿀 수 있는 카드 (직접·AI로 추가한 장소. 여행 등록 정보에서 만든 항공·숙소 카드는 제외)
+PLACE_EDIT_KINDS = {
+    ItineraryItem.Kind.SIGHT, ItineraryItem.Kind.RESTAURANT, ItineraryItem.Kind.CAFE,
+    ItineraryItem.Kind.HOTEL, ItineraryItem.Kind.AIRPORT,
+}
+
+
 class ItineraryItemView(APIView):
-    """일정 카드 메모·시간 수정, 삭제"""
+    """
+    일정 카드 수정·삭제.
+    - memo, time("HH:MM" 또는 null=시간 미정)을 바꾼다.
+    - place_id(+session_token)를 주면 장소를 다시 검색해 고른 것으로 보고, 이름·주소·좌표·전화·영업시간을 새 장소로 바꾼다.
+      여행 등록 정보에서 만든 항공·숙소 카드(source=auto)는 등록 정보로 관리하므로 장소를 바꾸지 않는다.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -384,6 +396,24 @@ class ItineraryItemView(APIView):
         serializer = ItineraryItemSerializer(item, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         allowed = {key: value for key, value in serializer.validated_data.items() if key in ("memo", "time")}
+
+        place_id = str(request.data.get("place_id") or "").strip()
+        if place_id:
+            if item.source == ItineraryItem.Source.AUTO or item.kind not in PLACE_EDIT_KINDS:
+                return Response(
+                    {"place_id": ["여행 등록 정보에서 만든 항공·숙소 카드는 장소를 바꿀 수 없어요."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                detail = places.place_details(place_id[:255], str(request.data.get("session_token") or ""))
+            except places.PlacesError as exc:
+                return Response({"detail": str(exc)}, status=exc.status_code)
+            card = place_card(detail, item.kind)
+            allowed.update(
+                title=card["title"][:150], place_id=card["place_id"], address=card["address"][:255],
+                phone=card["phone"][:40], opening_hours=card["opening_hours"], stops=card["stops"],
+            )
+
         for key, value in allowed.items():
             setattr(item, key, value)
         item.save(update_fields=[*allowed.keys(), "updated_at"])

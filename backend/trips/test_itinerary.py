@@ -596,3 +596,54 @@ class AddHotelStayTests(APITestCase):
         # 앞 숙소의 체크아웃 날은 다음 숙소의 체크인으로 쓸 수 있다.
         self.assertEqual(self.add("2026-11-12", "2026-11-13").status_code, status.HTTP_200_OK)
         self.assertEqual(self.trip.hotels.count(), 2)
+
+
+class ItineraryItemEditTests(APITestCase):
+    """경로 카드 직접 수정: 장소 다시 검색, 방문 시간 변경·지우기"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="edit@example.com", email="edit@example.com")
+        self.client.force_authenticate(self.user)
+        self.trip = Trip.objects.create(owner=self.user, destinations=[{"city": "도쿄", "city_code": "tokyo"}],
+                                        start_date="2026-11-10", end_date="2026-11-12", itinerary_initialized=True)
+        self.place = ItineraryItem.objects.create(
+            trip=self.trip, day="2026-11-10", order=0, kind="sight", source="manual", title="도쿄타워",
+            address="옛 주소", phone="03-0000-1111", opening_hours=["월요일: 09:00~18:00"], memo="메모 유지",
+            stops=[{"kind": "place", "caption": "주소", "label": "옛 주소", "lat": 35.65, "lng": 139.74}],
+        )
+        self.hotel_auto = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=1, kind="hotel",
+                                                       source="auto", title="등록 숙소", time_label="체크인", stops=[])
+
+    def patch(self, item, data):
+        url = f"/api/v1/itinerary-items/{item.pk}/"
+        with mock.patch("trips.places.place_details", return_value=detail("스카이트리", SKYTREE, "sky")) as details:
+            return self.client.patch(url, data, format="json"), details
+
+    def test_research_place_replaces_details(self):
+        response, details = self.patch(self.place, {"place_id": "sky", "session_token": "tok", "time": "19:30"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        details.assert_called_once_with("sky", "tok")
+        self.place.refresh_from_db()
+        self.assertEqual((self.place.title, self.place.place_id, self.place.address, self.place.phone),
+                         ("스카이트리", "sky", "스카이트리 주소", "03-0000-0000"))
+        self.assertEqual(self.place.opening_hours, ["월요일: 10:00~22:00"])
+        self.assertEqual((self.place.stops[0]["lat"], self.place.stops[0]["label"]), (SKYTREE[0], "스카이트리 주소"))
+        self.assertEqual((self.place.time.strftime("%H:%M"), self.place.memo), ("19:30", "메모 유지"))
+        self.assertEqual(response.data["time"], "19:30")
+
+    def test_time_only_and_clear(self):
+        response, details = self.patch(self.place, {"time": "08:05"})
+        self.assertEqual(response.data["time"], "08:05")
+        details.assert_not_called()
+        response, _ = self.patch(self.place, {"time": None})
+        self.assertIsNone(response.data["time"])
+        self.place.refresh_from_db()
+        self.assertEqual(self.place.title, "도쿄타워")  # 장소는 그대로
+
+    def test_auto_card_place_cannot_change(self):
+        response, details = self.patch(self.hotel_auto, {"place_id": "sky"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        details.assert_not_called()
+        other = User.objects.create_user(username="edit2@example.com", email="edit2@example.com")
+        self.client.force_authenticate(other)
+        self.assertEqual(self.patch(self.place, {"time": "10:00"})[0].status_code, 404)

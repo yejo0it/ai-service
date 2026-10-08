@@ -14,6 +14,7 @@ import { formatMeridiemTime } from "../components/pickers";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
+import EditItemDrawer from "./EditItemDrawer";
 import TripItinerary from "./TripItinerary";
 import TripMap from "./TripMap";
 import { cityPoints, dayLabel, initialCards, numberStops, tripDates } from "./tripDays";
@@ -436,6 +437,7 @@ export default function TripDetailPage() {
   const [dayIndex, setDayIndex] = useState(0);
   const [panel, setPanel] = useState<Panel>(null);
   const [hotelDelete, setHotelDelete] = useState<ItineraryItem | null>(null);
+  const [editing, setEditing] = useState<ItineraryItem | null>(null);
   // AI 대화는 창을 닫았다 열어도 이어진다(이 여행 화면에 있는 동안).
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   useEffect(() => setAiMessages([]), [tripId]);
@@ -509,6 +511,13 @@ export default function TripDetailPage() {
     else removeCard(id);
   };
   const cancelHotelDelete = useCallback(() => setHotelDelete(null), []);
+  const closeEdit = useCallback(() => setEditing(null), []);
+
+  // 카드 수정 저장: 그 카드만 새 값으로 바꾼다(지도 핀도 새 위치로).
+  const onItemSaved = (updated: ItineraryItem) => {
+    setItems((current) => (current ?? []).map((item) => (item.id === updated.id ? updated : item)));
+    setEditing(null);
+  };
 
   const closePanel = useCallback(() => setPanel(null), []);
 
@@ -643,12 +652,16 @@ export default function TripDetailPage() {
                 numbers={numbers}
                 onReorder={onReorder}
                 onRemove={onRemove}
+                onEdit={setEditing}
               />
             )}
           </div>
         </section>
       </div>
 
+      {editing && (
+        <EditItemDrawer item={editing} trip={trip} dates={dates} onClose={closeEdit} onSaved={onItemSaved} />
+      )}
       {hotelDelete && (
         <HotelDeleteDialog
           item={hotelDelete}
