@@ -23,7 +23,8 @@ services:
     build: ./backend
     container_name: pinroute-backend
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-only-insecure-key}
+      # 비어 있으면 개발(DEBUG=1)에서는 자동 생성, 운영에서는 시작하지 않는다(config/settings.py).
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
       # 컨테이너 사이에서는 서비스명 db, 내부 포트 5432로 접속한다.
