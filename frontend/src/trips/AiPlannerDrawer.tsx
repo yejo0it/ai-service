@@ -346,6 +346,12 @@ export default function AiPlannerDrawer({ trip, dates, messages, setMessages, on
               <p className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-slate-100 px-3.5 py-2 text-sm text-slate-800">
                 {message.content}
               </p>
+              {(message.result?.redacted?.length ?? 0) > 0 && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+                  <i className="fas fa-user-shield text-slate-400" aria-hidden="true" />
+                  개인정보로 보이는 내용({message.result?.redacted?.join(", ")})은 가리고 AI에 보냈어요.
+                </p>
+              )}
               {/* 수정/덮어쓰기 확인: 가장 최근 답변에만 선택 버튼 (직접 입력해도 된다) */}
               {index === messages.length - 1 && (message.result?.choices.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5" aria-label="답변 선택">

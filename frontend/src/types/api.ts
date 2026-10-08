@@ -401,6 +401,8 @@ export interface AiProposeResponse {
   unresolved: string[];
   /** 서비스 범위 밖 요청이라 거절했는지 (변경 제안 없음) */
   refused?: boolean;
+  /** 가리고 AI에 보낸 민감정보 종류 (예: 카드번호, 비밀번호) */
+  redacted?: string[];
   /** 답변 아래에 보여줄 선택 버튼 (예: 기존 정보 수정 / 새로 입력) */
   choices: string[];
   /** 항공·숙소 등록 미리보기 */

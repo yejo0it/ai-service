@@ -603,6 +603,14 @@ class AiProposeView(APIView):
         limited = _check_ai_limits(request, self)
         if limited:
             return limited
+        # 사용자가 적은 개인정보·인증 정보는 외부 LLM에 보내지 않는다(대화는 서버에 저장하지 않는다).
+        redacted = []
+        safe_messages = []
+        for turn in messages:
+            content, found = chat_guard.redact_sensitive(turn["content"])
+            safe_messages.append({**turn, "content": content})
+            redacted += [label for label in found if label not in redacted]
+        messages = safe_messages
 
         days = days_map(trip)
         ordered_days = sorted(days)
@@ -699,6 +707,8 @@ class AiProposeView(APIView):
             {
                 "reply": reply,
                 "choices": choices,
+                # 가리고 보낸 민감정보 종류 (화면에 안내)
+                "redacted": redacted,
                 "proposal": proposal,
                 "preview": preview,
                 "registration": {
