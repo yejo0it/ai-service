@@ -17,6 +17,10 @@ from .chat_guard import strip_trip_tags
 
 MODEL = "claude-sonnet-5"
 MAX_TOKENS = 16000
+# 모델 응답 상한 (서비스가 쓰기 전에 자른다)
+MAX_REPLY_CHARS = 2000
+MAX_ADDITIONS = 60
+MAX_CHECKLIST = 10
 
 
 class PlanAddition(BaseModel):
@@ -209,7 +213,9 @@ def propose(trip, days, items_by_day, conversation, draft=None):
         raise PlannerError("AI 키(ANTHROPIC_API_KEY)가 설정되지 않았어요.", status_code=503)
 
     messages = [{"role": turn["role"], "content": strip_trip_tags(turn["content"])} for turn in conversation]
-    context = trip_context(trip, days, items_by_day, draft)
+    # 여행 정보에는 사용자가 정한 이름(장소·숙소)이 들어가므로, 태그를 흉내 내 경계를 깨지 못하게 정리한다.
+    # API 키·DB 접속 정보 같은 서버 설정은 넣지 않는다(여행·일정 데이터만).
+    context = strip_trip_tags(trip_context(trip, days, items_by_day, draft))
     messages[-1] = {
         "role": "user",
         "content": f"<current_trip>\n{context}\n</current_trip>\n\n{messages[-1]['content']}",
@@ -237,4 +243,16 @@ def propose(trip, days, items_by_day, conversation, draft=None):
         raise PlannerError("이 요청은 도와드리기 어려워요. 다르게 말씀해 주세요.", status_code=400)
     if response.parsed_output is None:
         raise PlannerError("AI 응답을 이해하지 못했어요. 다시 시도해 주세요.")
-    return response.parsed_output
+    return limit_plan(response.parsed_output)
+
+
+def limit_plan(plan):
+    """
+    모델 응답은 실행하지 않고 데이터로만 쓰며, 서버가 쓰기 전에 크기를 제한한다.
+    (장소·날짜·시간·id는 각 뷰에서 실제 장소 검색·여행 기간·사용자의 일정 id로 다시 확인한다)
+    """
+    plan.reply = plan.reply[:MAX_REPLY_CHARS]
+    plan.additions = plan.additions[:MAX_ADDITIONS]
+    for addition in plan.additions:
+        addition.checklist = [text[:200] for text in addition.checklist[:MAX_CHECKLIST]]
+    return plan

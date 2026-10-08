@@ -4,7 +4,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-insecure-key")
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+# 환경변수가 없으면 끈다(운영에서 에러 화면에 설정·요청 정보가 보이지 않게). 개발 환경은 docker-compose가 1로 켠다.
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,backend").split(",")
 
 INSTALLED_APPS = [
@@ -85,8 +86,9 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    # 인증 API(accounts.views.AuthAPIView)의 IP당 요청 제한
-    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour"},
+    # 인증 API(accounts.views.AuthAPIView)의 IP당 요청 제한,
+    # AI와 함께 만들기(모델 호출)의 사용자당 요청 제한: 1분 10회, 최근 24시간 100회
+    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "ai_minute": "10/min", "ai_day": "100/day"},
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
