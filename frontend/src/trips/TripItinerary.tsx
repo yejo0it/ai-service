@@ -35,10 +35,17 @@ interface ItineraryCardProps {
   /** 위치별 지도 핀 번호 (stopKey -> 번호) */
   numbers: Map<string, number>;
   onRemove: (id: number) => void;
+  onEdit: (item: ItineraryItem) => void;
 }
 
-/** 일정 카드: 타임라인 점, 드래그 손잡이, 이름 + 지도 번호, 주소, 전화·영업시간, x 삭제 */
-function ItineraryCard({ item, first, last, numbers, onRemove }: ItineraryCardProps) {
+/** 수정할 수 있는 카드 (등록 정보에서 만든 항공·숙소 카드는 등록 정보·AI로 관리한다) */
+export const canEditItem = (item: ItineraryItem) => item.source !== "auto";
+
+/** 장소를 다시 검색해 바꿀 수 있는 카드 (직접·AI로 추가한 장소. 항공편은 시간만 바꾼다) */
+export const canResearchPlace = (item: ItineraryItem) => canEditItem(item) && item.kind !== "flight";
+
+/** 일정 카드: 타임라인 점, 드래그 손잡이, 이름 + 지도 번호, 주소, 전화·영업시간, 수정(연필)·삭제(x) */
+function ItineraryCard({ item, first, last, numbers, onRemove, onEdit }: ItineraryCardProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
   const style = KIND_STYLE[item.kind];
@@ -102,6 +109,17 @@ function ItineraryCard({ item, first, last, numbers, onRemove }: ItineraryCardPr
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <span className="text-xs tabular-nums text-slate-400">{item.time ?? item.time_label}</span>
+                  {canEditItem(item) && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(item)}
+                      aria-label={`${item.title} 수정`}
+                      title="수정"
+                      className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <i className="fas fa-pen text-[11px]" aria-hidden="true" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onRemove(item.id)}
@@ -162,10 +180,11 @@ interface TripItineraryProps {
   numbers: Map<string, number>;
   onReorder: (items: ItineraryItem[]) => void;
   onRemove: (id: number) => void;
+  onEdit: (item: ItineraryItem) => void;
 }
 
 /** 그날의 일정 카드 목록. 손잡이를 끌어(또는 키보드로) 순서를 바꾸고, x로 뺀다. 모두 저장된다. */
-export default function TripItinerary({ items, numbers, onReorder, onRemove }: TripItineraryProps) {
+export default function TripItinerary({ items, numbers, onReorder, onRemove, onEdit }: TripItineraryProps) {
   const sensors = useSensors(
     // 살짝 움직인 뒤부터 드래그로 본다(버튼 클릭과 구분).
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -201,6 +220,7 @@ export default function TripItinerary({ items, numbers, onReorder, onRemove }: T
                 last={index === items.length - 1}
                 numbers={numbers}
                 onRemove={onRemove}
+                onEdit={onEdit}
               />
             ))}
           </ol>

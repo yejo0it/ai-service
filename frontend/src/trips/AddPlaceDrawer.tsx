@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addItineraryPlace, searchPlaces, toErrorMessage } from "../api/client";
+import { useRef, useState, type FormEvent } from "react";
+import { addItineraryPlace, toErrorMessage } from "../api/client";
 import { toISODate } from "../components/calendar";
 import { COMPACT_LABEL_CLASS } from "../components/formFields";
 import { TimeField, formatMeridiemTime } from "../components/pickers";
@@ -17,6 +17,7 @@ import type {
 import type { AirlineSelection, AirportDraft, Stay } from "../types/onboarding";
 import { formatMonthDay } from "../utils/date";
 import Drawer from "./Drawer";
+import usePlaceSearch, { cityCodeFor } from "./usePlaceSearch";
 import { KIND_STYLE } from "./TripItinerary";
 import { dayLabel } from "./tripDays";
 
@@ -65,14 +66,6 @@ interface AddPlaceDrawerProps {
   onDone: (day: string) => void;
 }
 
-/** 여행 기간 중 그날 머무를 것 같은 여행지 (여행지를 순서대로 기간에 고르게 나눈다). 검색 위치 편향에만 쓴다. */
-const cityCodeFor = (trip: Trip, dayIndex: number, dayCount: number) => {
-  const destinations = trip.destinations.filter((dest) => dest.city_code);
-  if (destinations.length === 0) return undefined;
-  return destinations[Math.min(destinations.length - 1, Math.floor((dayIndex * destinations.length) / dayCount))]
-    .city_code;
-};
-
 /**
  * 장소 직접 추가: 유형 · 장소 검색 · 날짜 · 시간(선택)을 입력해 목록에 쌓고, 한 번에 등록한다.
  * 공항은 새 여행 만들기의 항공권 입력을 재활용해 단일 노선 한 편(항공사 · 편명 · 출발 · 도착 공항)으로 받는다.
@@ -92,8 +85,6 @@ export default function AddPlaceDrawer({
   const [kind, setKind] = useState<PlaceKind>(initialKind);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<HotelSuggestion | null>(null);
-  const [suggestions, setSuggestions] = useState<HotelSuggestion[]>([]);
-  const [searchError, setSearchError] = useState("");
   const [day, setDay] = useState(initialDay);
   const [time, setTime] = useState("");
   const [sessionToken, setSessionToken] = useState(() => crypto.randomUUID());
@@ -115,32 +106,14 @@ export default function AddPlaceDrawer({
 
   const isFlight = kind === "airport";
 
-  // 입력어가 바뀌면 300ms 뒤 자동완성 (장소를 고른 뒤, 항공편 입력 중에는 멈춘다)
-  useEffect(() => {
-    const keyword = query.trim();
-    if (isFlight || selected || keyword.length < 2) {
-      setSuggestions([]);
-      return undefined;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      searchPlaces({ input: keyword, sessionToken, cityCode, kind })
-        .then((result) => {
-          if (cancelled) return;
-          setSuggestions(result);
-          setSearchError("");
-        })
-        .catch((err: unknown) => {
-          if (cancelled) return;
-          setSuggestions([]);
-          setSearchError(toErrorMessage(err));
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [query, selected, sessionToken, cityCode, kind, isFlight]);
+  // 장소 자동완성 (장소를 고른 뒤, 항공편 입력 중에는 멈춘다)
+  const { suggestions, searchError } = usePlaceSearch({
+    query,
+    enabled: !isFlight && !selected,
+    sessionToken,
+    cityCode,
+    kind,
+  });
 
   const flightReady = Boolean(departure.airport && arrival.airport);
   const stayReady = Boolean(checkIn && checkOut);

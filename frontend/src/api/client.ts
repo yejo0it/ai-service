@@ -137,7 +137,14 @@ export const addItineraryPlace = (tripId: number, payload: AddPlacePayload | Add
 export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
   api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/reorder/`, { day, ids }).then((res) => res.data);
 
-export const updateItineraryItem = (itemId: number, payload: { memo?: string; time?: string | null }) =>
+/**
+ * 일정 카드 수정. time은 "HH:MM" 또는 null(시간 미정).
+ * place_id(+session_token)를 주면 장소를 다시 검색해 고른 것으로 보고 이름·주소·전화·영업시간을 바꾼다.
+ */
+export const updateItineraryItem = (
+  itemId: number,
+  payload: { memo?: string; time?: string | null; place_id?: string; session_token?: string },
+) =>
   api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
 
 /**
