@@ -72,7 +72,8 @@ def _time(value):
 
 
 def _airport(code, name):
-    code = (code or "").strip().upper()[:3]
+    # 모델이 준 공항 코드는 영문 대문자 3자리만 남긴다.
+    code = re.sub(r"[^A-Z]", "", (code or "").upper())[:3]
     name = (name or "").strip()[:60] or code
     return {"code": code, "name": name} if name else None
 

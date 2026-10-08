@@ -20,6 +20,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from . import ai_planner, chat_guard, places, registration
@@ -56,12 +57,20 @@ class ItineraryItemSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "order", "source", "checklist")
 
 
+# 클라이언트가 보내는 카드(AI 제안 적용·자동 카드)는 그대로 믿지 않는다: 값의 종류·범위·개수를 제한한다.
+STOP_KINDS = ["airport", "hotel", "place", "city"]
+PHONE_PATTERN = re.compile(r"^[0-9+\-().\s]*$")
+MAX_STOPS = 10
+MAX_OPENING_HOURS = 14
+MAX_CHECKLIST = 20
+
+
 class StopSerializer(serializers.Serializer):
-    kind = serializers.CharField(max_length=12)
+    kind = serializers.ChoiceField(choices=STOP_KINDS)
     caption = serializers.CharField(max_length=20, allow_blank=True)
     label = serializers.CharField(max_length=255)
-    lat = serializers.FloatField(required=False, allow_null=True)
-    lng = serializers.FloatField(required=False, allow_null=True)
+    lat = serializers.FloatField(required=False, allow_null=True, min_value=-90, max_value=90)
+    lng = serializers.FloatField(required=False, allow_null=True, min_value=-180, max_value=180)
 
 
 class CardSerializer(serializers.Serializer):
@@ -73,12 +82,16 @@ class CardSerializer(serializers.Serializer):
     time = serializers.RegexField(TIME_PATTERN, required=False, allow_blank=True, default="")
     time_label = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
     subtitle = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
-    stops = StopSerializer(many=True, required=False, default=list)
+    stops = StopSerializer(many=True, required=False, default=list, max_length=MAX_STOPS)
     place_id = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     address = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
-    phone = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
-    opening_hours = serializers.ListField(child=serializers.CharField(), required=False, default=list)
-    checklist = serializers.ListField(child=serializers.CharField(max_length=200), required=False, default=list)
+    phone = serializers.RegexField(PHONE_PATTERN, max_length=40, required=False, allow_blank=True, default="")
+    opening_hours = serializers.ListField(
+        child=serializers.CharField(max_length=200), required=False, default=list, max_length=MAX_OPENING_HOURS
+    )
+    checklist = serializers.ListField(
+        child=serializers.CharField(max_length=200), required=False, default=list, max_length=MAX_CHECKLIST
+    )
 
 
 def itinerary_response(trip):
@@ -524,6 +537,54 @@ def apply_changes(trip, days, additions, remove_ids, moves):
     place_cards(trip, days, moved_cards + additions)
 
 
+class _AiThrottle(UserRateThrottle):
+    """
+    AI 요청 제한(사용자별). 모든 제한을 통과했을 때만 한 번으로 센다
+    (한 제한에 걸려 거절된 요청이 다른 제한의 횟수를 쓰지 않게).
+    """
+
+    def throttle_success(self):
+        return True
+
+    def record(self):
+        self.history.insert(0, self.now)
+        self.cache.set(self.key, self.history, self.duration)
+
+
+class AiMinuteThrottle(_AiThrottle):
+    scope = "ai_minute"
+
+
+class AiDayThrottle(_AiThrottle):
+    scope = "ai_day"
+
+
+AI_LIMIT_MESSAGES = {
+    "ai_minute": "AI 요청이 너무 많아요. 1분 뒤에 다시 시도해 주세요.",
+    "ai_day": "최근 24시간 동안 AI 요청 한도(100회)를 모두 썼어요. 나중에 다시 시도해 주세요.",
+}
+
+
+def _check_ai_limits(request, view):
+    """
+    모델을 부르기 직전에 요청 제한을 확인한다. 넘으면 429 응답, 아니면 None(이번 요청을 센다).
+    서버가 미리 거절한 요청(프롬프트 인젝션)은 이 확인 전에 끝나므로 세지 않는다.
+    """
+    throttles = [AiMinuteThrottle(), AiDayThrottle()]
+    denied = [throttle for throttle in throttles if not throttle.allow_request(request, view)]
+    if denied:
+        wait = max(int(throttle.wait() or 0) for throttle in denied)
+        scope = "ai_day" if any(throttle.scope == "ai_day" for throttle in denied) else "ai_minute"
+        return Response(
+            {"detail": AI_LIMIT_MESSAGES[scope]},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(max(wait, 1))},
+        )
+    for throttle in throttles:
+        throttle.record()
+    return None
+
+
 class AiProposeView(APIView):
     """대화 -> 일정 변경 제안. 장소를 실제 장소로 확정하고, 적용했을 때의 일정을 미리 계산해 돌려준다."""
 
@@ -538,6 +599,10 @@ class AiProposeView(APIView):
         # 시스템 지시를 무시·공개하라는 뻔한 입력은 모델을 부르지 않고 바로 거절한다.
         if chat_guard.looks_like_injection(messages[-1]["content"]):
             return _refusal_response()
+        # 모델을 부르는 요청만 센다: 사용자별 1분 10회, 최근 24시간 100회
+        limited = _check_ai_limits(request, self)
+        if limited:
+            return limited
 
         days = days_map(trip)
         ordered_days = sorted(days)
@@ -724,14 +789,19 @@ class HotelProposalSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150)
     address = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     place_id = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
-    latitude = serializers.FloatField(required=False, allow_null=True, default=None)
-    longitude = serializers.FloatField(required=False, allow_null=True, default=None)
-    phone = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
+    latitude = serializers.FloatField(required=False, allow_null=True, default=None, min_value=-90, max_value=90)
+    longitude = serializers.FloatField(required=False, allow_null=True, default=None, min_value=-180, max_value=180)
+    phone = serializers.RegexField(PHONE_PATTERN, max_length=40, required=False, allow_blank=True, default="")
     city_code = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
     check_in = serializers.DateField()
     check_out = serializers.DateField(required=False, allow_null=True, default=None)
     # 미리보기 표시용 (적용할 때는 쓰지 않는다)
     status = serializers.ChoiceField(choices=["new", "updated", "same"], required=False, default="same")
+
+
+# 적용 요청 한 번에 담을 수 있는 개수 상한 (긴 여행의 전체 계획도 들어가는 정도)
+MAX_PROPOSAL_ITEMS = 200
+MAX_HOTELS = 30
 
 
 class ProposalSerializer(serializers.Serializer):
@@ -740,15 +810,17 @@ class ProposalSerializer(serializers.Serializer):
         day = serializers.DateField()
         time = serializers.RegexField(TIME_PATTERN, required=False, allow_null=True, allow_blank=True)
 
-    additions = CardSerializer(many=True, default=list)
-    remove_item_ids = serializers.ListField(child=serializers.IntegerField(), default=list)
-    moves = Move(many=True, default=list)
+    additions = CardSerializer(many=True, default=list, max_length=MAX_PROPOSAL_ITEMS)
+    remove_item_ids = serializers.ListField(
+        child=serializers.IntegerField(), default=list, max_length=MAX_PROPOSAL_ITEMS
+    )
+    moves = Move(many=True, default=list, max_length=MAX_PROPOSAL_ITEMS)
     # 항공·숙소 등록 (hotels가 null이면 숙소는 그대로)
     flight_changed = serializers.BooleanField(default=False)
     flight_info = AiFlightInfoSerializer(required=False, allow_null=True, default=None)
-    hotels = HotelProposalSerializer(many=True, required=False, allow_null=True, default=None)
+    hotels = HotelProposalSerializer(many=True, required=False, allow_null=True, default=None, max_length=MAX_HOTELS)
     # 바뀐 항공·숙소로 프론트가 다시 만든 경로의 자동 항공·숙소 카드
-    auto_cards = CardSerializer(many=True, required=False, default=list)
+    auto_cards = CardSerializer(many=True, required=False, default=list, max_length=MAX_PROPOSAL_ITEMS)
 
     def validate(self, attrs):
         for hotel in attrs.get("hotels") or []:

@@ -2,6 +2,7 @@ import os
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -507,6 +508,8 @@ class ChatScopeTests(APITestCase):
         return ai_planner.PlanResponse(**fields)
 
     def ask(self, text, plan=None):
+        # 응답 범위만 확인하는 테스트라 AI 요청 제한(1분 10회) 횟수는 매번 비운다.
+        cache.clear()
         with mock.patch("trips.ai_planner.propose", return_value=plan or self.plan()) as propose:
             response = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
                                         {"messages": [{"role": "user", "content": text}]}, format="json")
