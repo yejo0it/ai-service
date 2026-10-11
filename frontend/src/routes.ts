@@ -7,6 +7,7 @@ export const ROUTES = {
   MY_TRIPS: "/trips",
   PACKING: "/packing",
   TRIP_DETAIL: "/trips/:tripId",
+  TRIP_INVITE: "/trips/invite/:token",
   LOGIN: "/login",
   SIGNUP: "/signup",
   FIND_ID: "/find-id",
@@ -19,3 +20,11 @@ export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
 
 /** "/trips/12" */
 export const tripDetailPath = (tripId: number) => `/trips/${tripId}`;
+
+const TRIP_INVITE_PREFIX = "/trips/invite/";
+
+/** 초대 링크 주소 (카카오톡·복사로 나누므로 전체 URL) */
+export const tripInviteUrl = (token: string) => `${window.location.origin}${TRIP_INVITE_PREFIX}${token}`;
+
+/** 초대 링크로 들어온 경로인지 (로그인 화면 안내 문구용) */
+export const isTripInvitePath = (path?: string) => Boolean(path?.startsWith(TRIP_INVITE_PREFIX));

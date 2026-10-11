@@ -96,9 +96,45 @@ export interface Trip extends Omit<TripPayload, "hotels"> {
   destination_label: string;
   has_flight: boolean;
   nights: number;
+  /** 내가 만든 여행인지 (초대받은 일행이면 false: 여행 삭제·초대 링크 발급은 만든 회원만 한다) */
+  is_owner: boolean;
   hotels: Hotel[];
   created_at: ISODateTime;
   updated_at: ISODateTime;
+}
+
+/* ------------------------------------------------------------------ *
+ * 일행 초대
+ * ------------------------------------------------------------------ */
+
+/** 초대 링크(/trips/invite/{token}). 여행마다 하나, 7일 동안 쓸 수 있다. */
+export interface TripInvitation {
+  token: string;
+  expires_at: ISODateTime;
+}
+
+export interface TripMemberUser {
+  id: number;
+  /** 이름만 보여준다 (이메일은 다른 회원에게 보내지 않는다) */
+  name: string;
+}
+
+export interface TripMembers {
+  is_owner: boolean;
+  /** 여행을 만든 회원 */
+  owner: TripMemberUser | null;
+  /** 초대받아 함께하는 일행 (만든 회원 제외) */
+  members: (TripMemberUser & { joined_at: ISODateTime })[];
+  /** 만든 회원을 뺀 최대 일행 수 */
+  max_members: number;
+  /** 지금 쓸 수 있는 초대 링크. 없거나 만료됐으면 null */
+  invitation: TripInvitation | null;
+}
+
+export interface InvitationAcceptResponse {
+  trip_id: number;
+  /** 이번에 새로 일행이 됐는지 (이미 함께하는 여행이면 false) */
+  joined: boolean;
 }
 
 export interface Airline {

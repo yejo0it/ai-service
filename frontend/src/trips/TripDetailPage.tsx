@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deleteItineraryItem,
   getItinerary,
@@ -15,6 +15,7 @@ import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
 import EditItemDrawer from "./EditItemDrawer";
+import InviteDialog from "./InviteDialog";
 import TripItinerary from "./TripItinerary";
 import TripMap from "./TripMap";
 import { cityPoints, dayLabel, initialCards, numberStops, tripDates } from "./tripDays";
@@ -399,24 +400,18 @@ function RouteMenu({ onOpen }: { onOpen: (panel: Exclude<Panel, null>) => void }
 }
 
 /** 여행 제목 오른쪽 끝의 일행 초대하기 (준비 중) */
-function InviteButton() {
-  const [notice, setNotice] = useState("");
+function InviteButton({ trip }: { trip: Trip }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={() => setNotice("'일행 초대하기'는 준비 중이에요.")}
-        className={`${OUTLINE_BUTTON} whitespace-nowrap`}
-      >
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={`${OUTLINE_BUTTON} shrink-0 whitespace-nowrap`}>
         <i className="fas fa-user-plus text-xs" aria-hidden="true" />
         일행 초대하기
       </button>
-      {notice && (
-        <p role="status" className="text-xs text-slate-500">
-          {notice}
-        </p>
-      )}
-    </div>
+      {open && <InviteDialog trip={trip} onClose={close} onLeft={() => navigate(ROUTES.MY_TRIPS, { replace: true })} />}
+    </>
   );
 }
 
@@ -597,7 +592,7 @@ export default function TripDetailPage() {
             {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
           </p>
         </div>
-        <InviteButton />
+        <InviteButton trip={trip} />
       </header>
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 
 class TimeStampedModel(models.Model):
@@ -24,6 +25,14 @@ class Airline(models.Model):
 
     def __str__(self) -> str:
         return f"[{self.iata_code}] {self.name_ko}"
+
+class TripQuerySet(models.QuerySet):
+    def accessible_to(self, user):
+        """회원이 보고 편집할 수 있는 여행: 직접 만든 여행 + 초대받아 함께하는 여행."""
+        return self.filter(
+            Q(owner=user) | Q(pk__in=TripMember.objects.filter(user=user).values("trip_id"))
+        )
+
 
 class Trip(TimeStampedModel):
     """온보딩 Step 1(목적지) + Step 2(항공권/날짜)의 결과물."""
@@ -75,6 +84,8 @@ class Trip(TimeStampedModel):
     )
     # 상세 화면을 처음 열 때 항공편·숙소로 일정 카드를 한 번 만들었는지
     itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
+
+    objects = TripQuerySet.as_manager()
 
     class Meta:
         verbose_name = "여행"
@@ -214,3 +225,56 @@ class ChecklistItem(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.text
+
+
+class TripMember(models.Model):
+    """
+    초대 링크로 여행에 함께하는 일행. 만든 회원(Trip.owner)은 포함하지 않는다.
+    일정·장소·항공·숙소·AI·짐싸기 노트는 만든 회원과 똑같이 편집하고,
+    여행 삭제·초대 링크 발급·일행 내보내기는 만든 회원만 한다.
+    """
+
+    # 만든 회원을 빼고 함께할 수 있는 일행 수
+    MAX_PER_TRIP = 10
+
+    trip = models.ForeignKey(Trip, related_name="members", on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name="trip_memberships", on_delete=models.CASCADE
+    )
+    joined_at = models.DateTimeField("참여일", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "여행 일행"
+        verbose_name_plural = "여행 일행"
+        ordering = ("joined_at", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("trip", "user"), name="trip_member_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.trip_id}"
+
+
+class TripInvitation(models.Model):
+    """
+    여행 초대 링크(/trips/invite/{token}). 여행마다 하나이고 만든 뒤 7일 동안 쓸 수 있다.
+    새 링크를 만들면 토큰을 바꿔 저장하므로 이전 링크는 바로 쓸 수 없게 된다.
+    """
+
+    VALID_DAYS = 7
+
+    trip = models.OneToOneField(Trip, related_name="invitation", on_delete=models.CASCADE)
+    token = models.CharField("토큰", max_length=64, unique=True)
+    created_at = models.DateTimeField("발급일")
+    expires_at = models.DateTimeField("만료일")
+
+    class Meta:
+        verbose_name = "여행 초대 링크"
+        verbose_name_plural = "여행 초대 링크"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} ~{self.expires_at:%Y-%m-%d}"
+
+    @property
+    def is_valid(self) -> bool:
+        return self.expires_at > timezone.now()

@@ -83,15 +83,18 @@ function TripListItem({ trip, today, onDeleted }: TripListItemProps) {
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label={`${trip.destination_label} 여행 삭제`}
-            title="삭제"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
-          >
-            <i className="far fa-trash-alt" aria-hidden="true" />
-          </button>
+          // 여행 삭제는 만든 회원만 한다 (초대받은 일행은 상세의 일행 초대하기에서 나갈 수 있다)
+          trip.is_owner && (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              aria-label={`${trip.destination_label} 여행 삭제`}
+              title="삭제"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
+            >
+              <i className="far fa-trash-alt" aria-hidden="true" />
+            </button>
+          )
         )}
       </div>
       {error && <p className="mt-1 px-2 text-xs text-rose-600">{error}</p>}
