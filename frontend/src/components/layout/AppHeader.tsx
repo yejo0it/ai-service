@@ -18,7 +18,6 @@ interface NavItem {
 /** 경로가 없는 메뉴는 "준비 중"으로 표시한다. */
 const NAV_ITEMS: NavItem[] = [
   { label: "홈", icon: "fas fa-home", to: ROUTES.HOME, end: true },
-  { label: "새 여행 만들기", icon: "fas fa-plus", to: ROUTES.ONBOARDING },
   { label: "내 여행", icon: "fas fa-suitcase", to: ROUTES.MY_TRIPS },
   { label: "짐싸기 노트", icon: "fas fa-clipboard-list", to: ROUTES.PACKING },
 ];

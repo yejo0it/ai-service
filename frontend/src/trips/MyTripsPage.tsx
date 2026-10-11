@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { deleteTrip, toErrorMessage } from "../api/client";
-import { ROUTES, tripDetailPath } from "../routes";
+import { tripDetailPath } from "../routes";
 import type { Trip } from "../types/api";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import type { TripDetailState } from "./TripDetailPage";
@@ -114,12 +114,6 @@ export default function MyTripsPage() {
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">내 여행</h1>
           <p className="mt-1 text-sm text-slate-500">등록한 여행을 모아 봤어요.</p>
         </div>
-        <Link
-          to={ROUTES.ONBOARDING}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
-        >
-          <i className="fas fa-plus text-xs" aria-hidden="true" />새 여행
-        </Link>
       </div>
 
       {tripsState.status === "loading" && (

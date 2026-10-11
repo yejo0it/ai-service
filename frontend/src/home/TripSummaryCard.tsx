@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toErrorMessage } from "../api/client";
-import { ROUTES, tripDetailPath } from "../routes";
+import { tripDetailPath } from "../routes";
 import TripColorPicker from "../trips/TripColorPicker";
 import type { TripDetailState } from "../trips/TripDetailPage";
 import { dDayLabel, tripCities, tripColor } from "../trips/tripUtils";
@@ -20,6 +20,8 @@ interface TripSummaryCardProps {
   /** 여행 색 저장. 실패하면 에러를 던진다. */
   onColorChange: (trip: Trip, color: TripColorKey | "") => Promise<void>;
   onClose: () => void;
+  /** 새 여행 만들기 모달 열기 (그날 여행이 없을 때) */
+  onNewTrip: () => void;
 }
 
 interface TripColorMenuProps {
@@ -110,6 +112,7 @@ export default function TripSummaryCard({
   onSelectTrip,
   onColorChange,
   onClose,
+  onNewTrip,
 }: TripSummaryCardProps) {
   const navigate = useNavigate();
   if (!trip && !date) return null;
@@ -213,12 +216,13 @@ export default function TripSummaryCard({
       {tripsOnDate.length === 0 ? (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-500">이 날은 등록된 여행이 없어요.</p>
-          <Link
-            to={ROUTES.ONBOARDING}
+          <button
+            type="button"
+            onClick={onNewTrip}
             className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
           >
             <i className="fas fa-plus text-xs" aria-hidden="true" />새 여행 만들기
-          </Link>
+          </button>
         </div>
       ) : (
         <ul className="mt-3 space-y-2">
