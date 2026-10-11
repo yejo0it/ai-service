@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from . import invitation_views as invitation
 from . import itinerary_views as itinerary
 from .views import (
     AirlineViewSet,
@@ -29,6 +30,11 @@ urlpatterns = [
     path("trips/<int:pk>/packing-note/", itinerary.PackingNoteView.as_view(), name="trip-packing-note"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),
+    # 일행 초대 (router의 trips/{pk}/ 보다 먼저 둔다)
+    path("trips/<int:pk>/members/", invitation.TripMembersView.as_view(), name="trip-members"),
+    path("trips/<int:pk>/members/<int:user_id>/", invitation.TripMemberView.as_view(), name="trip-member"),
+    path("trips/<int:pk>/invitations/", invitation.TripInvitationCreateView.as_view(), name="trip-invitations"),
+    path("trips/invitations/<str:token>/accept/", invitation.InvitationAcceptView.as_view(), name="trip-invitation-accept"),
     path("itinerary-items/<int:item_id>/", itinerary.ItineraryItemView.as_view(), name="itinerary-item"),
     path("itinerary-items/<int:item_id>/checklist/", itinerary.ChecklistCreateView.as_view(), name="itinerary-checklist"),
     path("checklist-items/<int:check_id>/", itinerary.ChecklistItemView.as_view(), name="checklist-item"),

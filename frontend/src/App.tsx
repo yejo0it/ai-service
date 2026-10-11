@@ -12,6 +12,7 @@ import OnboardingWizard from "./onboarding/OnboardingWizard";
 import PackingNotePage from "./packing/PackingNotePage";
 import { ROUTES, tripDetailPath } from "./routes";
 import MyTripsPage from "./trips/MyTripsPage";
+import InviteAcceptPage from "./trips/InviteAcceptPage";
 import TripDetailPage, { type TripDetailState } from "./trips/TripDetailPage";
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
           />
           <Route path={ROUTES.MY_TRIPS} element={<MyTripsPage />} />
           <Route path={ROUTES.TRIP_DETAIL} element={<TripDetailPage />} />
+          <Route path={ROUTES.TRIP_INVITE} element={<InviteAcceptPage />} />
           <Route path={ROUTES.PACKING} element={<PackingNotePage />} />
         </Route>
       </Route>

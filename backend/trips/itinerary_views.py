@@ -186,8 +186,9 @@ def place_card(detail, kind, time="", checklist=()):
     }
 
 
-def owned_trip(request, pk):
-    return get_object_or_404(Trip, pk=pk, owner=request.user)
+def accessible_trip(request, pk):
+    """만든 회원과 초대받은 일행이 함께 편집하는 여행. 그 밖의 회원에게는 없는 여행(404)이다."""
+    return get_object_or_404(Trip.objects.accessible_to(request.user), pk=pk)
 
 
 # ------------------------------------------------------------------ #
@@ -261,11 +262,11 @@ class ItineraryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        return itinerary_response(owned_trip(request, pk))
+        return itinerary_response(accessible_trip(request, pk))
 
     @transaction.atomic
     def post(self, request, pk):
-        trip = owned_trip(request, pk)
+        trip = accessible_trip(request, pk)
         if request.data.get("kind") == "hotel" and request.data.get("check_in"):
             return _add_hotel_stay(request, trip)
         is_flight = request.data.get("kind") == "flight"
@@ -335,7 +336,7 @@ class ItineraryInitView(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        trip = Trip.objects.select_for_update().get(pk=owned_trip(request, pk).pk)
+        trip = Trip.objects.select_for_update().get(pk=accessible_trip(request, pk).pk)
         if not trip.itinerary_initialized:
             serializer = CardSerializer(data=request.data.get("items", []), many=True)
             serializer.is_valid(raise_exception=True)
@@ -359,7 +360,7 @@ class ItineraryReorderView(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        trip = owned_trip(request, pk)
+        trip = accessible_trip(request, pk)
         serializer = ReorderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         day, ids = serializer.validated_data["day"], serializer.validated_data["ids"]
@@ -389,7 +390,9 @@ class ItineraryItemView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_item(self, request, item_id):
-        return get_object_or_404(ItineraryItem, pk=item_id, trip__owner=request.user)
+        return get_object_or_404(
+            ItineraryItem, pk=item_id, trip__in=Trip.objects.accessible_to(request.user)
+        )
 
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
@@ -441,7 +444,9 @@ class ChecklistCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, item_id):
-        item = get_object_or_404(ItineraryItem, pk=item_id, trip__owner=request.user)
+        item = get_object_or_404(
+            ItineraryItem, pk=item_id, trip__in=Trip.objects.accessible_to(request.user)
+        )
         serializer = ChecklistItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         text = serializer.validated_data["text"].strip()
@@ -458,7 +463,9 @@ class ChecklistItemView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_check(self, request, check_id):
-        return get_object_or_404(ChecklistItem, pk=check_id, item__trip__owner=request.user)
+        return get_object_or_404(
+            ChecklistItem, pk=check_id, item__trip__in=Trip.objects.accessible_to(request.user)
+        )
 
     def patch(self, request, check_id):
         check = self.get_check(request, check_id)
@@ -478,7 +485,7 @@ class PackingNoteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        trip = owned_trip(request, pk)
+        trip = accessible_trip(request, pk)
         checks = (
             ChecklistItem.objects.filter(item__trip=trip, in_packing_note=True)
             .select_related("item")
@@ -621,7 +628,7 @@ class AiProposeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        trip = owned_trip(request, pk)
+        trip = accessible_trip(request, pk)
         serializer = ConversationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -876,7 +883,7 @@ class AiApplyView(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        trip = owned_trip(request, pk)
+        trip = accessible_trip(request, pk)
         serializer = ProposalSerializer(data=request.data.get("proposal", {}))
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

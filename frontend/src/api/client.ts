@@ -28,6 +28,7 @@ import type {
   HotelPayload,
   HotelSearchParams,
   HotelSuggestion,
+  InvitationAcceptResponse,
   LoginPayload,
   PasswordResetConfirmPayload,
   PasswordResetVerifyPayload,
@@ -39,6 +40,8 @@ import type {
   SocialProvider,
   Trip,
   TripColorKey,
+  TripInvitation,
+  TripMembers,
   TripPayload,
 } from "../types/api";
 
@@ -164,6 +167,24 @@ export const updateChecklistItem = (checkId: number, payload: Partial<Omit<Check
   api.patch<ChecklistItem>(`/checklist-items/${checkId}/`, payload).then((res) => res.data);
 
 export const deleteChecklistItem = (checkId: number) => api.delete<void>(`/checklist-items/${checkId}/`);
+
+/** 일행 목록·최대 인원·지금 쓸 수 있는 초대 링크 */
+export const getTripMembers = (tripId: number) =>
+  api.get<TripMembers>(`/trips/${tripId}/members/`).then((res) => res.data);
+
+/** 초대 링크 만들기 (만든 회원만). 쓸 수 있는 링크가 있으면 그대로, regenerate면 새 링크(이전 링크는 바로 만료) */
+export const createTripInvitation = (tripId: number, regenerate = false) =>
+  api.post<TripInvitation>(`/trips/${tripId}/invitations/`, { regenerate }).then((res) => res.data);
+
+/** 일행 내보내기(만든 회원) 또는 나가기(내 id) */
+export const removeTripMember = (tripId: number, userId: number) =>
+  api.delete<void>(`/trips/${tripId}/members/${userId}/`);
+
+/** 초대 링크로 일행이 되기 */
+export const acceptTripInvitation = (token: string) =>
+  api
+    .post<InvitationAcceptResponse>(`/trips/invitations/${encodeURIComponent(token)}/accept/`)
+    .then((res) => res.data);
 
 /** 짐싸기 노트 '일정 연동 항목' */
 export const getPackingNote = (tripId: number) =>

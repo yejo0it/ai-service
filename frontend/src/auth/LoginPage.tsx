@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { login, toErrorMessage } from "../api/client";
-import { ROUTES } from "../routes";
+import { ROUTES, isTripInvitePath } from "../routes";
 import AuthLayout, {
   AuthField,
   AuthInput,
@@ -70,7 +70,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState(locationState.email ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(locationState.error ?? "");
-  const [notice, setNotice] = useState(locationState.notice ?? "");
+  // 초대 링크를 열었다가 로그인 화면으로 왔으면 로그인(또는 가입) 후 여행에 들어간다고 알려준다.
+  const [notice, setNotice] = useState(
+    locationState.notice ??
+      (isTripInvitePath(locationState.from)
+        ? "초대받은 여행에 들어가려면 로그인해 주세요. 계정이 없으면 회원가입 후 바로 함께할 수 있어요."
+        : ""),
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

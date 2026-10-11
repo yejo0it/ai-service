@@ -136,10 +136,10 @@ class HotelSerializer(NestedHotelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 요청한 회원의 여행에만 숙소를 붙일 수 있다.
+        # 요청한 회원이 만들었거나 함께하는 여행에만 숙소를 붙일 수 있다.
         request = self.context.get("request")
         if request is not None and "trip" in self.fields:
-            self.fields["trip"].queryset = Trip.objects.filter(owner=request.user)
+            self.fields["trip"].queryset = Trip.objects.accessible_to(request.user)
 
     class Meta(NestedHotelSerializer.Meta):
         fields = NestedHotelSerializer.Meta.fields + ("trip", "created_at")
@@ -174,6 +174,8 @@ class TripSerializer(serializers.ModelSerializer):
     destination_label = serializers.CharField(read_only=True)
     nights = serializers.IntegerField(read_only=True)
     has_flight = serializers.BooleanField(read_only=True)
+    # 요청한 회원이 만든 여행인지 (초대받은 일행이면 false: 여행 삭제·초대 링크 발급을 하지 않는다)
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -188,6 +190,7 @@ class TripSerializer(serializers.ModelSerializer):
             "color",
             "has_flight",
             "nights",
+            "is_owner",
             "hotels",
             "created_at",
             "updated_at",
@@ -205,6 +208,10 @@ class TripSerializer(serializers.ModelSerializer):
             "start_date": {"required": False},
             "end_date": {"required": False},
         }
+
+    def get_is_owner(self, trip) -> bool:
+        request = self.context.get("request")
+        return request is not None and trip.owner_id == request.user.id
 
     def validate(self, attrs):
         instance = self.instance
