@@ -26,7 +26,7 @@
 | Frontend | React 18 · TypeScript · Vite · Tailwind CSS 4 · React Router |
 | Backend | Python 3.11 · Django 5 · Django REST Framework (Token 인증) |
 | Database | PostgreSQL 16 |
-| Infra | Docker Compose · VS Code Dev Container |
+| Infra | Docker Compose |
 | 외부 API | Google Places API (New) · Open-Meteo · ExchangeRate-API · 카카오/네이버 로그인 |
 
 ## Key Features
@@ -93,7 +93,7 @@ docker compose down                                        # 종료 (데이터 �
 - **DB 데이터**는 `pgdata` 볼륨에 저장됩니다. `docker compose down -v`는 데이터까지 삭제하니 주의하세요.
 - **`.env`를 바꾼 뒤**에는 `docker compose up -d --build`로 컨테이너를 다시 만들어야 반영됩니다.
 - **Google Places API 키**: 개발 환경은 IP가 자주 바뀌므로 IP 제한 대신 **API 제한(Places API (New)만 허용)** 과 **일일 할당량 제한**으로 관리하세요.
-- **에디터 타입 인식**: 패키지가 컨테이너 안에 있으므로 VS Code는 `Dev Containers: Reopen in Container` → **PinRoute Frontend**로 여는 것을 권장합니다.
+- **에디터 타입 인식**: 앱은 컨테이너의 패키지로 실행됩니다. VS Code에서 타입을 인식하려면 호스트의 `frontend` 폴더에서 `npm install`을 한 번 실행하세요.
 - **휴대폰 인증**: SMS 발송은 아직 연동되지 않았습니다. 개발 서버에서는 인증번호가 화면에 표시됩니다.
 
 ---
