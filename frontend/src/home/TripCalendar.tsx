@@ -254,11 +254,23 @@ export default function TripCalendar({
                     gridColumn: `${segment.startCol + 1} / ${segment.endCol + 2}`,
                     gridRow: segment.lane + 1,
                   }}
-                  className={`pointer-events-auto truncate px-2 text-left text-[10px] font-semibold leading-5 sm:text-xs ${
-                    segment.trip.id === selectedTripId ? segment.color.barSelected : segment.color.bar
-                  } ${segment.startsHere ? "ml-1 rounded-l-full" : ""} ${segment.endsHere ? "mr-1 rounded-r-full" : ""}`}
+                  // 같은 날 겹친 두 번째 이후 여행: 채운 띠(첫 번째 여행)와 달리 흰 바탕 + 점선 테두리로 그린다.
+                  className={`pointer-events-auto truncate border-y border-dashed px-2 text-left text-[10px] font-semibold leading-[18px] sm:text-xs ${
+                    segment.trip.id === selectedTripId
+                      ? `${segment.color.barSelected} border-transparent`
+                      : `bg-white ${segment.color.outline}`
+                  } ${segment.startsHere ? "ml-1 rounded-l-full border-l" : ""} ${
+                    segment.endsHere ? "mr-1 rounded-r-full border-r" : ""
+                  }`}
                 >
-                  {segment.startsHere || segment.startCol === 0 ? tripShortTitle(segment.trip) : ""}
+                  {segment.startsHere || segment.startCol === 0 ? (
+                    <>
+                      <i className="fas fa-layer-group mr-1 text-[9px] opacity-70" aria-hidden="true" />
+                      {tripShortTitle(segment.trip)}
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </button>
               ))}
             </div>

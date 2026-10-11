@@ -1,7 +1,20 @@
 import axios, { isAxiosError } from "axios";
 import { clearSession, getSession } from "../auth/session";
 import type {
+  AddFlightPayload,
+  AddHotelStayPayload,
+  AddPlacePayload,
+  AiProposal,
+  AiProposeResponse,
+  AiRegistrationDraft,
   Airline,
+  ChatTurn,
+  ChecklistItem,
+  ItineraryCardInput,
+  ItineraryItem,
+  ItineraryResponse,
+  PackingLinkedItem,
+  PlaceKind,
   ApiErrorData,
   AuthSession,
   AuthUser,
@@ -15,6 +28,7 @@ import type {
   HotelPayload,
   HotelSearchParams,
   HotelSuggestion,
+  InvitationAcceptResponse,
   LoginPayload,
   PasswordResetConfirmPayload,
   PasswordResetVerifyPayload,
@@ -26,6 +40,8 @@ import type {
   SocialProvider,
   Trip,
   TripColorKey,
+  TripInvitation,
+  TripMembers,
   TripPayload,
 } from "../types/api";
 
@@ -53,6 +69,12 @@ export const getAirlines = () => api.get<Airline[]>("/airlines/").then((res) => 
 
 /** 로그인한 회원의 여행 목록 (페이지 없이 전체) */
 export const listTrips = () => api.get<Trip[]>("/trips/").then((res) => res.data);
+
+/** 여행 하나 (내 여행만) */
+export const getTrip = (tripId: number) => api.get<Trip>(`/trips/${tripId}/`).then((res) => res.data);
+
+/** 여행 삭제 (숙소도 함께 삭제된다) */
+export const deleteTrip = (tripId: number) => api.delete<void>(`/trips/${tripId}/`);
 
 /** 여행 캘린더 색 변경. 빈 문자열이면 자동 색상 */
 export const updateTripColor = (tripId: number, color: TripColorKey | "") =>
@@ -97,6 +119,96 @@ export const getExchangeRates = (cityCodes: string[]) =>
     .get<ExchangeRatesResponse>("/travel-info/exchange-rates/", {
       params: { city_codes: cityCodes.join(",") },
     })
+    .then((res) => res.data);
+
+/* ------------------------------------------------------------------ *
+ * 여행 상세 일정 · 체크리스트 · 짐싸기 노트 · AI
+ * ------------------------------------------------------------------ */
+
+export const getItinerary = (tripId: number) =>
+  api.get<ItineraryResponse>(`/trips/${tripId}/itinerary/`).then((res) => res.data);
+
+/** 처음 열 때 항공편·숙소 카드를 한 번 저장한다 (이미 저장했으면 그대로 돌려준다) */
+export const initItinerary = (tripId: number, items: ItineraryCardInput[]) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/init/`, { items }).then((res) => res.data);
+
+/** 장소·항공편 직접 추가 (서버가 거리 기준으로 자리를 정한다) */
+/** 숙소를 숙박 기간과 함께 등록하면 요약 카드도 바뀌므로 바뀐 여행(trip)을 함께 돌려준다. */
+export const addItineraryPlace = (tripId: number, payload: AddPlacePayload | AddFlightPayload | AddHotelStayPayload) =>
+  api.post<ItineraryResponse & { trip?: Trip }>(`/trips/${tripId}/itinerary/`, payload).then((res) => res.data);
+
+export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
+  api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/reorder/`, { day, ids }).then((res) => res.data);
+
+/**
+ * 일정 카드 수정. time은 "HH:MM" 또는 null(시간 미정).
+ * place_id(+session_token)를 주면 장소를 다시 검색해 고른 것으로 보고 이름·주소·전화·영업시간을 바꾼다.
+ */
+export const updateItineraryItem = (
+  itemId: number,
+  payload: { memo?: string; time?: string | null; place_id?: string; session_token?: string },
+) =>
+  api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
+
+/**
+ * 일정 카드 삭제. 여행 등록 정보에서 만든 항공·숙소 카드를 지우면 서버가 등록 정보도 맞추고
+ * 바뀐 여행과 함께 지운 카드 id들을 돌려준다(그 밖에는 null).
+ * 숙소 체크인·체크아웃 카드는 그 숙소의 다른 카드까지 지워진다.
+ */
+export const deleteItineraryItem = (itemId: number) =>
+  api
+    .delete<{ trip: Trip; removed_ids: number[] } | "">(`/itinerary-items/${itemId}/`)
+    .then((res) => (res.data && typeof res.data === "object" ? res.data : null));
+
+export const addChecklistItem = (itemId: number, text: string) =>
+  api.post<ChecklistItem>(`/itinerary-items/${itemId}/checklist/`, { text }).then((res) => res.data);
+
+export const updateChecklistItem = (checkId: number, payload: Partial<Omit<ChecklistItem, "id">>) =>
+  api.patch<ChecklistItem>(`/checklist-items/${checkId}/`, payload).then((res) => res.data);
+
+export const deleteChecklistItem = (checkId: number) => api.delete<void>(`/checklist-items/${checkId}/`);
+
+/** 일행 목록·최대 인원·지금 쓸 수 있는 초대 링크 */
+export const getTripMembers = (tripId: number) =>
+  api.get<TripMembers>(`/trips/${tripId}/members/`).then((res) => res.data);
+
+/** 초대 링크 만들기 (만든 회원만). 쓸 수 있는 링크가 있으면 그대로, regenerate면 새 링크(이전 링크는 바로 만료) */
+export const createTripInvitation = (tripId: number, regenerate = false) =>
+  api.post<TripInvitation>(`/trips/${tripId}/invitations/`, { regenerate }).then((res) => res.data);
+
+/** 일행 내보내기(만든 회원) 또는 나가기(내 id) */
+export const removeTripMember = (tripId: number, userId: number) =>
+  api.delete<void>(`/trips/${tripId}/members/${userId}/`);
+
+/** 초대 링크로 일행이 되기 */
+export const acceptTripInvitation = (token: string) =>
+  api
+    .post<InvitationAcceptResponse>(`/trips/invitations/${encodeURIComponent(token)}/accept/`)
+    .then((res) => res.data);
+
+/** 짐싸기 노트 '일정 연동 항목' */
+export const getPackingNote = (tripId: number) =>
+  api.get<{ linked: PackingLinkedItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data);
+
+/** 일정 장소 자동완성 (유형별) */
+export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>
+  api
+    .get<HotelSuggestion[]>("/places/search/", {
+      params: { input: params.input, session_token: params.sessionToken, city_code: params.cityCode, kind: params.kind },
+    })
+    .then((res) => res.data);
+
+/** AI와 함께 만들기: 대화 -> 일정 변경 제안과 미리보기 (AI 응답이라 오래 걸릴 수 있다) */
+/** draft: 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 (다음 제안이 그 위에 이어서 고친다) */
+export const proposeAiPlan = (tripId: number, messages: ChatTurn[], draft?: AiRegistrationDraft) =>
+  api
+    .post<AiProposeResponse>(`/trips/${tripId}/ai/propose/`, { messages, draft }, { timeout: 120_000 })
+    .then((res) => res.data);
+
+/** 적용 결과: 바뀐 일정 + (항공·숙소가 바뀌었을 수 있으므로) 여행 */
+export const applyAiPlan = (tripId: number, proposal: AiProposal) =>
+  api
+    .post<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/ai/apply/`, { proposal })
     .then((res) => res.data);
 
 /* ------------------------------------------------------------------ *

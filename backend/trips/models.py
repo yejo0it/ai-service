@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 
 class TimeStampedModel(models.Model):
@@ -25,6 +26,14 @@ class Airline(models.Model):
     def __str__(self) -> str:
         return f"[{self.iata_code}] {self.name_ko}"
 
+class TripQuerySet(models.QuerySet):
+    def accessible_to(self, user):
+        """회원이 보고 편집할 수 있는 여행: 직접 만든 여행 + 초대받아 함께하는 여행."""
+        return self.filter(
+            Q(owner=user) | Q(pk__in=TripMember.objects.filter(user=user).values("trip_id"))
+        )
+
+
 class Trip(TimeStampedModel):
     """온보딩 Step 1(목적지) + Step 2(항공권/날짜)의 결과물."""
 
@@ -44,7 +53,8 @@ class Trip(TimeStampedModel):
         PURPLE = "purple", "보라"
         GRAY = "gray", "회색"
 
-    # [{"city": "도쿄", "city_code": "TYO"}, {"city": "오사카", "city_code": "OSA"}]
+    # [{"city": "도쿄", "city_code": "tokyo"}, {"city": "오사카", "city_code": "osaka"}]
+    # city_code는 서비스 자체 도시 id(backend/data/cities.json)다. IATA 코드가 없는 소도시도 있다.
     # 도시 이동 순서를 그대로 유지하므로 list 순서가 곧 여행 동선이다.
     destinations = models.JSONField(
         "여행지",
@@ -72,6 +82,10 @@ class Trip(TimeStampedModel):
         null=True,
         blank=True,
     )
+    # 상세 화면을 처음 열 때 항공편·숙소로 일정 카드를 한 번 만들었는지
+    itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
+
+    objects = TripQuerySet.as_manager()
 
     class Meta:
         verbose_name = "여행"
@@ -120,8 +134,10 @@ class Hotel(TimeStampedModel):
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     latitude = models.FloatField("위도", null=True, blank=True)
     longitude = models.FloatField("경도", null=True, blank=True)
+    # Google Places 전화번호 (여행 상세 숙소 카드에 표시)
+    phone = models.CharField("전화번호", max_length=40, blank=True, default="")
     # 이 숙소가 속한 여행지(Trip.destinations의 city_code)
-    city_code = models.CharField("도시코드", max_length=8, blank=True, default="")
+    city_code = models.CharField("도시코드", max_length=32, blank=True, default="")
     check_in = models.DateField("체크인")
     # 체크아웃 미정(막날 공항 이동 등)인 경우를 위해 Nullable.
     check_out = models.DateField("체크아웃", null=True, blank=True)
@@ -145,3 +161,120 @@ class Hotel(TimeStampedModel):
         if self.check_out is None:
             return None
         return (self.check_out - self.check_in).days
+
+
+class ItineraryItem(TimeStampedModel):
+    """
+    여행 상세의 일정 카드 한 장. 날짜(day)별로 order 순서대로 보여준다.
+    항공편·숙소 카드는 상세 화면을 처음 열 때 만들어지고(source=auto), 장소는 직접(manual)·AI(ai)로 추가한다.
+    stops는 카드 안의 위치 목록(지도 핀): [{"kind", "caption", "label", "lat", "lng"}]
+    """
+
+    class Kind(models.TextChoices):
+        FLIGHT = "flight", "항공편"
+        HOTEL = "hotel", "숙소"
+        AIRPORT = "airport", "공항"
+        SIGHT = "sight", "관광지"
+        RESTAURANT = "restaurant", "식당"
+        CAFE = "cafe", "카페"
+
+    class Source(models.TextChoices):
+        AUTO = "auto", "항공편·숙소"
+        MANUAL = "manual", "직접 추가"
+        AI = "ai", "AI 추천"
+
+    trip = models.ForeignKey(Trip, related_name="itinerary_items", on_delete=models.CASCADE)
+    day = models.DateField("날짜")
+    order = models.PositiveIntegerField("순서", default=0)
+    kind = models.CharField("유형", max_length=12, choices=Kind.choices)
+    source = models.CharField("추가 방법", max_length=8, choices=Source.choices, default=Source.MANUAL)
+    title = models.CharField("이름", max_length=150)
+    # 방문 시각(선택). 숙소 카드처럼 시각 대신 "체크인" 등을 보여줄 때는 time_label을 쓴다.
+    time = models.TimeField("시간", null=True, blank=True)
+    time_label = models.CharField("시간 표기", max_length=20, blank=True, default="")
+    subtitle = models.CharField("부가 설명", max_length=100, blank=True, default="")
+    stops = models.JSONField("위치", default=list, blank=True)
+    # 장소 상세 (Google Places)
+    place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
+    address = models.CharField("주소", max_length=255, blank=True, default="")
+    phone = models.CharField("전화번호", max_length=40, blank=True, default="")
+    opening_hours = models.JSONField("영업시간", default=list, blank=True)
+    memo = models.TextField("메모", blank=True, default="")
+
+    class Meta:
+        verbose_name = "일정"
+        verbose_name_plural = "일정"
+        ordering = ("day", "order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.day} #{self.order} {self.title}"
+
+
+class ChecklistItem(TimeStampedModel):
+    """일정 카드의 체크리스트. in_packing_note가 켜진 항목은 짐싸기 노트 '일정 연동 항목'에 나온다."""
+
+    item = models.ForeignKey(ItineraryItem, related_name="checklist", on_delete=models.CASCADE)
+    text = models.CharField("내용", max_length=200)
+    done = models.BooleanField("완료", default=False)
+    in_packing_note = models.BooleanField("짐싸기 노트 표시", default=False)
+
+    class Meta:
+        verbose_name = "체크리스트"
+        verbose_name_plural = "체크리스트"
+        ordering = ("created_at", "id")
+
+    def __str__(self) -> str:
+        return self.text
+
+
+class TripMember(models.Model):
+    """
+    초대 링크로 여행에 함께하는 일행. 만든 회원(Trip.owner)은 포함하지 않는다.
+    일정·장소·항공·숙소·AI·짐싸기 노트는 만든 회원과 똑같이 편집하고,
+    여행 삭제·초대 링크 발급·일행 내보내기는 만든 회원만 한다.
+    """
+
+    # 만든 회원을 빼고 함께할 수 있는 일행 수
+    MAX_PER_TRIP = 10
+
+    trip = models.ForeignKey(Trip, related_name="members", on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name="trip_memberships", on_delete=models.CASCADE
+    )
+    joined_at = models.DateTimeField("참여일", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "여행 일행"
+        verbose_name_plural = "여행 일행"
+        ordering = ("joined_at", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("trip", "user"), name="trip_member_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.trip_id}"
+
+
+class TripInvitation(models.Model):
+    """
+    여행 초대 링크(/trips/invite/{token}). 여행마다 하나이고 만든 뒤 7일 동안 쓸 수 있다.
+    새 링크를 만들면 토큰을 바꿔 저장하므로 이전 링크는 바로 쓸 수 없게 된다.
+    """
+
+    VALID_DAYS = 7
+
+    trip = models.OneToOneField(Trip, related_name="invitation", on_delete=models.CASCADE)
+    token = models.CharField("토큰", max_length=64, unique=True)
+    created_at = models.DateTimeField("발급일")
+    expires_at = models.DateTimeField("만료일")
+
+    class Meta:
+        verbose_name = "여행 초대 링크"
+        verbose_name_plural = "여행 초대 링크"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} ~{self.expires_at:%Y-%m-%d}"
+
+    @property
+    def is_valid(self) -> bool:
+        return self.expires_at > timezone.now()

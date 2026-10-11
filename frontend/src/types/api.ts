@@ -25,10 +25,19 @@ export type ApiErrorData = string | { detail?: string; [field: string]: unknown 
 /** 여행지 한 곳. city_code는 IATA 도시 코드(예: TYO)이며 없으면 빈 문자열. */
 export interface Destination {
   city: string;
+  /** 서비스 자체 도시 id (예: "tokyo"). 화면에는 보여주지 않는다. */
   city_code: string;
 }
 
 export type DateSource = "flight" | "manual";
+
+/** 목록에서 고른 공항 */
+export interface Airport {
+  /** IATA 공항 코드 (예: ICN) */
+  code: string;
+  /** 표시 이름 (예: 인천공항 1터미널) */
+  name: string;
+}
 
 export interface FlightInfo {
   airline?: string;
@@ -36,6 +45,10 @@ export interface FlightInfo {
   flight_number: string;
   departure_at: ISODateTime;
   arrival_at?: ISODateTime | null;
+  departure_airport?: Airport | null;
+  arrival_airport?: Airport | null;
+  return_departure_airport?: Airport | null;
+  return_arrival_airport?: Airport | null;
   return_airline?: string;
   return_flight_number?: string;
   return_departure_at?: ISODateTime | null;
@@ -50,6 +63,8 @@ export interface HotelPayload {
   place_id: string;
   latitude: number | null;
   longitude: number | null;
+  /** Google Places 전화번호 (없으면 빈 문자열) */
+  phone: string;
   city_code: string;
   check_in: ISODate;
   /** 체크아웃 미정이면 null */
@@ -81,9 +96,45 @@ export interface Trip extends Omit<TripPayload, "hotels"> {
   destination_label: string;
   has_flight: boolean;
   nights: number;
+  /** 내가 만든 여행인지 (초대받은 일행이면 false: 여행 삭제·초대 링크 발급은 만든 회원만 한다) */
+  is_owner: boolean;
   hotels: Hotel[];
   created_at: ISODateTime;
   updated_at: ISODateTime;
+}
+
+/* ------------------------------------------------------------------ *
+ * 일행 초대
+ * ------------------------------------------------------------------ */
+
+/** 초대 링크(/trips/invite/{token}). 여행마다 하나, 7일 동안 쓸 수 있다. */
+export interface TripInvitation {
+  token: string;
+  expires_at: ISODateTime;
+}
+
+export interface TripMemberUser {
+  id: number;
+  /** 이름만 보여준다 (이메일은 다른 회원에게 보내지 않는다) */
+  name: string;
+}
+
+export interface TripMembers {
+  is_owner: boolean;
+  /** 여행을 만든 회원 */
+  owner: TripMemberUser | null;
+  /** 초대받아 함께하는 일행 (만든 회원 제외) */
+  members: (TripMemberUser & { joined_at: ISODateTime })[];
+  /** 만든 회원을 뺀 최대 일행 수 */
+  max_members: number;
+  /** 지금 쓸 수 있는 초대 링크. 없거나 만료됐으면 null */
+  invitation: TripInvitation | null;
+}
+
+export interface InvitationAcceptResponse {
+  trip_id: number;
+  /** 이번에 새로 일행이 됐는지 (이미 함께하는 여행이면 false) */
+  joined: boolean;
 }
 
 export interface Airline {
@@ -116,6 +167,7 @@ export interface HotelDetail {
   address: string;
   latitude: number | null;
   longitude: number | null;
+  phone: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -229,4 +281,170 @@ export interface ExchangeRatesResponse {
   rates: ExchangeRate[];
   /** 환율 기준 시각 (UTC 문자열) */
   updated_at: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * 여행 상세 일정 (itinerary) · 체크리스트 · 짐싸기 노트 · AI
+ * ------------------------------------------------------------------ */
+
+export type ItineraryKind = "flight" | "hotel" | "airport" | "sight" | "restaurant" | "cafe";
+/** 직접 추가할 수 있는 장소 유형 */
+export type PlaceKind = Exclude<ItineraryKind, "flight">;
+
+/** 카드 안의 위치 (지도 핀). kind는 핀 색 */
+export interface ItineraryStop {
+  kind: "airport" | "hotel" | "place" | "city";
+  caption: string;
+  label: string;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+export interface ChecklistItem {
+  id: number;
+  text: string;
+  done: boolean;
+  /** 짐싸기 노트 '일정 연동 항목'에 표시 */
+  in_packing_note: boolean;
+}
+
+export interface ItineraryItem {
+  id: number;
+  day: ISODate;
+  order: number;
+  kind: ItineraryKind;
+  source: "auto" | "manual" | "ai";
+  title: string;
+  /** "HH:MM" 또는 null */
+  time: string | null;
+  /** 체크인·숙박·체크아웃·출국·귀국 */
+  time_label: string;
+  subtitle: string;
+  stops: ItineraryStop[];
+  place_id: string;
+  address: string;
+  phone: string;
+  /** 요일별 영업시간 문장 */
+  opening_hours: string[];
+  memo: string;
+  checklist: ChecklistItem[];
+}
+
+export interface ItineraryResponse {
+  initialized: boolean;
+  items: ItineraryItem[];
+}
+
+/** 처음 열 때 저장하는 항공편·숙소 카드 */
+export interface ItineraryCardInput {
+  day: ISODate;
+  kind: ItineraryKind;
+  title: string;
+  time: string;
+  time_label: string;
+  subtitle: string;
+  stops: ItineraryStop[];
+  phone?: string;
+}
+
+/** 공항(항공편) 직접 추가: 단일 노선 한 편 */
+export interface AddFlightPayload {
+  kind: "flight";
+  day: ISODate;
+  time: string;
+  airline: string;
+  flight_number: string;
+  departure_airport: { code: string; name: string; lat: number; lng: number };
+  arrival_airport: { code: string; name: string; lat: number; lng: number };
+}
+
+/** 숙소 직접 추가: 숙박 기간과 함께 여행 숙소로 등록 */
+export interface AddHotelStayPayload {
+  kind: "hotel";
+  place_id: string;
+  session_token: string;
+  city_code: string;
+  check_in: ISODate;
+  check_out: ISODate;
+}
+
+export interface AddPlacePayload {
+  kind: PlaceKind;
+  day: ISODate;
+  time: string;
+  place_id: string;
+  session_token: string;
+}
+
+export interface PackingLinkedItem extends ChecklistItem {
+  item_id: number;
+  item_title: string;
+  day: ISODate;
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** AI로 등록·수정할 숙소 (새 숙소는 id가 null) */
+export interface AiHotelProposal {
+  id: number | null;
+  name: string;
+  address: string;
+  place_id: string;
+  latitude: number | null;
+  longitude: number | null;
+  phone: string;
+  city_code: string;
+  check_in: ISODate;
+  check_out: ISODate | null;
+  nights: number | null;
+  status: "new" | "updated" | "same";
+}
+
+export interface AiProposal {
+  additions: unknown[];
+  remove_item_ids: number[];
+  moves: unknown[];
+  /** 항공 등록 정보를 바꾸는지 (flight_info가 그 값) */
+  flight_changed: boolean;
+  flight_info: FlightInfo | null;
+  /** 바뀐 뒤의 숙소 전체 목록 (null이면 숙소는 그대로) */
+  hotels: AiHotelProposal[] | null;
+  /** 바뀐 항공·숙소로 다시 만든 경로의 자동 항공·숙소 카드 (적용할 때 프론트가 채운다) */
+  auto_cards?: ItineraryCardInput[];
+}
+
+/** 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 */
+export interface AiRegistrationDraft {
+  flight_info: FlightInfo | null;
+  hotels: AiHotelProposal[] | null;
+}
+
+export interface AiPreviewDay {
+  day: ISODate;
+  items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
+}
+
+export interface AiProposeResponse {
+  reply: string;
+  /** 적용할 때 그대로 돌려보낸다 */
+  proposal: AiProposal;
+  preview: AiPreviewDay[];
+  removed: { id: number; title: string }[];
+  /** 실제 장소를 찾지 못한 이름 */
+  unresolved: string[];
+  /** 서비스 범위 밖 요청이라 거절했는지 (변경 제안 없음) */
+  refused?: boolean;
+  /** 가리고 AI에 보낸 민감정보 종류 (예: 카드번호, 비밀번호) */
+  redacted?: string[];
+  /** 답변 아래에 보여줄 선택 버튼 (예: 기존 정보 수정 / 새로 입력) */
+  choices: string[];
+  /** 항공·숙소 등록 미리보기 */
+  registration: {
+    flight: FlightInfo | null;
+    hotels: AiHotelProposal[] | null;
+    removed_hotels: { id: number; title: string }[];
+  };
 }

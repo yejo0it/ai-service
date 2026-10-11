@@ -57,6 +57,8 @@ export interface TripColor {
   badge: string;
   /** 다른 여행과 겹칠 때 아래 줄에 그리는 막대 */
   bar: string;
+  /** 겹친 여행 막대의 점선 테두리 (채운 띠와 구분) */
+  outline: string;
   barSelected: string;
   /** 목록·범례의 점 */
   dot: string;
@@ -71,49 +73,49 @@ export const TRIP_COLORS: Record<TripColorKey, TripColor> = {
   indigo: {
     label: "인디고",
     band: "bg-indigo-50", bandSelected: "bg-indigo-100", cap: "bg-indigo-200 text-indigo-800", text: "text-indigo-600",
-    badge: "bg-indigo-50 text-indigo-700 ring-indigo-200", bar: "bg-indigo-50 text-indigo-700",
+    badge: "bg-indigo-50 text-indigo-700 ring-indigo-200", bar: "bg-indigo-50 text-indigo-700", outline: "border-indigo-300 text-indigo-700",
     barSelected: "bg-indigo-200 text-indigo-800 ring-indigo-300", dot: "bg-indigo-300",
   },
   red: {
     label: "빨강",
     band: "bg-rose-50", bandSelected: "bg-rose-100", cap: "bg-rose-200 text-rose-800", text: "text-rose-600",
-    badge: "bg-rose-50 text-rose-700 ring-rose-200", bar: "bg-rose-50 text-rose-700",
+    badge: "bg-rose-50 text-rose-700 ring-rose-200", bar: "bg-rose-50 text-rose-700", outline: "border-rose-300 text-rose-700",
     barSelected: "bg-rose-200 text-rose-800 ring-rose-300", dot: "bg-rose-300",
   },
   orange: {
     label: "주황",
     band: "bg-orange-50", bandSelected: "bg-orange-100", cap: "bg-orange-200 text-orange-800", text: "text-orange-600",
-    badge: "bg-orange-50 text-orange-700 ring-orange-200", bar: "bg-orange-50 text-orange-700",
+    badge: "bg-orange-50 text-orange-700 ring-orange-200", bar: "bg-orange-50 text-orange-700", outline: "border-orange-300 text-orange-700",
     barSelected: "bg-orange-200 text-orange-800 ring-orange-300", dot: "bg-orange-300",
   },
   yellow: {
     label: "노랑",
     band: "bg-amber-50", bandSelected: "bg-amber-100", cap: "bg-amber-200 text-amber-800", text: "text-amber-600",
-    badge: "bg-amber-50 text-amber-700 ring-amber-200", bar: "bg-amber-50 text-amber-700",
+    badge: "bg-amber-50 text-amber-700 ring-amber-200", bar: "bg-amber-50 text-amber-700", outline: "border-amber-300 text-amber-700",
     barSelected: "bg-amber-200 text-amber-800 ring-amber-300", dot: "bg-amber-300",
   },
   green: {
     label: "초록",
     band: "bg-emerald-50", bandSelected: "bg-emerald-100", cap: "bg-emerald-200 text-emerald-800", text: "text-emerald-600",
-    badge: "bg-emerald-50 text-emerald-700 ring-emerald-200", bar: "bg-emerald-50 text-emerald-700",
+    badge: "bg-emerald-50 text-emerald-700 ring-emerald-200", bar: "bg-emerald-50 text-emerald-700", outline: "border-emerald-300 text-emerald-700",
     barSelected: "bg-emerald-200 text-emerald-800 ring-emerald-300", dot: "bg-emerald-300",
   },
   blue: {
     label: "파랑",
     band: "bg-sky-50", bandSelected: "bg-sky-100", cap: "bg-sky-200 text-sky-800", text: "text-sky-600",
-    badge: "bg-sky-50 text-sky-700 ring-sky-200", bar: "bg-sky-50 text-sky-700",
+    badge: "bg-sky-50 text-sky-700 ring-sky-200", bar: "bg-sky-50 text-sky-700", outline: "border-sky-300 text-sky-700",
     barSelected: "bg-sky-200 text-sky-800 ring-sky-300", dot: "bg-sky-300",
   },
   purple: {
     label: "보라",
     band: "bg-violet-50", bandSelected: "bg-violet-100", cap: "bg-violet-200 text-violet-800", text: "text-violet-600",
-    badge: "bg-violet-50 text-violet-700 ring-violet-200", bar: "bg-violet-50 text-violet-700",
+    badge: "bg-violet-50 text-violet-700 ring-violet-200", bar: "bg-violet-50 text-violet-700", outline: "border-violet-300 text-violet-700",
     barSelected: "bg-violet-200 text-violet-800 ring-violet-300", dot: "bg-violet-300",
   },
   gray: {
     label: "회색",
     band: "bg-slate-50", bandSelected: "bg-slate-100", cap: "bg-slate-200 text-slate-800", text: "text-slate-600",
-    badge: "bg-slate-50 text-slate-700 ring-slate-200", bar: "bg-slate-50 text-slate-700",
+    badge: "bg-slate-50 text-slate-700 ring-slate-200", bar: "bg-slate-50 text-slate-700", outline: "border-slate-300 text-slate-700",
     barSelected: "bg-slate-200 text-slate-800 ring-slate-300", dot: "bg-slate-300",
   },
 };

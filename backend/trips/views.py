@@ -3,6 +3,7 @@ from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -28,7 +29,8 @@ class TripViewSet(viewsets.ModelViewSet):
     - PATCH: 단계별 저장 시 Step 2 결과를 이어서 갱신.
     - GET `/api/v1/trips/{id}/hotels/` · POST 로 Step 3만 따로 저장.
 
-    로그인한 회원의 여행만 조회·수정할 수 있고, 만든 여행은 요청한 회원의 것으로 저장한다.
+    로그인한 회원이 만든 여행과 초대받아 함께하는 여행을 조회·수정할 수 있고,
+    만든 여행은 요청한 회원의 것으로 저장한다. 여행 삭제는 만든 회원만 할 수 있다.
     홈 캘린더가 여행 전체를 한 번에 그리므로 목록은 페이지로 나누지 않는다.
     """
 
@@ -38,7 +40,7 @@ class TripViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = super().get_queryset().filter(owner=self.request.user)
+        queryset = super().get_queryset().accessible_to(self.request.user)
         destination = self.request.query_params.get("destination")
         if destination:
             # destinations는 JSONField(list)이므로 text로 캐스팅해 부분 검색한다.
@@ -50,6 +52,11 @@ class TripViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    def perform_destroy(self, instance):
+        if instance.owner_id != self.request.user.id:
+            raise PermissionDenied("여행을 만든 회원만 삭제할 수 있어요.")
+        instance.delete()
 
     @action(detail=True, methods=["get", "post"], url_path="hotels")
     def hotels(self, request, pk=None):
@@ -75,8 +82,8 @@ class HotelViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # 내 여행의 숙소만 다룬다.
-        queryset = super().get_queryset().filter(trip__owner=self.request.user)
+        # 내가 만들었거나 함께하는 여행의 숙소만 다룬다.
+        queryset = super().get_queryset().filter(trip__in=Trip.objects.accessible_to(self.request.user))
         trip_id = self.request.query_params.get("trip")
         if trip_id:
             queryset = queryset.filter(trip_id=trip_id)
@@ -86,7 +93,7 @@ class HotelViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         trip_id = self.request.data.get("trip") if hasattr(self.request, "data") else None
         if trip_id:
-            context["trip"] = get_object_or_404(Trip, pk=trip_id, owner=self.request.user)
+            context["trip"] = get_object_or_404(Trip.objects.accessible_to(self.request.user), pk=trip_id)
         return context
 
 

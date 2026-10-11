@@ -3,6 +3,7 @@ import datetime
 from django.db import transaction
 from rest_framework import serializers
 
+from .cities import normalize_key
 from .models import Hotel, Trip, Airline
 
 
@@ -28,15 +29,23 @@ class DestinationSerializer(serializers.Serializer):
     """Trip.destinations(JSONField)의 각 여행지 항목을 검증한다."""
 
     city = serializers.CharField(max_length=100)
+    # 도시 키: 서비스 자체 도시 id (예: "tokyo"). 예전 IATA 도시 코드가 오면 id로 바꿔 저장한다.
     city_code = serializers.CharField(
-        max_length=8, required=False, allow_blank=True, default=""
+        max_length=32, required=False, allow_blank=True, default=""
     )
 
     def validate_city(self, value):
         return value.strip()
 
     def validate_city_code(self, value):
-        return value.strip().upper()
+        return normalize_key(value)
+
+
+class AirportSerializer(serializers.Serializer):
+    """프론트 공항 목록에서 고른 공항 (IATA 코드 + 표시 이름)."""
+
+    code = serializers.CharField(max_length=3)
+    name = serializers.CharField(max_length=60)
 
 
 class FlightInfoSerializer(serializers.Serializer):
@@ -46,6 +55,11 @@ class FlightInfoSerializer(serializers.Serializer):
     flight_number = serializers.CharField(max_length=20)
     departure_at = serializers.DateTimeField()
     arrival_at = serializers.DateTimeField(required=False, allow_null=True)
+    # 출국편 출발·도착 공항, 귀국편 출발·도착 공항 (선택)
+    departure_airport = AirportSerializer(required=False, allow_null=True)
+    arrival_airport = AirportSerializer(required=False, allow_null=True)
+    return_departure_airport = AirportSerializer(required=False, allow_null=True)
+    return_arrival_airport = AirportSerializer(required=False, allow_null=True)
     # 귀국편 항공사. 출국과 같으면 프론트에서 동일 값을 채워 보낸다.
     return_airline = serializers.CharField(
         max_length=60, required=False, allow_blank=True
@@ -95,6 +109,7 @@ class NestedHotelSerializer(serializers.ModelSerializer):
             "place_id",
             "latitude",
             "longitude",
+            "phone",
             "city_code",
             "check_in",
             "check_out",
@@ -121,10 +136,10 @@ class HotelSerializer(NestedHotelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 요청한 회원의 여행에만 숙소를 붙일 수 있다.
+        # 요청한 회원이 만들었거나 함께하는 여행에만 숙소를 붙일 수 있다.
         request = self.context.get("request")
         if request is not None and "trip" in self.fields:
-            self.fields["trip"].queryset = Trip.objects.filter(owner=request.user)
+            self.fields["trip"].queryset = Trip.objects.accessible_to(request.user)
 
     class Meta(NestedHotelSerializer.Meta):
         fields = NestedHotelSerializer.Meta.fields + ("trip", "created_at")
@@ -159,6 +174,8 @@ class TripSerializer(serializers.ModelSerializer):
     destination_label = serializers.CharField(read_only=True)
     nights = serializers.IntegerField(read_only=True)
     has_flight = serializers.BooleanField(read_only=True)
+    # 요청한 회원이 만든 여행인지 (초대받은 일행이면 false: 여행 삭제·초대 링크 발급을 하지 않는다)
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -173,6 +190,7 @@ class TripSerializer(serializers.ModelSerializer):
             "color",
             "has_flight",
             "nights",
+            "is_owner",
             "hotels",
             "created_at",
             "updated_at",
@@ -190,6 +208,10 @@ class TripSerializer(serializers.ModelSerializer):
             "start_date": {"required": False},
             "end_date": {"required": False},
         }
+
+    def get_is_owner(self, trip) -> bool:
+        request = self.context.get("request")
+        return request is not None and trip.owner_id == request.user.id
 
     def validate(self, attrs):
         instance = self.instance

@@ -4,6 +4,7 @@
  */
 
 import type { Destination } from "./api";
+import type { AirportOption } from "../onboarding/airports";
 
 /** Step 1의 여행지 한 줄. id는 행 삭제 시 React key가 밀리지 않게 하는 값(전송하지 않음). */
 export interface DestinationDraft extends Destination {
@@ -25,9 +26,16 @@ export interface HotelDraft {
   address: string;
   latitude: number | null;
   longitude: number | null;
+  phone: string;
   city_code: string;
   check_in: string;
   check_out: string;
+}
+
+/** 공항 입력 한 칸. 목록에서 고르면 airport가 채워지고, 입력만 하면 null(미확정)이다. */
+export interface AirportDraft {
+  text: string;
+  airport: AirportOption | null;
 }
 
 /** "flight": 항공권 등록, "dates": 날짜만 등록 */
@@ -42,6 +50,8 @@ export interface OnboardingData {
   /** 선택한 항공사의 IATA 코드. 편명 앞에 붙는다. */
   airlineCode: string;
   flightNumber: string;
+  departureAirport: AirportDraft;
+  arrivalAirport: AirportDraft;
   /** "YYYY-MM-DDTHH:mm" */
   departureAt: string;
   /** 귀국 항공사 동일 */
@@ -49,6 +59,8 @@ export interface OnboardingData {
   returnAirline: string;
   returnAirlineCode: string;
   returnFlightNumber: string;
+  returnDepartureAirport: AirportDraft;
+  returnArrivalAirport: AirportDraft;
   /** "YYYY-MM-DDTHH:mm" */
   returnArrivalAt: string;
   startDate: string;
@@ -71,6 +83,10 @@ export interface OnboardingErrors {
   airline?: string;
   flightNumber?: string;
   returnAirline?: string;
+  departureAirport?: string;
+  arrivalAirport?: string;
+  returnDepartureAirport?: string;
+  returnArrivalAirport?: string;
   departureAt?: string;
   returnArrivalAt?: string;
   startDate?: string;
