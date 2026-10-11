@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getPackingNote, toErrorMessage, updateChecklistItem } from "../api/client";
-import { ROUTES, tripDetailPath } from "../routes";
+import { ROUTES, tripDetailPath, type HomeLocationState } from "../routes";
 import type { PackingLinkedItem, Trip } from "../types/api";
 import { dayLabel, tripDates } from "../trips/tripDays";
 import { nextTrip, tripShortTitle } from "../trips/tripUtils";
@@ -120,7 +120,11 @@ export default function PackingNotePage() {
       {!selected ? (
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-sm text-slate-600">아직 여행이 없어요.</p>
-          <Link to={ROUTES.ONBOARDING} className="mt-3 inline-block text-sm font-semibold text-indigo-600">
+          <Link
+            to={ROUTES.HOME}
+            state={{ newTrip: true } satisfies HomeLocationState}
+            className="mt-3 inline-block text-sm font-semibold text-indigo-600"
+          >
             새 여행 만들기
           </Link>
         </div>

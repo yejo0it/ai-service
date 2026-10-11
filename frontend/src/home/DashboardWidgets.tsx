@@ -1,5 +1,3 @@
-import { Link } from "react-router-dom";
-import { ROUTES } from "../routes";
 import { dDayLabel, tripStatus } from "../trips/tripUtils";
 import type { Trip } from "../types/api";
 import { diffDays, formatMonthDay, formatShortDot } from "../utils/date";
@@ -11,10 +9,12 @@ interface DDayCardProps {
   trip: Trip | null;
   today: string;
   onShowTrip: (trip: Trip) => void;
+  /** 새 여행 만들기 모달 열기 (여행이 없을 때) */
+  onNewTrip: () => void;
 }
 
 /** D-Day 카운트다운: 가장 가까운 여행과 남은 날 */
-export function DDayCard({ trip, today, onShowTrip }: DDayCardProps) {
+export function DDayCard({ trip, today, onShowTrip, onNewTrip }: DDayCardProps) {
   if (!trip) {
     return (
       <section aria-label="다가오는 여행" className={`${CARD_CLASS} text-center`}>
@@ -23,12 +23,13 @@ export function DDayCard({ trip, today, onShowTrip }: DDayCardProps) {
         </span>
         <p className="mt-3 font-semibold text-slate-800">등록된 여행이 없습니다</p>
         <p className="mt-1 text-sm text-slate-500">가고 싶은 도시와 날짜만 정하면 동선을 짜 드려요.</p>
-        <Link
-          to={ROUTES.ONBOARDING}
+        <button
+          type="button"
+          onClick={onNewTrip}
           className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
         >
           <i className="fas fa-plus text-xs" aria-hidden="true" />새 여행 만들기
-        </Link>
+        </button>
       </section>
     );
   }

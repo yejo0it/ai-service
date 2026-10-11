@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { updateTripColor } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { nicknameOf } from "../components/layout/AppHeader";
-import { ROUTES } from "../routes";
+import OnboardingWizard from "../onboarding/OnboardingWizard";
+import { tripDetailPath, type HomeLocationState } from "../routes";
+import type { TripDetailState } from "../trips/TripDetailPage";
 import { nextTrip } from "../trips/tripUtils";
 import useTrips from "../trips/useTrips";
 import type { Trip, TripColorKey } from "../types/api";
@@ -18,10 +20,23 @@ const firstOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(
 /**
  * `/` 홈 대시보드.
  * 왼쪽(모바일은 아래) D-Day·여행 경로 위젯, 오른쪽 대형 캘린더 + 선택 요약 카드.
+ * [새 여행 만들기]는 모달로 열고, 저장하면 만든 여행의 상세로 이동한다.
  */
 export default function HomePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const tripsState = useTrips();
+  // 다른 화면(짐싸기 노트 빈 화면, 예전 /onboarding 주소)에서 열고 오면 state.newTrip이 온다.
+  const [newTripOpen, setNewTripOpen] = useState(
+    () => (location.state as HomeLocationState | null)?.newTrip === true,
+  );
+  const openNewTrip = () => setNewTripOpen(true);
+
+  // 새로고침·뒤로 가기로 모달이 다시 열리지 않도록 state를 지운다.
+  useEffect(() => {
+    if ((location.state as HomeLocationState | null)?.newTrip) navigate(location.pathname, { replace: true });
+  }, [location.state, location.pathname, navigate]);
   const today = todayISODate();
 
   const [month, setMonth] = useState(() => firstOfMonth(new Date()));
@@ -75,12 +90,13 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">안녕하세요, {nicknameOf(user)} 님</h1>
           <p className="mt-1 text-sm text-slate-500">여행 일정을 한눈에 보고, 날짜를 눌러 요약을 확인하세요.</p>
         </div>
-        <Link
-          to={ROUTES.ONBOARDING}
+        <button
+          type="button"
+          onClick={openNewTrip}
           className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
         >
           <i className="fas fa-plus text-xs" aria-hidden="true" />새 여행 만들기
-        </Link>
+        </button>
       </div>
 
       {tripsState.status === "error" ? (
@@ -106,7 +122,7 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} />
+                <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} onNewTrip={openNewTrip} />
                 {focusTrip && <WeatherWidget trip={focusTrip} today={today} />}
                 {focusTrip && <ExchangeWidget trip={focusTrip} />}
                 <PackingWidget />
@@ -139,9 +155,20 @@ export default function HomePage() {
                 setSelectedTripId(null);
                 setSelectedDate(null);
               }}
+              onNewTrip={openNewTrip}
             />
           </div>
         </div>
+      )}
+
+      {newTripOpen && (
+        <OnboardingWizard
+          onClose={() => setNewTripOpen(false)}
+          onComplete={(trip) => {
+            const state: TripDetailState = { trip, created: true };
+            navigate(tripDetailPath(trip.id), { state });
+          }}
+        />
       )}
     </div>
   );

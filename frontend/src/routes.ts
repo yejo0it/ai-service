@@ -3,6 +3,7 @@
  */
 export const ROUTES = {
   HOME: "/",
+  /** 예전 새 여행 만들기 주소. 홈으로 보내 새 여행 만들기 모달을 연다. */
   ONBOARDING: "/onboarding",
   MY_TRIPS: "/trips",
   PACKING: "/packing",
@@ -17,6 +18,11 @@ export const ROUTES = {
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
+
+/** 홈으로 이동하며 새 여행 만들기 모달을 열 때 넘기는 라우터 state */
+export interface HomeLocationState {
+  newTrip?: boolean;
+}
 
 /** "/trips/12" */
 export const tripDetailPath = (tripId: number) => `/trips/${tripId}`;

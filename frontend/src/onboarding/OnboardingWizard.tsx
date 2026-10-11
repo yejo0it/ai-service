@@ -279,14 +279,26 @@ function validateStep(step: number, data: OnboardingData): OnboardingErrors {
  * 공용 UI 조각
  * ------------------------------------------------------------------ */
 
-function ProgressBar({ step }: { step: number }) {
+function ProgressBar({ step, onClose }: { step: number; onClose: () => void }) {
   return (
     <div className="mb-6">
-      <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-sm font-semibold text-slate-700">여행 만들기</span>
-        <span className="text-xs font-medium tabular-nums text-slate-500">
-          {step}/{TOTAL_STEPS}
-        </span>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 id="new-trip-title" className="text-sm font-semibold text-slate-700">
+          새 여행 만들기
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium tabular-nums text-slate-500">
+            {step}/{TOTAL_STEPS}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="-mr-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <i className="fas fa-times" aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <div
         className="flex gap-1.5"
@@ -1136,10 +1148,18 @@ function syncHotelsWithDestinations(
 interface OnboardingWizardProps {
   /** 여행 저장이 끝나면 만들어진 여행으로 호출한다. */
   onComplete?: (trip: Trip) => void;
+  /** 저장하지 않고 닫기 */
+  onClose: () => void;
 }
 
-export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
+/**
+ * 새 여행 만들기 모달: 여행지 → 항공권/날짜 → 숙소 3단계.
+ * 입력이 섞이지 않도록 바깥을 눌러도 닫히지 않고, 입력한 내용이 있으면 닫기 전에 한 번 더 묻는다.
+ * 모달은 화면 전체를 스크롤하므로 달력·자동완성 목록이 모달 안에서 잘리지 않는다.
+ */
+export default function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps) {
   const [step, setStep] = useState(1);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [data, setData] = useState<OnboardingData>(INITIAL_DATA);
   const [errors, setErrors] = useState<OnboardingErrors>({});
   const [submitError, setSubmitError] = useState("");
@@ -1218,59 +1238,99 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     [data, update, errors, step, tripRange, hotelNotice, dismissHotelNotice],
   );
 
+  // 모달이 열린 동안 뒤 화면은 스크롤하지 않는다.
+  useEffect(() => {
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+    };
+  }, []);
+
+  const requestClose = () => {
+    if (step === 1 && data === INITIAL_DATA) onClose();
+    else setConfirmingClose(true);
+  };
+
   const hasHotel = !data.skipHotel && data.hotels.some((hotel) => !isBlankHotel(hotel));
   const nextLabel =
     step < TOTAL_STEPS ? "다음" : hasHotel ? "여행 만들기" : "숙소 없이 시작하기";
 
   return (
     <OnboardingContext.Provider value={contextValue}>
-      {/* 상단 내비게이션 바(AppLayout) 아래에 그리므로 로그아웃은 헤더에 있다. */}
-      <div className="flex justify-center px-4 py-8 sm:py-12">
-        <div className="w-full max-w-md">
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-7">
-            <ProgressBar step={step} />
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30">
+        <div className="flex min-h-full items-start justify-center px-4 py-8 sm:py-16">
+          <div role="dialog" aria-modal="true" aria-labelledby="new-trip-title" className="w-full max-w-md">
+            <div className="rounded-2xl bg-white p-5 shadow-xl sm:p-7">
+              <ProgressBar step={step} onClose={requestClose} />
 
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                goNext();
-              }}
-            >
-              {step === 1 && <StepDestination />}
-              {step === 2 && <StepFlight />}
-              {step === 3 && <StepHotel />}
-
-              {submitError && (
-                <p className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {submitError}
-                </p>
+              {confirmingClose && (
+                <div
+                  role="alertdialog"
+                  aria-label="새 여행 만들기 닫기 확인"
+                  className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                >
+                  <p>입력한 내용은 저장되지 않아요. 닫을까요?</p>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingClose(false)}
+                      className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      계속 입력
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                </div>
               )}
 
-              <div className="mt-7 flex gap-2">
-                {step > 1 && (
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    disabled={submitting}
-                    className="rounded-xl border border-slate-200 px-5 py-3.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    이전
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 rounded-xl bg-indigo-600 px-5 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
-                >
-                  {submitting ? "저장하는 중..." : nextLabel}
-                </button>
-              </div>
-            </form>
-          </div>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  goNext();
+                }}
+              >
+                {step === 1 && <StepDestination />}
+                {step === 2 && <StepFlight />}
+                {step === 3 && <StepHotel />}
 
-          <p className="mt-4 text-center text-xs text-slate-400">
-            입력한 정보는 언제든 여행 상세에서 수정할 수 있어요.
-          </p>
+                {submitError && (
+                  <p className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {submitError}
+                  </p>
+                )}
+
+                <div className="mt-7 flex gap-2">
+                  {step > 1 && (
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      disabled={submitting}
+                      className="rounded-xl border border-slate-200 px-5 py-3.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      이전
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 rounded-xl bg-indigo-600 px-5 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                  >
+                    {submitting ? "저장하는 중..." : nextLabel}
+                  </button>
+                </div>
+                <p className="mt-4 text-center text-xs text-slate-400">
+                  입력한 정보는 언제든 여행 상세에서 수정할 수 있어요.
+                </p>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </OnboardingContext.Provider>
