@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from . import ai_planner, chat_guard
 from .models import ChecklistItem, Hotel, ItineraryItem, Trip
+from .packing import DEFAULT_PACKING_ITEMS
 
 User = get_user_model()
 
@@ -126,7 +127,7 @@ class ItineraryTests(APITestCase):
         response = self.client.post(self.url("reorder/"), {"day": "2026-10-13", "ids": ids[:1]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_checklist_classification_and_packing_note(self):
+    def test_checklist_classification(self):
         self.init()
         self.add("스카이트리", SKYTREE, "2026-10-13")
         item = self.trip.itinerary_items.get(title="스카이트리")
@@ -136,13 +137,30 @@ class ItineraryTests(APITestCase):
         self.assertTrue(ticket["in_packing_note"])
         self.assertFalse(photo["in_packing_note"])
 
-        self.client.patch(f"/api/v1/checklist-items/{photo['id']}/", {"in_packing_note": True}, format="json")
-        self.client.patch(f"/api/v1/checklist-items/{ticket['id']}/", {"done": True}, format="json")
-        linked = self.client.get(f"/api/v1/trips/{self.trip.pk}/packing-note/").data["linked"]
-        self.assertEqual([(c["text"], c["done"], c["item_title"]) for c in linked], [
-            ("웹으로 티켓 사전 예매", True, "스카이트리"),
-            ("전망대에서 사진 찍기", False, "스카이트리"),
-        ])
+    def test_packing_note_defaults_and_custom_items(self):
+        url = f"/api/v1/trips/{self.trip.pk}/packing-note/"
+        items = self.client.get(url).data["items"]
+        self.assertEqual([(i["category"], i["text"]) for i in items], list(DEFAULT_PACKING_ITEMS))
+        self.assertTrue(all(i["is_default"] and not i["done"] for i in items))
+
+        created = self.client.post(url, {"text": "  수영복  ", "category": "clothing"}, format="json")
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual((created.data["category"], created.data["text"], created.data["is_default"]),
+                         ("clothing", "수영복", False))
+        # 분류를 주지 않으면 '기타', 없는 분류는 거절한다.
+        self.assertEqual(self.client.post(url, {"text": "책"}, format="json").data["category"], "etc")
+        self.assertEqual(self.client.post(url, {"text": "책", "category": "food"}, format="json").status_code,
+                         status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.client.post(url, {"text": "   "}, format="json").status_code,
+                         status.HTTP_400_BAD_REQUEST)
+
+        self.client.patch(f"/api/v1/packing-items/{created.data['id']}/", {"done": True}, format="json")
+        # 지운 기본 준비물은 다시 생기지 않는다.
+        self.client.delete(f"/api/v1/packing-items/{items[0]['id']}/")
+        items = self.client.get(url).data["items"]
+        self.assertEqual(len(items), len(DEFAULT_PACKING_ITEMS) + 1)
+        self.assertEqual((items[-2]["text"], items[-2]["done"]), ("수영복", True))
+        self.assertNotIn(DEFAULT_PACKING_ITEMS[0][1], [i["text"] for i in items])
 
     def test_memo_and_delete_only_own_items(self):
         self.init()

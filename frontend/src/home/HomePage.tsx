@@ -46,7 +46,7 @@ export default function HomePage() {
   const trips = tripsState.status === "ready" ? tripsState.trips : [];
   const upcoming = useMemo(() => nextTrip(trips, today), [trips, today]);
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) ?? null;
-  // 위젯(경로·날씨·환율)은 선택한 여행, 없으면 다가오는 여행 기준
+  // 위젯(경로·날씨·환율·짐싸기)은 선택한 여행, 없으면 다가오는 여행 기준
   const focusTrip = selectedTrip ?? upcoming;
 
   // 처음 들어오면 오늘이 아니라 다가오는 여행이 있는 달을 보여준다(한 번만).
@@ -125,7 +125,7 @@ export default function HomePage() {
                 <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} onNewTrip={openNewTrip} />
                 {focusTrip && <WeatherWidget trip={focusTrip} today={today} />}
                 {focusTrip && <ExchangeWidget trip={focusTrip} />}
-                <PackingWidget />
+                {focusTrip && <PackingWidget trip={focusTrip} />}
                 <RouteTimeline trip={focusTrip} />
               </>
             )}

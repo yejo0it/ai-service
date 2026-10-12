@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ChecklistItem, Hotel, ItineraryItem, Trip, TripInvitation, TripMember
+from .models import ChecklistItem, Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
 
 User = get_user_model()
 
@@ -142,12 +142,15 @@ class MemberAccessTests(InvitationTestBase):
         self.as_user(self.stranger)
         self.assertEqual(self.client.get("/api/v1/trips/").data, [])
         for url in (f"/api/v1/trips/{self.trip.id}/", f"/api/v1/trips/{self.trip.id}/itinerary/",
-                    f"/api/v1/trips/{self.trip.id}/members/", f"/api/v1/hotels/{self.hotel.id}/"):
+                    f"/api/v1/trips/{self.trip.id}/members/", f"/api/v1/hotels/{self.hotel.id}/",
+                    f"/api/v1/trips/{self.trip.id}/packing-note/"):
             self.assertEqual(self.client.get(url).status_code, status.HTTP_404_NOT_FOUND, url)
         self.assertEqual(self.client.patch(f"/api/v1/itinerary-items/{self.item.id}/", {"memo": "x"}).status_code,
                          404)
         self.assertEqual(self.client.patch(f"/api/v1/checklist-items/{self.check.id}/", {"done": True}).status_code,
                          404)
+        packing = PackingItem.objects.create(trip=self.trip, text="여권")
+        self.assertEqual(self.client.patch(f"/api/v1/packing-items/{packing.id}/", {"done": True}).status_code, 404)
         self.assertEqual(self.client.delete(f"/api/v1/trips/{self.trip.id}/members/{self.guest.id}/").status_code,
                          404)
 

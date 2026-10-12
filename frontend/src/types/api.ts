@@ -376,10 +376,15 @@ export interface AddPlacePayload {
   session_token: string;
 }
 
-export interface PackingLinkedItem extends ChecklistItem {
-  item_id: number;
-  item_title: string;
-  day: ISODate;
+export type PackingCategory = "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
+
+/** 짐싸기 노트 준비물. is_default는 처음 넣어 준 기본 준비물 */
+export interface PackingItem {
+  id: number;
+  category: PackingCategory;
+  text: string;
+  done: boolean;
+  is_default: boolean;
 }
 
 export interface ChatTurn {
