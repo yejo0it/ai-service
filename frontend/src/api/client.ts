@@ -13,7 +13,7 @@ import type {
   ItineraryCardInput,
   ItineraryItem,
   ItineraryResponse,
-  PackingLinkedItem,
+  PackingItem,
   PlaceKind,
   ApiErrorData,
   AuthSession,
@@ -186,9 +186,17 @@ export const acceptTripInvitation = (token: string) =>
     .post<InvitationAcceptResponse>(`/trips/invitations/${encodeURIComponent(token)}/accept/`)
     .then((res) => res.data);
 
-/** 짐싸기 노트 '일정 연동 항목' */
-export const getPackingNote = (tripId: number) =>
-  api.get<{ linked: PackingLinkedItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data);
+/** 짐싸기 노트 준비물 (처음 열면 서버가 기본 준비물을 넣어 돌려준다) */
+export const getPackingItems = (tripId: number) =>
+  api.get<{ items: PackingItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data.items);
+
+export const addPackingItem = (tripId: number, payload: Pick<PackingItem, "category" | "text">) =>
+  api.post<PackingItem>(`/trips/${tripId}/packing-note/`, payload).then((res) => res.data);
+
+export const updatePackingItem = (packingId: number, payload: { done: boolean }) =>
+  api.patch<PackingItem>(`/packing-items/${packingId}/`, payload).then((res) => res.data);
+
+export const deletePackingItem = (packingId: number) => api.delete<void>(`/packing-items/${packingId}/`);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>

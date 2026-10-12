@@ -84,6 +84,8 @@ class Trip(TimeStampedModel):
     )
     # 상세 화면을 처음 열 때 항공편·숙소로 일정 카드를 한 번 만들었는지
     itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
+    # 짐싸기 노트를 처음 열 때 기본 준비물을 한 번 넣었는지 (지운 기본 항목이 다시 생기지 않도록)
+    packing_initialized = models.BooleanField("짐싸기 노트 초기화 여부", default=False)
 
     objects = TripQuerySet.as_manager()
 
@@ -221,6 +223,34 @@ class ChecklistItem(TimeStampedModel):
     class Meta:
         verbose_name = "체크리스트"
         verbose_name_plural = "체크리스트"
+        ordering = ("created_at", "id")
+
+    def __str__(self) -> str:
+        return self.text
+
+
+class PackingItem(TimeStampedModel):
+    """짐싸기 노트의 준비물. 기본 준비물로 시작하고 사용자가 직접 더하거나 지운다."""
+
+    class Category(models.TextChoices):
+        """화면에도 이 순서대로 나온다."""
+
+        ESSENTIALS = "essentials", "필수 준비물"
+        TOILETRIES = "toiletries", "세면도구/화장품"
+        CLOTHING = "clothing", "의류"
+        ELECTRONICS = "electronics", "전자제품"
+        MEDICINE = "medicine", "상비약"
+        ETC = "etc", "기타"
+
+    trip = models.ForeignKey(Trip, related_name="packing_items", on_delete=models.CASCADE)
+    category = models.CharField("분류", max_length=12, choices=Category.choices, default=Category.ETC)
+    text = models.CharField("준비물", max_length=100)
+    done = models.BooleanField("챙김", default=False)
+    is_default = models.BooleanField("기본 준비물", default=False)
+
+    class Meta:
+        verbose_name = "짐싸기 준비물"
+        verbose_name_plural = "짐싸기 준비물"
         ordering = ("created_at", "id")
 
     def __str__(self) -> str:

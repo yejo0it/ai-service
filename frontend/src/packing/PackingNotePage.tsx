@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { getPackingNote, toErrorMessage, updateChecklistItem } from "../api/client";
+import { addPackingItem, deletePackingItem, getPackingItems, toErrorMessage, updatePackingItem } from "../api/client";
 import { ROUTES, tripDetailPath, type HomeLocationState } from "../routes";
-import type { PackingLinkedItem, Trip } from "../types/api";
-import { dayLabel, tripDates } from "../trips/tripDays";
+import type { PackingCategory, PackingItem, Trip } from "../types/api";
 import { nextTrip, tripShortTitle } from "../trips/tripUtils";
 import useTrips from "../trips/useTrips";
 import { formatMonthDay, todayISODate } from "../utils/date";
@@ -11,110 +10,204 @@ import { formatMonthDay, todayISODate } from "../utils/date";
 /** 기본으로 보여줄 여행: 여행 중 → 다가오는 여행 → 가장 최근 여행 */
 const defaultTrip = (trips: Trip[]) => nextTrip(trips, todayISODate()) ?? trips[trips.length - 1] ?? null;
 
-/** 일정 연동 항목: 여행 상세 카드 체크리스트 중 짐싸기 노트 표시가 켜진 항목을 날짜별로. 체크 상태는 카드와 같다. */
-function LinkedItems({ trip }: { trip: Trip }) {
-  const [items, setItems] = useState<PackingLinkedItem[] | null>(null);
+/** 준비물 분류. 화면에 이 순서대로 나온다 (backend PackingItem.Category와 같다). */
+const PACKING_CATEGORIES: { key: PackingCategory; label: string }[] = [
+  { key: "essentials", label: "필수 준비물" },
+  { key: "toiletries", label: "세면도구/화장품" },
+  { key: "clothing", label: "의류" },
+  { key: "electronics", label: "전자제품" },
+  { key: "medicine", label: "상비약" },
+  { key: "etc", label: "기타" },
+];
+
+/** 준비물 체크리스트: 기본 준비물 + 직접 추가한 준비물. 체크·추가·삭제는 바로 저장한다. */
+function PackingChecklist({ trip }: { trip: Trip }) {
+  const [items, setItems] = useState<PackingItem[] | null>(null);
   const [error, setError] = useState("");
+  const [draft, setDraft] = useState("");
+  const [category, setCategory] = useState<PackingCategory>("etc");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setItems(null);
     setError("");
-    getPackingNote(trip.id)
-      .then((data) => !cancelled && setItems(data.linked))
+    getPackingItems(trip.id)
+      .then((data) => !cancelled && setItems(data))
       .catch((err: unknown) => !cancelled && setError(toErrorMessage(err)));
     return () => {
       cancelled = true;
     };
   }, [trip.id]);
 
-  const dates = useMemo(() => tripDates(trip), [trip]);
-
-  const toggle = (check: PackingLinkedItem, done: boolean) => {
+  const toggle = (target: PackingItem, done: boolean) => {
     setError("");
-    setItems((current) => current?.map((item) => (item.id === check.id ? { ...item, done } : item)) ?? null);
-    updateChecklistItem(check.id, { done }).catch((err: unknown) => {
-      setItems((current) => current?.map((item) => (item.id === check.id ? { ...item, done: !done } : item)) ?? null);
+    setItems((current) => current?.map((item) => (item.id === target.id ? { ...item, done } : item)) ?? null);
+    updatePackingItem(target.id, { done }).catch((err: unknown) => {
+      setItems((current) => current?.map((item) => (item.id === target.id ? { ...item, done: !done } : item)) ?? null);
       setError(toErrorMessage(err));
     });
   };
 
-  if (error && !items) return <p className="text-sm text-rose-600">{error}</p>;
-  if (!items) return <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />;
-  if (items.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center">
-        <p className="text-sm font-medium text-slate-600">아직 일정에서 연동된 항목이 없어요</p>
-        <p className="mt-1 text-xs text-slate-400">
-          여행 상세 카드의 체크리스트에 예약·티켓·준비물을 적으면 여기에 모여요.
-        </p>
-      </div>
-    );
-  }
+  const remove = (target: PackingItem) => {
+    setError("");
+    deletePackingItem(target.id)
+      .then(() => setItems((current) => current?.filter((item) => item.id !== target.id) ?? null))
+      .catch((err: unknown) => setError(toErrorMessage(err)));
+  };
 
-  const byDay = dates
-    .map((date, index) => ({ date, index, items: items.filter((item) => item.day === date) }))
-    .filter((group) => group.items.length > 0);
+  const add = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || adding) return;
+    setAdding(true);
+    setError("");
+    try {
+      const created = await addPackingItem(trip.id, { category, text });
+      setItems((current) => [...(current ?? []), created]);
+      setDraft("");
+    } catch (err) {
+      setError(toErrorMessage(err));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  if (error && !items) return <p className="text-sm text-rose-600">{error}</p>;
+  if (!items) return <div className="h-48 animate-pulse rounded-2xl bg-slate-100" />;
+
   const doneCount = items.filter((item) => item.done).length;
+  const percent = items.length === 0 ? 0 : Math.round((doneCount / items.length) * 100);
 
   return (
-    <div className="space-y-5">
-      <p className="text-xs text-slate-500">
-        {items.length}개 중 {doneCount}개 완료
-      </p>
-      {byDay.map((group) => (
-        <div key={group.date}>
-          <h3 className="mb-2 text-xs font-semibold text-slate-400">
-            {dayLabel(group.index)} · {formatMonthDay(group.date)}
-          </h3>
-          <ul className="space-y-1.5">
-            {group.items.map((item) => (
-              <li key={item.id}>
-                <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={(event) => toggle(item, event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                  />
-                  <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                    {item.text}
-                  </span>
-                  <span className="max-w-[40%] shrink-0 truncate rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-500 shadow-sm">
-                    {item.item_title}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
+    <div>
+      <div className="flex items-center gap-3">
+        <div
+          className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100"
+          role="progressbar"
+          aria-label="짐싸기 진행률"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${percent}%` }} />
         </div>
-      ))}
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+        <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
+      </div>
+      <p className="mt-1.5 text-xs text-slate-500">
+        {items.length}개 중 {doneCount}개 챙김
+      </p>
+
+      <form onSubmit={add} className="mt-5 flex flex-wrap gap-2">
+        <label htmlFor="packing-category" className="sr-only">
+          분류
+        </label>
+        <select
+          id="packing-category"
+          value={category}
+          onChange={(event) => setCategory(event.target.value as PackingCategory)}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        >
+          {PACKING_CATEGORIES.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="packing-new" className="sr-only">
+          준비물 추가
+        </label>
+        <input
+          id="packing-new"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          maxLength={100}
+          placeholder="챙길 준비물을 입력하세요 (예: 수영복)"
+          className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim() || adding}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <i className="fas fa-plus text-xs" aria-hidden="true" />
+          추가
+        </button>
+      </form>
+      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+
+      {items.length === 0 ? (
+        <p className="mt-5 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+          준비물을 추가해 보세요.
+        </p>
+      ) : (
+        <div className="mt-6 space-y-6">
+          {PACKING_CATEGORIES.map((option) => {
+            const group = items.filter((item) => item.category === option.key);
+            if (group.length === 0) return null;
+            return (
+              <section key={option.key} aria-label={option.label}>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  {option.label}
+                  <span className="text-xs font-medium tabular-nums text-slate-400">
+                    {group.filter((item) => item.done).length}/{group.length}
+                  </span>
+                </h3>
+                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.map((item) => (
+                    <li key={item.id} className="flex items-center gap-2 rounded-xl bg-slate-50 pr-1.5">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3.5 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={item.done}
+                          onChange={(event) => toggle(item, event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                        <span className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                          {item.text}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => remove(item)}
+                        aria-label={`${item.text} 삭제`}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
+                      >
+                        <i className="fas fa-times text-xs" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-/** `/packing` 짐싸기 노트. 여행을 고르면 그 여행의 '일정 연동 항목'을 보여준다(`?trip=` 로 기억). */
+/** `/packing` 짐싸기 노트. 여행을 고르면 그 여행의 준비물 체크리스트를 보여준다(`?trip=` 로 기억). */
 export default function PackingNotePage() {
   const trips = useTrips();
   const [params, setParams] = useSearchParams();
 
   if (trips.status === "loading") {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />
       </div>
     );
   }
   if (trips.status === "error") {
-    return <p className="mx-auto max-w-3xl px-4 py-8 text-sm text-rose-600 sm:px-6">{trips.message}</p>;
+    return <p className="mx-auto max-w-6xl px-4 py-8 text-sm text-rose-600 sm:px-6">{trips.message}</p>;
   }
 
   const selected =
     trips.trips.find((trip) => String(trip.id) === params.get("trip")) ?? defaultTrip(trips.trips);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">짐싸기 노트</h1>
 
       {!selected ? (
@@ -151,12 +244,9 @@ export default function PackingNotePage() {
             </Link>
           </div>
 
-          <section aria-label="일정 연동 항목" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-1 text-base font-bold text-slate-900">일정 연동 항목</h2>
-            <p className="mb-4 text-xs text-slate-400">
-              여행 상세 카드의 예약·티켓·준비물 체크리스트가 자동으로 모여요. 체크하면 카드에도 함께 반영돼요.
-            </p>
-            <LinkedItems key={selected.id} trip={selected} />
+          <section aria-label="준비물 체크리스트" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-slate-900">준비물 체크리스트</h2>
+            <PackingChecklist key={selected.id} trip={selected} />
           </section>
         </>
       )}
