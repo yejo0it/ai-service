@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import MultiPartParser
@@ -24,6 +25,7 @@ from .serializers import (
     LoginSerializer,
     NaverLoginSerializer,
     NicknameSerializer,
+    PasswordChangeSerializer,
     PasswordResetConfirmSerializer,
     PasswordCheckSerializer,
     PasswordResetVerifySerializer,
@@ -328,6 +330,41 @@ class EmailChangeConfirmView(EmailAccountMixin, APIView):
         return Response(UserSerializer(user).data)
 
 
+class PasswordChangeView(APIView):
+    """
+    `POST /api/v1/auth/me/password/` — 비밀번호 변경 ({current_password, password, password_confirm}).
+    가입과 같은 규칙(영문·숫자·특수문자 8~20자)을 적용하고, 현재 비밀번호와 같은 비밀번호는 거절한다.
+    바꾸면 지금 기기를 포함한 모든 로그인(토큰)이 해제되어 새 비밀번호로 다시 로그인해야 한다.
+    """
+
+    permission_classes = [IsAuthenticated]
+    # 현재 비밀번호 대입을 막는다.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def post(self, request):
+        user = request.user
+        if not user.has_usable_password():
+            return Response(
+                {"detail": "소셜 로그인 계정은 비밀번호를 변경할 수 없어요."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not user.check_password(data["current_password"]):
+            return Response(
+                {"current_password": ["현재 비밀번호가 올바르지 않아요."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if data["password"] == data["current_password"]:
+            return Response(
+                {"password": ["현재 비밀번호와 다른 비밀번호를 입력해 주세요."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer.validate_new_password(data, user)
+        set_new_password(user, data["password"])
+        Token.objects.filter(user=user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class PhoneChangeView(APIView):
     """
     `POST /api/v1/auth/me/phone/` — 휴대폰 번호 변경 ({phone, phone_verification_token}).
@@ -389,6 +426,16 @@ class PasswordResetVerifyView(AuthAPIView):
         return Response({"reset_token": make_reset_token(user)})
 
 
+def set_new_password(user, password):
+    """비밀번호를 바꾸고 마이페이지에 보여 줄 변경 시각을 남긴다."""
+    with transaction.atomic():
+        user.set_password(password)
+        user.save(update_fields=["password"])
+        profile = profile_of(user)
+        profile.password_changed_at = timezone.now()
+        profile.save(update_fields=["password_changed_at"])
+
+
 class PasswordResetConfirmView(AuthAPIView):
     """`POST /api/v1/auth/password-reset/confirm/` — 새 비밀번호 저장. 기존 로그인은 모두 해제된다."""
 
@@ -403,8 +450,7 @@ class PasswordResetConfirmView(AuthAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         serializer.validate_new_password(data, user)
-        user.set_password(data["password"])
-        user.save(update_fields=["password"])
+        set_new_password(user, data["password"])
         Token.objects.filter(user=user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

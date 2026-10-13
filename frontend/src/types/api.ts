@@ -186,6 +186,8 @@ export interface AuthUser {
   avatar: string | null;
   /** 이메일 가입 회원인지 (소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다) */
   has_password: boolean;
+  /** 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 소셜 가입 회원은 null */
+  password_updated_at: string | null;
 }
 
 /** 로그인·가입·소셜 로그인 응답. 프론트는 이 값을 그대로 세션으로 저장한다. */

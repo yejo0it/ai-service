@@ -292,6 +292,10 @@ export const cancelEmailChange = () => api.delete<void>("/auth/me/email/");
 export const confirmEmailChange = (emailToken: string) =>
   api.post<AuthUser>("/auth/me/email/confirm/", { email_token: emailToken }).then((res) => res.data);
 
+/** 비밀번호 변경 (가입과 같은 규칙, 현재 비밀번호와 같으면 거절). 성공하면 모든 로그인이 해제된다. */
+export const changePassword = (payload: { current_password: string; password: string; password_confirm: string }) =>
+  api.post<void>("/auth/me/password/", payload);
+
 /** 휴대폰 번호 변경. phone/verify에서 받은 토큰을 함께 보낸다. */
 export const changePhone = (phone: string, phoneVerificationToken: string) =>
   api
