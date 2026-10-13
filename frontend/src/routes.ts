@@ -7,6 +7,7 @@ export const ROUTES = {
   ONBOARDING: "/onboarding",
   MY_TRIPS: "/trips",
   PACKING: "/packing",
+  MYPAGE: "/mypage",
   TRIP_DETAIL: "/trips/:tripId",
   TRIP_INVITE: "/trips/invite/:token",
   LOGIN: "/login",

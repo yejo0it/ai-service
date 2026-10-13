@@ -5,7 +5,7 @@ from .models import PhoneVerification, Profile, SocialAccount
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "phone")
+    list_display = ("user", "phone", "avatar")
     search_fields = ("user__username", "phone")
 
 
