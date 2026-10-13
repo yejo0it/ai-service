@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   cancelEmailChange,
+  changePassword,
   changePhone,
   checkEmailChangePassword,
   checkNickname,
@@ -16,12 +17,15 @@ import {
   uploadAvatar,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { AuthInput, PasswordInput, SIDE_BUTTON_CLASS } from "../auth/AuthLayout";
+import { AuthField, AuthInput, PasswordInput, SIDE_BUTTON_CLASS } from "../auth/AuthLayout";
+import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "../auth/NewPasswordFields";
 import PhoneVerificationField from "../auth/PhoneVerificationField";
-import { getSession, saveSession } from "../auth/session";
+import type { LoginLocationState } from "../auth/LoginPage";
+import { clearSession, getSession, saveSession } from "../auth/session";
 import { EMAIL_PATTERN, firstError } from "../auth/validation";
 import Avatar from "../components/layout/Avatar";
 import { nicknameOf } from "../components/layout/AppHeader";
+import { ROUTES } from "../routes";
 import type { AuthUser } from "../types/api";
 
 /** 백엔드 accounts.serializers.NICKNAME_PATTERN과 같은 규칙 */
@@ -473,13 +477,46 @@ function EmailChangeDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** 결과 토스트를 보여 주는 시간(ms). 실패는 읽을 시간을 조금 더 준다. */
+/* ------------------------------------------------------------------ *
+ * 토스트
+ * ------------------------------------------------------------------ */
+
+interface ToastMessage {
+  ok: boolean;
+  message: string;
+}
+
+/** 토스트를 보여 주는 시간(ms). 실패는 읽을 시간을 조금 더 준다. */
 const TOAST_MS = { ok: 3000, error: 5000 };
 
+/** 화면 위쪽 가운데에 잠시 떴다가 저절로 사라지는 알림 */
+function useToast() {
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), toast.ok ? TOAST_MS.ok : TOAST_MS.error);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  return { toast, showToast: setToast };
+}
+
+function Toast({ toast }: { toast: ToastMessage }) {
+  return (
+    <div
+      role={toast.ok ? "status" : "alert"}
+      className={`fixed left-1/2 top-4 z-[60] w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md px-6 py-3.5 text-[15px] text-white shadow-lg ${
+        toast.ok ? "bg-indigo-500" : "bg-rose-500"
+      }`}
+    >
+      {toast.message}
+    </div>
+  );
+}
+
 /** 메일 링크(/mypage?email_token=)로 들어오면 이메일 변경을 마치고 결과를 토스트로 알린다. */
-function useEmailChangeConfirm() {
+function useEmailChangeConfirm(showToast: (toast: ToastMessage) => void) {
   const [params, setParams] = useSearchParams();
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirming, setConfirming] = useState(false);
   // 개발 모드(StrictMode)에서 effect가 두 번 돌아도 한 번만 요청한다(링크는 1회용).
   const handled = useRef("");
   const token = params.get("email_token");
@@ -489,22 +526,178 @@ function useEmailChangeConfirm() {
     handled.current = token;
     // 새로고침해도 다시 요청하지 않도록 주소에서 토큰을 지운다.
     setParams({}, { replace: true });
+    setConfirming(true);
     confirmEmailChange(token)
       .then((user) => {
         applyUser(user);
-        setResult({ ok: true, message: "이메일 인증이 완료되었습니다." });
+        showToast({ ok: true, message: "이메일 인증이 완료되었습니다." });
       })
-      .catch((err: unknown) => setResult({ ok: false, message: toErrorMessage(err) }));
-  }, [token, setParams]);
+      .catch((err: unknown) => showToast({ ok: false, message: toErrorMessage(err) }))
+      .finally(() => setConfirming(false));
+  }, [token, setParams, showToast]);
 
-  // 토스트는 잠시 뒤 저절로 사라진다.
+  return confirming;
+}
+
+/* ------------------------------------------------------------------ *
+ * 비밀번호
+ * ------------------------------------------------------------------ */
+
+type PasswordErrors = NewPasswordErrors & { currentPassword?: string; form?: string };
+
+const SAME_PASSWORD_MESSAGE = "현재 비밀번호와 다른 비밀번호를 입력해 주세요.";
+
+/**
+ * 비밀번호 변경 모달: 현재 비밀번호 · 새 비밀번호 · 비밀번호 확인.
+ * 가입과 같은 규칙(영문·숫자·특수문자 8~20자)과 일치 여부를 입력하는 대로 보여 주고,
+ * 현재 비밀번호와 같은 새 비밀번호는 저장하지 않는다. [취소]는 입력을 버리고 닫는다.
+ * 저장하면 서버가 모든 로그인을 해제하므로 '비밀번호 변경 완료'를 띄우고, [확인]을 누르면
+ * 로그인 화면(이메일 채움)으로 보낸다. 다시 로그인하면 마이페이지로 돌아온다.
+ */
+function PasswordChangeDialog({ email, onClose }: { email: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [done, setDone] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [errors, setErrors] = useState<PasswordErrors>({});
+  const [busy, setBusy] = useState(false);
+
+  // 변경 후에는 이미 로그아웃된 상태라 어떻게 닫든 로그인 화면으로 간다.
+  const goToLogin = () => {
+    const state: LoginLocationState = { email, notice: "새 비밀번호로 다시 로그인해 주세요.", from: ROUTES.MYPAGE };
+    clearSession();
+    navigate(ROUTES.LOGIN, { replace: true, state });
+  };
+  const dismiss = done ? goToLogin : onClose;
+
   useEffect(() => {
-    if (!result) return undefined;
-    const timer = setTimeout(() => setResult(null), result.ok ? TOAST_MS.ok : TOAST_MS.error);
-    return () => clearTimeout(timer);
-  }, [result]);
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && dismiss();
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
 
-  return { result, confirming: Boolean(token) && !result };
+  // 새 비밀번호가 현재 비밀번호와 같으면 입력하는 대로 알린다.
+  const samePassword = Boolean(password) && password === currentPassword;
+  const fieldErrors: NewPasswordErrors = {
+    password: errors.password || (samePassword ? SAME_PASSWORD_MESSAGE : undefined),
+    passwordConfirm: errors.passwordConfirm,
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const next: PasswordErrors = validateNewPassword(password, passwordConfirm);
+    if (!currentPassword) next.currentPassword = "현재 비밀번호를 입력해 주세요.";
+    if (samePassword) next.password = SAME_PASSWORD_MESSAGE;
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
+    setBusy(true);
+    try {
+      await changePassword({ current_password: currentPassword, password, password_confirm: passwordConfirm });
+      setDone(true);
+    } catch (err) {
+      const data = errorDataOf(err);
+      const server: PasswordErrors = {
+        currentPassword: firstError(data, "current_password"),
+        password: firstError(data, "password"),
+        passwordConfirm: firstError(data, "password_confirm"),
+      };
+      setErrors(
+        server.currentPassword || server.password || server.passwordConfirm ? server : { form: toErrorMessage(err) },
+      );
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={goToLogin}>
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="password-done-title"
+          aria-describedby="password-done-message"
+          onClick={(event) => event.stopPropagation()}
+          className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
+        >
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+            <i className="fas fa-check text-lg" aria-hidden="true" />
+          </span>
+          <h2 id="password-done-title" className="mt-3 text-base font-bold text-slate-900">
+            비밀번호 변경 완료
+          </h2>
+          <p id="password-done-message" className="mt-2 text-sm leading-relaxed text-slate-600">
+            비밀번호 변경이 완료되었습니다.
+            <br />
+            다시 로그인해 주세요.
+          </p>
+          <button type="button" onClick={goToLogin} autoFocus className={`${PRIMARY_BUTTON_CLASS} mt-5 w-full`}>
+            확인
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="password-change-title"
+        onClick={(event) => event.stopPropagation()}
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="password-change-title" className="text-base font-bold text-slate-900">
+            비밀번호 변경
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="-mr-1 -mt-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <i className="fas fa-times" aria-hidden="true" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 space-y-4" noValidate>
+          <AuthField label="현재 비밀번호" htmlFor="mypage-current-password" error={errors.currentPassword}>
+            <PasswordInput
+              id="mypage-current-password"
+              autoComplete="current-password"
+              placeholder="현재 비밀번호"
+              value={currentPassword}
+              error={errors.currentPassword}
+              autoFocus
+              onChange={(event) => {
+                setCurrentPassword(event.target.value);
+                setErrors(({ currentPassword: _, ...rest }) => rest);
+              }}
+            />
+          </AuthField>
+          <NewPasswordFields
+            idPrefix="mypage-new"
+            password={password}
+            passwordConfirm={passwordConfirm}
+            errors={fieldErrors}
+            onPasswordChange={(value) => {
+              setPassword(value);
+              setErrors(({ password: _, ...rest }) => rest);
+            }}
+            onPasswordConfirmChange={(value) => {
+              setPasswordConfirm(value);
+              setErrors(({ passwordConfirm: _, ...rest }) => rest);
+            }}
+          />
+          {errors.form && <p className="text-xs text-rose-600">{errors.form}</p>}
+          <FormActions onCancel={onClose} submitLabel="저장" disabled={busy} />
+        </form>
+      </div>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -550,13 +743,14 @@ function PhoneForm({ onDone }: { onDone: () => void }) {
  * 화면
  * ------------------------------------------------------------------ */
 
-type Editing = "name" | "email" | "phone" | null;
+type Editing = "name" | "email" | "phone" | "password" | null;
 
 /** `/mypage` 마이페이지. 첫 단락: 기본정보(프로필 사진 · 닉네임 · 이메일 · 휴대폰 번호) 조회·변경 */
 export default function MyPage() {
   const { user } = useAuth();
   const [editing, setEditing] = useState<Editing>(null);
-  const emailConfirm = useEmailChangeConfirm();
+  const { toast, showToast } = useToast();
+  const confirmingEmail = useEmailChangeConfirm(showToast);
 
   if (!user) return null;
   const close = () => setEditing(null);
@@ -572,17 +766,8 @@ export default function MyPage() {
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">마이페이지</h1>
 
-      {emailConfirm.confirming && <p className="mt-4 text-sm text-slate-500">이메일 변경을 확인하는 중…</p>}
-      {emailConfirm.result && (
-        <div
-          role={emailConfirm.result.ok ? "status" : "alert"}
-          className={`fixed left-1/2 top-4 z-[60] w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md px-6 py-3.5 text-[15px] text-white shadow-lg ${
-            emailConfirm.result.ok ? "bg-indigo-500" : "bg-rose-500"
-          }`}
-        >
-          {emailConfirm.result.message}
-        </div>
-      )}
+      {confirmingEmail && <p className="mt-4 text-sm text-slate-500">이메일 변경을 확인하는 중…</p>}
+      {toast && <Toast toast={toast} />}
 
       <section aria-labelledby="basic-info" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 id="basic-info" className="mb-5 text-base font-bold text-slate-900">
@@ -632,7 +817,31 @@ export default function MyPage() {
         </dl>
       </section>
 
+      <section aria-labelledby="password-info" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 id="password-info" className="mb-5 text-base font-bold text-slate-900">
+          비밀번호
+        </h2>
+        {user.has_password ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm tracking-widest text-slate-900" aria-label="비밀번호 숨김">
+                ********
+              </p>
+              {user.password_updated_at && (
+                <p className="mt-1 text-xs text-slate-500">최근 업데이트 {user.password_updated_at}</p>
+              )}
+            </div>
+            <button type="button" onClick={() => setEditing("password")} className={CHANGE_BUTTON_CLASS}>
+              비밀번호 변경
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">소셜 로그인 계정은 비밀번호 없이 로그인해요.</p>
+        )}
+      </section>
+
       {editing === "email" && <EmailChangeDialog onClose={close} />}
+      {editing === "password" && <PasswordChangeDialog email={user.email} onClose={close} />}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import re
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
 
 from . import phone as phone_verification
@@ -58,16 +59,18 @@ class UserSerializer(serializers.ModelSerializer):
     - phone: 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다.
     - avatar: 프로필 사진 경로(`/media/...`). 없으면 null.
     - has_password: 이메일 가입 회원인지(소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다).
+    - password_updated_at: 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 비밀번호가 없으면 null.
     """
 
     name = serializers.CharField(source="first_name")
     phone = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
+    password_updated_at = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "name", "phone", "avatar", "has_password")
+        fields = ("id", "email", "name", "phone", "avatar", "has_password", "password_updated_at")
 
     def get_phone(self, user):
         profile = getattr(user, "profile", None)
@@ -79,6 +82,13 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_has_password(self, user):
         return user.has_usable_password()
+
+    def get_password_updated_at(self, user):
+        if not user.has_usable_password():
+            return None
+        profile = getattr(user, "profile", None)
+        changed_at = (profile.password_changed_at if profile else None) or user.date_joined
+        return timezone.localdate(changed_at).isoformat()
 
 
 class NicknameSerializer(serializers.Serializer):
@@ -186,6 +196,10 @@ class PasswordResetVerifySerializer(VerifiedPhoneSerializer):
 
     def validate_email(self, value):
         return normalize_email(value)
+
+
+class PasswordChangeSerializer(NewPasswordSerializer):
+    current_password = serializers.CharField(write_only=True)
 
 
 class PasswordResetConfirmSerializer(NewPasswordSerializer):

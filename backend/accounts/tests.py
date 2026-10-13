@@ -9,8 +9,10 @@ from django.core import mail
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from .models import Profile, SocialAccount
@@ -375,6 +377,44 @@ class MyPageTests(PhoneVerificationMixin, APITestCase):
         response = self.client.delete("/api/v1/auth/me/avatar/")
         self.assertIsNone(response.data["avatar"])
         self.assertFalse(saved.storage.exists(saved.name))
+
+    def test_password_updated_at_defaults_to_join_date(self):
+        data = self.client.get("/api/v1/auth/me/").data
+        self.assertEqual(data["password_updated_at"], timezone.localdate(self.user.date_joined).isoformat())
+
+    def test_change_password(self):
+        url = "/api/v1/auth/me/password/"
+        new = "newroute@2026"
+        payload = {"current_password": PASSWORD, "password": new, "password_confirm": new}
+        self.assertEqual(self.client.post(url, {**payload, "current_password": "wrong"}).status_code,
+                         status.HTTP_400_BAD_REQUEST)
+        # 가입 규칙(영문·숫자·특수문자 8~20자), 확인 불일치, 현재와 같은 비밀번호는 거절한다.
+        for bad in ({"password": "short1!", "password_confirm": "short1!"},
+                    {"password": new, "password_confirm": "different@2026"},
+                    {"password": PASSWORD, "password_confirm": PASSWORD}):
+            self.assertEqual(self.client.post(url, {**payload, **bad}).status_code, status.HTTP_400_BAD_REQUEST, bad)
+
+        Profile.objects.filter(user=self.user).update(password_changed_at=None)
+        Token.objects.create(user=self.user)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        # 모든 로그인이 해제되고, 변경 일자가 오늘로 바뀐다.
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+        self.assertEqual(self.client.get("/api/v1/auth/me/").data["password_updated_at"],
+                         timezone.localdate().isoformat())
+        self.client.force_authenticate(None)
+        login = self.client.post("/api/v1/auth/login/", {"email": "traveler@example.com", "password": new})
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+
+    def test_social_account_cannot_change_password(self):
+        social_user = User.objects.create_user(username="kakao_2", email="")
+        social_user.set_unusable_password()
+        social_user.save()
+        self.client.force_authenticate(social_user)
+        self.assertIsNone(self.client.get("/api/v1/auth/me/").data["password_updated_at"])
+        response = self.client.post("/api/v1/auth/me/password/",
+                                    {"current_password": "x", "password": "a1!bcdefg", "password_confirm": "a1!bcdefg"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_change_phone_requires_verification(self):
         new_phone = "01098765432"
