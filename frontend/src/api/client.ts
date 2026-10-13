@@ -296,6 +296,14 @@ export const confirmEmailChange = (emailToken: string) =>
 export const changePassword = (payload: { current_password: string; password: string; password_confirm: string }) =>
   api.post<void>("/auth/me/password/", payload);
 
+/** 마이페이지 계정 연동: 인가 코드로 소셜 계정을 지금 계정에 연결 */
+export const linkSocialAccount = (provider: SocialProvider, payload: SocialLoginPayload) =>
+  api.post<AuthUser>(`/auth/me/social/${provider}/`, payload).then((res) => res.data);
+
+/** 마이페이지 계정 연동: 연결 해제 */
+export const unlinkSocialAccount = (provider: SocialProvider) =>
+  api.delete<AuthUser>(`/auth/me/social/${provider}/`).then((res) => res.data);
+
 /** 휴대폰 번호 변경. phone/verify에서 받은 토큰을 함께 보낸다. */
 export const changePhone = (phone: string, phoneVerificationToken: string) =>
   api

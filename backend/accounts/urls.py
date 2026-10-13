@@ -19,6 +19,7 @@ from .views import (
     PasswordResetVerifyView,
     PhoneChangeView,
     PhoneRequestView,
+    SocialLinkView,
     PhoneVerifyView,
     SignupView,
 )
@@ -39,6 +40,7 @@ urlpatterns = [
     path("me/email/confirm/", EmailChangeConfirmView.as_view(), name="me-email-confirm"),
     path("me/phone/", PhoneChangeView.as_view(), name="me-phone"),
     path("me/password/", PasswordChangeView.as_view(), name="me-password"),
+    path("me/social/<str:provider>/", SocialLinkView.as_view(), name="me-social"),
     path("find-id/", FindIdView.as_view(), name="find-id"),
     path("password-reset/verify/", PasswordResetVerifyView.as_view(), name="password-reset-verify"),
     path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),

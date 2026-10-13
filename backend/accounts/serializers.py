@@ -60,6 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
     - avatar: 프로필 사진 경로(`/media/...`). 없으면 null.
     - has_password: 이메일 가입 회원인지(소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다).
     - password_updated_at: 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 비밀번호가 없으면 null.
+    - social_providers: 연결된 소셜 계정(["kakao", "naver"] 중).
     """
 
     name = serializers.CharField(source="first_name")
@@ -67,10 +68,13 @@ class UserSerializer(serializers.ModelSerializer):
     avatar = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
     password_updated_at = serializers.SerializerMethodField()
+    social_providers = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "name", "phone", "avatar", "has_password", "password_updated_at")
+        fields = (
+            "id", "email", "name", "phone", "avatar", "has_password", "password_updated_at", "social_providers",
+        )
 
     def get_phone(self, user):
         profile = getattr(user, "profile", None)
@@ -82,6 +86,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_has_password(self, user):
         return user.has_usable_password()
+
+    def get_social_providers(self, user):
+        return sorted(user.social_accounts.values_list("provider", flat=True))
 
     def get_password_updated_at(self, user):
         if not user.has_usable_password():
