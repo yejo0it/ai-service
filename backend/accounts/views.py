@@ -1,28 +1,40 @@
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
 from rest_framework import status
 from rest_framework.authtoken.models import Token
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from . import phone as phone_verification
-from . import social
+from . import email_change, social
+from .avatar import AvatarError, make_avatar
 from .password_reset import make_reset_token, user_from_reset_token
 from .models import Profile, SocialAccount
 from .serializers import (
+    AvatarSerializer,
+    EmailChangeConfirmSerializer,
+    EmailChangeRequestSerializer,
     EmailSerializer,
     FindIdSerializer,
     KakaoLoginSerializer,
     LoginSerializer,
     NaverLoginSerializer,
+    NicknameSerializer,
     PasswordResetConfirmSerializer,
+    PasswordCheckSerializer,
     PasswordResetVerifySerializer,
     PhoneSerializer,
     PhoneVerifySerializer,
     SignupSerializer,
     UserSerializer,
+    VerifiedPhoneSerializer,
     email_taken,
+    nickname_taken,
+    profile_of,
 )
 
 User = get_user_model()
@@ -39,6 +51,7 @@ class AuthAPIView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth"
 
 
@@ -119,11 +132,216 @@ class LoginView(AuthAPIView):
 
 
 class MeView(APIView):
-    """`GET /api/v1/auth/me/` — 토큰이 유효한지 확인하고 로그인한 회원 정보를 돌려준다(만료·폐기 시 401)."""
+    """
+    `GET /api/v1/auth/me/` — 토큰이 유효한지 확인하고 로그인한 회원 정보를 돌려준다(만료·폐기 시 401).
+    `PATCH /api/v1/auth/me/` — 닉네임 변경 ({name}). 형식·중복을 다시 확인한다.
+    """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = NicknameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+        if nickname_taken(name, exclude_user=request.user):
+            return Response({"name": ["이미 사용 중인 닉네임이에요."]}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.first_name = name
+        request.user.save(update_fields=["first_name"])
+        return Response(UserSerializer(request.user).data)
+
+
+class NicknameCheckView(APIView):
+    """`POST /api/v1/auth/me/check-name/` — 닉네임 형식 확인 후 쓸 수 있는지(내 닉네임은 쓸 수 있음)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = NicknameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+        return Response({"available": not nickname_taken(name, exclude_user=request.user)})
+
+
+class AvatarView(APIView):
+    """
+    `POST /api/v1/auth/me/avatar/` (multipart, avatar) — 프로필 사진 변경. 이전 사진 파일은 지운다.
+    `DELETE /api/v1/auth/me/avatar/` — 프로필 사진 삭제 (기본 아바타로 돌아간다).
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        serializer = AvatarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            image = make_avatar(serializer.validated_data["avatar"])
+        except AvatarError as exc:
+            return Response({"avatar": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = profile_of(request.user)
+        old = profile.avatar.name if profile.avatar else ""
+        profile.avatar.save(image.name, image, save=True)
+        if old:
+            profile.avatar.storage.delete(old)
+        return Response(UserSerializer(request.user).data)
+
+    def delete(self, request):
+        profile = profile_of(request.user)
+        if profile.avatar:
+            profile.avatar.delete(save=True)
+        return Response(UserSerializer(request.user).data)
+
+
+class EmailAccountMixin:
+    """이메일 변경은 비밀번호가 있는 이메일 가입 회원만 할 수 있다."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+
+    def social_account_error(self, user):
+        if user.has_usable_password():
+            return None
+        return Response(
+            {"detail": "소셜 로그인 계정은 이메일을 변경할 수 없어요."}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class EmailChangePasswordView(EmailAccountMixin, APIView):
+    """`POST /api/v1/auth/me/email/password/` — 현재 비밀번호 확인 후 password_ticket(10분) 발급."""
+
+    # 비밀번호 대입을 막는다.
+    throttle_scope = "auth"
+
+    def post(self, request):
+        if error := self.social_account_error(request.user):
+            return error
+        serializer = PasswordCheckSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not request.user.check_password(serializer.validated_data["password"]):
+            return Response({"password": ["비밀번호가 올바르지 않아요."]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"password_ticket": email_change.make_password_ticket(request.user)})
+
+
+def send_email_change_link(user, new_email):
+    """새 이메일로 인증 링크를 보내고 변경 대기 이메일로 둔다."""
+    link = email_change.confirm_link(email_change.make_email_token(user, new_email))
+    nickname = user.first_name.strip() or user.email.split("@")[0]
+    try:
+        email_change.send_confirm_email(new_email, link, nickname)
+    except email_change.EmailChangeError as exc:
+        return Response({"detail": str(exc)}, status=exc.status_code)
+
+    profile = profile_of(user)
+    profile.pending_email = new_email
+    profile.save(update_fields=["pending_email"])
+    response = {"email": new_email, "expires_in": email_change.EMAIL_TOKEN_MAX_AGE}
+    if settings.DEBUG:
+        # 메일 발송 설정이 없는 개발 환경용. DEBUG에서만 내려간다.
+        response["debug_link"] = link
+    return Response(response)
+
+
+class EmailChangeRequestView(EmailAccountMixin, APIView):
+    """
+    `POST /api/v1/auth/me/email/` — 새 이메일로 '변경 이메일 인증하기' 링크를 보낸다
+    ({email, password_ticket}). 메일의 링크를 누르기 전까지 이메일은 바뀌지 않는다.
+    `DELETE /api/v1/auth/me/email/` — 이메일 변경 취소. 이미 보낸 링크도 쓸 수 없게 된다.
+    """
+
+    throttle_scope = "email"
+
+    def post(self, request):
+        user = request.user
+        if error := self.social_account_error(user):
+            return error
+        serializer = EmailChangeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not email_change.password_ticket_valid(data["password_ticket"], user):
+            return Response(
+                {"detail": "비밀번호 확인 시간이 지났어요. 처음부터 다시 진행해 주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if data["email"] == user.email:
+            return Response({"email": ["지금 쓰는 이메일이에요."]}, status=status.HTTP_400_BAD_REQUEST)
+        if email_taken(data["email"]):
+            return Response({"email": ["이미 가입된 이메일이에요."]}, status=status.HTTP_400_BAD_REQUEST)
+        return send_email_change_link(user, data["email"])
+
+    def delete(self, request):
+        profile = profile_of(request.user)
+        profile.pending_email = ""
+        profile.save(update_fields=["pending_email"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EmailChangeResendView(EmailAccountMixin, APIView):
+    """`POST /api/v1/auth/me/email/resend/` — 변경 대기 중인 이메일로 인증 메일을 다시 보낸다."""
+
+    throttle_scope = "email"
+
+    def post(self, request):
+        user = request.user
+        if error := self.social_account_error(user):
+            return error
+        pending = profile_of(user).pending_email
+        if not pending:
+            return Response(
+                {"detail": "변경 중인 이메일이 없어요. 처음부터 다시 진행해 주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if email_taken(pending):
+            return Response({"email": ["이미 가입된 이메일이에요."]}, status=status.HTTP_400_BAD_REQUEST)
+        return send_email_change_link(user, pending)
+
+
+class EmailChangeConfirmView(EmailAccountMixin, APIView):
+    """`POST /api/v1/auth/me/email/confirm/` — 메일 링크의 email_token으로 이메일 변경을 마친다."""
+
+    throttle_scope = "auth"
+
+    def post(self, request):
+        user = request.user
+        serializer = EmailChangeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = profile_of(user)
+        try:
+            new_email = email_change.email_from_token(
+                serializer.validated_data["email_token"], user, profile.pending_email
+            )
+        except email_change.EmailChangeError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+        if email_taken(new_email):
+            return Response(
+                {"detail": "그 사이 다른 계정이 가입한 이메일이에요."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        with transaction.atomic():
+            # 이메일 가입 회원은 username도 이메일이다(로그인 아이디).
+            user.email = user.username = new_email
+            user.save(update_fields=["email", "username"])
+            profile.pending_email = ""
+            profile.save(update_fields=["pending_email"])
+        return Response(UserSerializer(user).data)
+
+
+class PhoneChangeView(APIView):
+    """
+    `POST /api/v1/auth/me/phone/` — 휴대폰 번호 변경 ({phone, phone_verification_token}).
+    phone/request → phone/verify로 인증을 마친 번호만 저장한다.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = VerifiedPhoneSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = profile_of(request.user)
+        profile.phone = serializer.validated_data["phone"]
+        profile.save(update_fields=["phone"])
         return Response(UserSerializer(request.user).data)
 
 

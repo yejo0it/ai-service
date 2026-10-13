@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from . import phone as phone_verification
+from .models import Profile
 
 User = get_user_model()
 
@@ -31,12 +32,77 @@ def phone_field():
     )
 
 
+# 닉네임: 한글·영문·숫자·밑줄 2~12자 (공백 불가)
+NICKNAME_PATTERN = re.compile(r"^[가-힣A-Za-z0-9_]{2,12}$")
+NICKNAME_RULE_MESSAGE = "닉네임은 한글, 영문, 숫자, 밑줄(_)로 2~12자 입력해 주세요."
+
+
+def nickname_taken(name, exclude_user=None):
+    users = User.objects.filter(first_name__iexact=name)
+    if exclude_user is not None:
+        users = users.exclude(pk=exclude_user.pk)
+    return users.exists()
+
+
+def profile_of(user):
+    """회원 부가 정보. 관리자 명령으로 만든 회원 등 Profile이 없으면 만든다."""
+    try:
+        return user.profile
+    except Profile.DoesNotExist:
+        return Profile.objects.create(user=user)
+
+
 class UserSerializer(serializers.ModelSerializer):
+    """
+    로그인·가입 응답과 마이페이지 공통 회원 정보.
+    - phone: 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다.
+    - avatar: 프로필 사진 경로(`/media/...`). 없으면 null.
+    - has_password: 이메일 가입 회원인지(소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다).
+    """
+
     name = serializers.CharField(source="first_name")
+    phone = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    has_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "name")
+        fields = ("id", "email", "name", "phone", "avatar", "has_password")
+
+    def get_phone(self, user):
+        profile = getattr(user, "profile", None)
+        return profile.phone if profile else ""
+
+    def get_avatar(self, user):
+        profile = getattr(user, "profile", None)
+        return profile.avatar.url if profile and profile.avatar else None
+
+    def get_has_password(self, user):
+        return user.has_usable_password()
+
+
+class NicknameSerializer(serializers.Serializer):
+    name = serializers.RegexField(NICKNAME_PATTERN, error_messages={"invalid": NICKNAME_RULE_MESSAGE})
+
+
+class AvatarSerializer(serializers.Serializer):
+    avatar = serializers.FileField(error_messages={"required": "사진을 골라 주세요."})
+
+
+class PasswordCheckSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+
+
+class EmailChangeRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password_ticket = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        return normalize_email(value)
+
+
+class EmailChangeConfirmSerializer(serializers.Serializer):
+    email_token = serializers.CharField()
 
 
 class EmailSerializer(serializers.Serializer):

@@ -1,4 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
+import { mediaUrl } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import LogoutButton from "../../auth/LogoutButton";
 import { PinRouteAppIcon, PinRouteWordmark } from "../../brand/Logo";
@@ -31,7 +32,7 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
   }`;
 
-/** 상단 내비게이션 바: 로고 · 메뉴 / 닉네임 · 프로필 · 로그아웃 */
+/** 상단 내비게이션 바: 로고 · 메뉴 / 프로필 · 닉네임(마이페이지로 이동) · 로그아웃 */
 export default function AppHeader() {
   const { user } = useAuth();
   const nickname = nicknameOf(user);
@@ -71,10 +72,17 @@ export default function AppHeader() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <Avatar name={nickname} />
-          <span className="hidden max-w-[10rem] truncate text-sm font-medium text-slate-700 sm:inline">
-            {nickname} 님
-          </span>
+          <Link
+            to={ROUTES.MYPAGE}
+            title="마이페이지"
+            className="flex items-center gap-2 rounded-full transition-opacity hover:opacity-80 sm:gap-3"
+          >
+            <Avatar name={nickname} src={mediaUrl(user?.avatar)} />
+            <span className="hidden max-w-[10rem] truncate text-sm font-medium text-slate-700 sm:inline">
+              {nickname} 님
+            </span>
+            <span className="sr-only">마이페이지</span>
+          </Link>
           <LogoutButton className="border border-slate-200 bg-white hover:border-slate-300" />
         </div>
       </div>

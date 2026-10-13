@@ -8,6 +8,7 @@ import GuestOnlyRoute from "./components/GuestOnlyRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import HomePage from "./home/HomePage";
+import MyPage from "./mypage/MyPage";
 import PackingNotePage from "./packing/PackingNotePage";
 import { ROUTES, type HomeLocationState } from "./routes";
 import MyTripsPage from "./trips/MyTripsPage";
@@ -42,6 +43,7 @@ export default function App() {
           <Route path={ROUTES.TRIP_DETAIL} element={<TripDetailPage />} />
           <Route path={ROUTES.TRIP_INVITE} element={<InviteAcceptPage />} />
           <Route path={ROUTES.PACKING} element={<PackingNotePage />} />
+          <Route path={ROUTES.MYPAGE} element={<MyPage />} />
         </Route>
       </Route>
     </Routes>

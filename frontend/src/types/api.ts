@@ -176,8 +176,16 @@ export interface HotelDetail {
 
 export interface AuthUser {
   id: number;
+  /** 소셜 가입 회원은 비어 있을 수 있다. */
   email: string;
+  /** 닉네임. 없으면 빈 문자열 */
   name: string;
+  /** 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다. 없으면 빈 문자열 */
+  phone: string;
+  /** 프로필 사진 경로(`/media/...`). 화면에서는 mediaUrl로 바꿔 쓴다. */
+  avatar: string | null;
+  /** 이메일 가입 회원인지 (소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다) */
+  has_password: boolean;
 }
 
 /** 로그인·가입·소셜 로그인 응답. 프론트는 이 값을 그대로 세션으로 저장한다. */
