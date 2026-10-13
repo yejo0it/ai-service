@@ -15,6 +15,8 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
+from trips.models import PackingItem, Trip, TripMember
+
 from .models import Profile, SocialAccount
 from .social import SocialProfile
 
@@ -503,3 +505,51 @@ class SocialLinkTests(APITestCase):
     def test_unknown_provider(self):
         self.assertEqual(self.client.post("/api/v1/auth/me/social/google/", {}).status_code,
                          status.HTTP_404_NOT_FOUND)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class WithdrawTests(APITestCase):
+    """회원 탈퇴: 만든 여행과 회원 정보를 지우고, 다른 사람의 여행에서는 빠지기만 한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username="traveler@example.com", email="traveler@example.com", password=PASSWORD
+        )
+        Profile.objects.create(user=self.user, phone=PHONE)
+        SocialAccount.objects.create(user=self.user, provider="kakao", uid="kakao-1")
+        self.token = Token.objects.create(user=self.user)
+        self.other = User.objects.create_user(username="other@example.com", email="other@example.com")
+
+    def test_withdraw_deletes_own_data(self):
+        own = Trip.objects.create(owner=self.user, destinations=[{"city": "도쿄", "city_code": "tokyo"}],
+                                  start_date="2026-11-10", end_date="2026-11-12")
+        PackingItem.objects.create(trip=own, text="여권")
+        shared = Trip.objects.create(owner=self.other, destinations=[{"city": "오사카", "city_code": "osaka"}],
+                                     start_date="2026-12-01", end_date="2026-12-03")
+        TripMember.objects.create(trip=shared, user=self.user)
+
+        self.client.force_authenticate(self.user)
+        self.client.post("/api/v1/auth/me/avatar/", {"avatar": image_upload()}, format="multipart")
+        avatar = Profile.objects.get(user=self.user).avatar
+        self.assertTrue(avatar.storage.exists(avatar.name))
+
+        response = self.client.delete("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(Trip.objects.filter(pk=own.pk).exists())
+        self.assertFalse(PackingItem.objects.exists())
+        self.assertFalse(SocialAccount.objects.exists())
+        self.assertFalse(Token.objects.filter(key=self.token.key).exists())
+        self.assertFalse(avatar.storage.exists(avatar.name))
+        # 일행으로 참여한 여행은 남고 일행 목록에서만 빠진다.
+        self.assertTrue(Trip.objects.filter(pk=shared.pk).exists())
+        self.assertFalse(shared.members.exists())
+
+        # 탈퇴한 계정으로는 로그인할 수 없다.
+        self.client.force_authenticate(None)
+        login = self.client.post("/api/v1/auth/login/", {"email": "traveler@example.com", "password": PASSWORD})
+        self.assertEqual(login.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_withdraw_requires_login(self):
+        self.assertEqual(self.client.delete("/api/v1/auth/me/").status_code, status.HTTP_401_UNAUTHORIZED)

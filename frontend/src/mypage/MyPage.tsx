@@ -7,6 +7,7 @@ import {
   checkEmailChangePassword,
   checkNickname,
   confirmEmailChange,
+  deleteAccount,
   deleteAvatar,
   errorDataOf,
   mediaUrl,
@@ -873,6 +874,84 @@ function SocialAccounts({ user, onToast }: { user: AuthUser; onToast: (toast: To
 }
 
 /* ------------------------------------------------------------------ *
+ * 회원 탈퇴
+ * ------------------------------------------------------------------ */
+
+/**
+ * 회원 탈퇴 확인 모달. 지워지는 정보를 알리고 [탈퇴하기]를 누르면 탈퇴한다.
+ * 성공하면 세션을 지우고 로그인 화면으로 보내 탈퇴 완료를 안내한다.
+ */
+function WithdrawDialog({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !busy && onClose();
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose, busy]);
+
+  const withdraw = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await deleteAccount();
+      const state: LoginLocationState = { notice: "회원 탈퇴가 완료되었습니다. 그동안 PinRoute를 이용해 주셔서 감사합니다." };
+      clearSession();
+      navigate(ROUTES.LOGIN, { replace: true, state });
+    } catch (err) {
+      setError(toErrorMessage(err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={() => !busy && onClose()}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="withdraw-title"
+        aria-describedby="withdraw-message"
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+      >
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <i className="fas fa-exclamation-triangle text-lg" aria-hidden="true" />
+        </span>
+        <h2 id="withdraw-title" className="mt-3 text-center text-base font-bold text-slate-900">
+          회원 탈퇴
+        </h2>
+        <p id="withdraw-message" className="mt-2 text-center text-sm leading-relaxed text-slate-600">
+          탈퇴 시 작성한 여행 계획이 삭제됩니다.
+          <br />
+          정말 탈퇴하겠습니까?
+        </p>
+        <ul className="mt-4 space-y-1.5 rounded-xl bg-rose-50/60 px-4 py-3 text-xs leading-relaxed text-rose-800">
+          <li>· 만든 여행의 일정·숙소·짐싸기 노트가 모두 삭제되고, 함께하던 일행도 더 이상 볼 수 없어요.</li>
+          <li>· 프로필·연락처·소셜 계정 연동 정보가 삭제되고, 모든 기기에서 로그아웃돼요.</li>
+          <li>· 삭제된 정보는 되돌릴 수 없어요.</li>
+        </ul>
+        {error && <p className="mt-3 text-center text-sm text-rose-600">{error}</p>}
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={onClose} disabled={busy} autoFocus className={`${SECONDARY_BUTTON_CLASS} flex-1`}>
+            탈퇴 그만두기
+          </button>
+          <button
+            type="button"
+            onClick={withdraw}
+            disabled={busy}
+            className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "탈퇴하는 중…" : "탈퇴하기"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * 휴대폰 번호
  * ------------------------------------------------------------------ */
 
@@ -915,7 +994,7 @@ function PhoneForm({ onDone }: { onDone: () => void }) {
  * 화면
  * ------------------------------------------------------------------ */
 
-type Editing = "name" | "email" | "phone" | "password" | null;
+type Editing = "name" | "email" | "phone" | "password" | "withdraw" | null;
 
 /** `/mypage` 마이페이지. 첫 단락: 기본정보(프로필 사진 · 닉네임 · 이메일 · 휴대폰 번호) 조회·변경 */
 export default function MyPage() {
@@ -1020,7 +1099,27 @@ export default function MyPage() {
         <SocialAccounts user={user} onToast={showToast} />
       </section>
 
+      <section
+        aria-labelledby="withdraw-info"
+        className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-rose-100 bg-white p-5 shadow-sm sm:p-6"
+      >
+        <div className="min-w-0 flex-1">
+          <h2 id="withdraw-info" className="text-base font-bold text-slate-900">
+            회원 탈퇴
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">탈퇴하면 만든 여행과 계정 정보가 모두 삭제되고 되돌릴 수 없어요.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing("withdraw")}
+          className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50"
+        >
+          회원 탈퇴
+        </button>
+      </section>
+
       {editing === "email" && <EmailChangeDialog onClose={close} />}
+      {editing === "withdraw" && <WithdrawDialog onClose={close} />}
       {editing === "password" && <PasswordChangeDialog email={user.email} onClose={close} />}
     </div>
   );

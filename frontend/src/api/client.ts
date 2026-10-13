@@ -263,6 +263,9 @@ export const uploadAvatar = (file: File) => {
     .then((res) => res.data);
 };
 
+/** 회원 탈퇴. 만든 여행과 회원 정보·로그인이 모두 지워진다. */
+export const deleteAccount = () => api.delete<void>("/auth/me/");
+
 /** 프로필 사진 삭제 (기본 아바타로 돌아간다) */
 export const deleteAvatar = () => api.delete<AuthUser>("/auth/me/avatar/").then((res) => res.data);
 

@@ -137,6 +137,8 @@ class MeView(APIView):
     """
     `GET /api/v1/auth/me/` — 토큰이 유효한지 확인하고 로그인한 회원 정보를 돌려준다(만료·폐기 시 401).
     `PATCH /api/v1/auth/me/` — 닉네임 변경 ({name}). 형식·중복을 다시 확인한다.
+    `DELETE /api/v1/auth/me/` — 회원 탈퇴. 만든 여행(일정·숙소·짐싸기 노트 포함)과 회원 정보·로그인을 모두 지운다.
+      일행으로 참여한 다른 사람의 여행에서는 빠지기만 한다.
     """
 
     permission_classes = [IsAuthenticated]
@@ -153,6 +155,18 @@ class MeView(APIView):
         request.user.first_name = name
         request.user.save(update_fields=["first_name"])
         return Response(UserSerializer(request.user).data)
+
+    def delete(self, request):
+        user = request.user
+        profile = getattr(user, "profile", None)
+        avatar = profile.avatar.name if profile and profile.avatar else ""
+        # 여행·일정·숙소·짐싸기 노트·일행 참여·소셜 연결·토큰은 FK CASCADE로 함께 지워진다.
+        with transaction.atomic():
+            user.delete()
+        # 업로드한 사진 파일은 DB 삭제로 지워지지 않으므로 따로 지운다.
+        if avatar:
+            Profile._meta.get_field("avatar").storage.delete(avatar)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class NicknameCheckView(APIView):
