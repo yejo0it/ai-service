@@ -455,6 +455,17 @@ class PasswordResetConfirmView(AuthAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def social_profile(provider, data):
+    """인가 코드로 카카오·네이버 회원 정보를 받는다. 입력이 잘못되면 ValidationError, 실패하면 SocialAuthError."""
+    if provider == SocialAccount.Provider.KAKAO:
+        serializer = KakaoLoginSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        return social.kakao_profile(**serializer.validated_data)
+    serializer = NaverLoginSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return social.naver_profile(**serializer.validated_data)
+
+
 def social_login(provider, profile):
     """
     연결된 계정이 있으면 로그인, 없으면 자동 가입한다.
@@ -480,6 +491,59 @@ def social_login(provider, profile):
         Profile.objects.create(user=user)
         SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
     return auth_response(user, status.HTTP_201_CREATED)
+
+
+class SocialLinkView(APIView):
+    """
+    마이페이지 계정 연동.
+    `POST /api/v1/auth/me/social/{provider}/` — 인가 코드로 소셜 계정을 지금 계정에 연결한다
+      (카카오 {code, redirect_uri} / 네이버 {code, state}). 다른 PinRoute 계정에 연결된 소셜 계정이면 409.
+    `DELETE /api/v1/auth/me/social/{provider}/` — 연결 해제. 비밀번호가 없는 계정의 마지막 소셜 계정은
+      로그인할 방법이 없어지므로 해제할 수 없다.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def get_provider(self, provider):
+        return provider if provider in SocialAccount.Provider.values else None
+
+    def post(self, request, provider):
+        provider = self.get_provider(provider)
+        if provider is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        label = SocialAccount.Provider(provider).label
+        if user.social_accounts.filter(provider=provider).exists():
+            return Response({"detail": f"이미 {label} 계정이 연결되어 있어요."}, status=status.HTTP_409_CONFLICT)
+        try:
+            profile = social_profile(provider, request.data)
+        except social.SocialAuthError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+
+        linked = SocialAccount.objects.filter(provider=provider, uid=profile.uid).first()
+        if linked:
+            return Response(
+                {"detail": f"이미 다른 PinRoute 계정에 연결된 {label} 계정이에요."}, status=status.HTTP_409_CONFLICT
+            )
+        SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
+        return Response(UserSerializer(user).data)
+
+    def delete(self, request, provider):
+        provider = self.get_provider(provider)
+        if provider is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        account = user.social_accounts.filter(provider=provider).first()
+        if account is None:
+            return Response(UserSerializer(user).data)
+        if not user.has_usable_password() and user.social_accounts.count() == 1:
+            return Response(
+                {"detail": "다른 로그인 방법이 없어 연결을 해제할 수 없어요."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        account.delete()
+        return Response(UserSerializer(user).data)
 
 
 class KakaoLoginView(AuthAPIView):

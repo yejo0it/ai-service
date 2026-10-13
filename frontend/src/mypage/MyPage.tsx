@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   cancelEmailChange,
   changePassword,
@@ -13,6 +13,7 @@ import {
   requestEmailChange,
   resendEmailChange,
   toErrorMessage,
+  unlinkSocialAccount,
   updateNickname,
   uploadAvatar,
 } from "../api/client";
@@ -21,12 +22,13 @@ import { AuthField, AuthInput, PasswordInput, SIDE_BUTTON_CLASS } from "../auth/
 import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "../auth/NewPasswordFields";
 import PhoneVerificationField from "../auth/PhoneVerificationField";
 import type { LoginLocationState } from "../auth/LoginPage";
+import { isSocialLoginConfigured, startSocialLogin } from "../auth/oauth";
 import { clearSession, getSession, saveSession } from "../auth/session";
 import { EMAIL_PATTERN, firstError } from "../auth/validation";
 import Avatar from "../components/layout/Avatar";
 import { nicknameOf } from "../components/layout/AppHeader";
-import { ROUTES } from "../routes";
-import type { AuthUser } from "../types/api";
+import { ROUTES, type MyPageLocationState } from "../routes";
+import type { AuthUser, SocialProvider } from "../types/api";
 
 /** 백엔드 accounts.serializers.NICKNAME_PATTERN과 같은 규칙 */
 const NICKNAME_PATTERN = /^[가-힣A-Za-z0-9_]{2,12}$/;
@@ -539,6 +541,20 @@ function useEmailChangeConfirm(showToast: (toast: ToastMessage) => void) {
   return confirming;
 }
 
+/** 다른 화면(소셜 계정 연결 콜백 등)에서 state.toast를 넘기며 들어오면 토스트로 보여 준다. */
+function useLocationToast(showToast: (toast: ToastMessage) => void) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const toast = (location.state as MyPageLocationState | null)?.toast;
+
+  useEffect(() => {
+    if (!toast) return;
+    showToast(toast);
+    // 새로고침·뒤로 가기로 다시 뜨지 않도록 state를 지운다.
+    navigate(location.pathname + location.search, { replace: true });
+  }, [toast, showToast, navigate, location.pathname, location.search]);
+}
+
 /* ------------------------------------------------------------------ *
  * 비밀번호
  * ------------------------------------------------------------------ */
@@ -701,6 +717,162 @@ function PasswordChangeDialog({ email, onClose }: { email: string; onClose: () =
 }
 
 /* ------------------------------------------------------------------ *
+ * 계정 연동
+ * ------------------------------------------------------------------ */
+
+const SOCIAL_LABELS: Record<SocialProvider, string> = { kakao: "카카오", naver: "네이버" };
+
+/** 카카오·네이버 로고 (로그인 화면 버튼과 같은 색·심볼) */
+function SocialLogo({ provider }: { provider: SocialProvider }) {
+  if (provider === "kakao") {
+    return (
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FEE500]" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-5 w-5">
+          <path
+            fill="#000000"
+            d="M12 3C6.48 3 2 6.47 2 10.75c0 2.77 1.86 5.2 4.66 6.57l-.95 3.48c-.08.3.26.54.52.37l4.16-2.75c.53.07 1.07.11 1.61.11 5.52 0 10-3.47 10-7.78S17.52 3 12 3z"
+          />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#03C75A]" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5">
+        <path fill="#FFFFFF" d="M16.27 12.84 7.46 0H0v24h7.73V11.16L16.54 24H24V0h-7.73z" />
+      </svg>
+    </span>
+  );
+}
+
+/** 연결 해제 재확인 모달 */
+function UnlinkConfirmDialog({
+  provider,
+  onClose,
+  onDone,
+}: {
+  provider: SocialProvider;
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const label = SOCIAL_LABELS[provider];
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const unlink = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      applyUser(await unlinkSocialAccount(provider));
+      onDone(`${label} 계정 연동이 해제되었습니다.`);
+    } catch (err) {
+      setError(toErrorMessage(err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={onClose}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="unlink-title"
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
+      >
+        <div className="mx-auto w-fit">
+          <SocialLogo provider={provider} />
+        </div>
+        <h2 id="unlink-title" className="mt-3 text-base font-bold text-slate-900">
+          {label} 계정 연동을 해제하시겠습니까?
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">해제하면 {label} 로그인으로 이 계정에 들어올 수 없어요.</p>
+        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={onClose} autoFocus className={`${SECONDARY_BUTTON_CLASS} flex-1`}>
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={unlink}
+            disabled={busy}
+            className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            연결 해제
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 계정 연동 단락: 카카오·네이버 연결 상태와 [연결하기] / [연결 해제] */
+function SocialAccounts({ user, onToast }: { user: AuthUser; onToast: (toast: ToastMessage) => void }) {
+  const [unlinking, setUnlinking] = useState<SocialProvider | null>(null);
+  const linked = user.social_providers ?? [];
+
+  const connect = (provider: SocialProvider) => {
+    if (!isSocialLoginConfigured(provider)) {
+      onToast({ ok: false, message: `${SOCIAL_LABELS[provider]} 연동이 아직 설정되지 않았어요.` });
+      return;
+    }
+    // 인가를 마치면 /auth/{provider}/callback 에서 지금 계정에 연결하고 마이페이지로 돌아온다.
+    startSocialLogin(provider, ROUTES.MYPAGE, "link");
+  };
+
+  return (
+    <>
+      <ul className="divide-y divide-slate-100">
+        {(Object.keys(SOCIAL_LABELS) as SocialProvider[]).map((provider) => {
+          const isLinked = linked.includes(provider);
+          return (
+            <li key={provider} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <SocialLogo provider={provider} />
+              <span className="text-sm font-medium text-slate-900">{SOCIAL_LABELS[provider]}</span>
+              {isLinked ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  <i className="fas fa-check text-[9px]" aria-hidden="true" />
+                  연동됨
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">미연동</span>
+              )}
+              <span className="flex-1" />
+              {isLinked ? (
+                <button type="button" onClick={() => setUnlinking(provider)} className={CHANGE_BUTTON_CLASS}>
+                  연결 해제
+                </button>
+              ) : (
+                <button type="button" onClick={() => connect(provider)} className={CHANGE_BUTTON_CLASS}>
+                  연결하기
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {unlinking && (
+        <UnlinkConfirmDialog
+          provider={unlinking}
+          onClose={() => setUnlinking(null)}
+          onDone={(message) => {
+            setUnlinking(null);
+            onToast({ ok: true, message });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * 휴대폰 번호
  * ------------------------------------------------------------------ */
 
@@ -751,6 +923,7 @@ export default function MyPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const { toast, showToast } = useToast();
   const confirmingEmail = useEmailChangeConfirm(showToast);
+  useLocationToast(showToast);
 
   if (!user) return null;
   const close = () => setEditing(null);
@@ -838,6 +1011,13 @@ export default function MyPage() {
         ) : (
           <p className="text-sm text-slate-500">소셜 로그인 계정은 비밀번호 없이 로그인해요.</p>
         )}
+      </section>
+
+      <section aria-labelledby="social-info" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 id="social-info" className="mb-5 text-base font-bold text-slate-900">
+          계정 연동
+        </h2>
+        <SocialAccounts user={user} onToast={showToast} />
       </section>
 
       {editing === "email" && <EmailChangeDialog onClose={close} />}

@@ -440,3 +440,66 @@ class AuthThrottleTests(APITestCase):
         codes = [self.client.post("/api/v1/auth/login/", payload).status_code for _ in range(31)]
         self.assertEqual(codes[:30], [status.HTTP_400_BAD_REQUEST] * 30)
         self.assertEqual(codes[30], status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+@override_settings(DEBUG=True)
+class SocialLinkTests(APITestCase):
+    """마이페이지 계정 연동: 카카오·네이버 연결 / 연결 해제"""
+
+    url = "/api/v1/auth/me/social/kakao/"
+    payload = {"code": "auth-code", "redirect_uri": "http://localhost:8002/auth/kakao/callback"}
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username="traveler@example.com", email="traveler@example.com", password=PASSWORD
+        )
+        self.client.force_authenticate(self.user)
+
+    def link(self, uid="kakao-1"):
+        profile = SocialProfile(uid=uid, email="", email_verified=False, name="카카오")
+        with mock.patch("accounts.social.kakao_profile", return_value=profile):
+            return self.client.post(self.url, self.payload, format="json")
+
+    def test_link_then_login_with_kakao(self):
+        self.assertEqual(self.client.get("/api/v1/auth/me/").data["social_providers"], [])
+        response = self.link()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["social_providers"], ["kakao"])
+        # 연결한 카카오 계정으로 로그인하면 지금 계정으로 들어온다.
+        self.client.force_authenticate(None)
+        profile = SocialProfile(uid="kakao-1", email="", email_verified=False, name="카카오")
+        with mock.patch("accounts.social.kakao_profile", return_value=profile):
+            login = self.client.post("/api/v1/auth/kakao/", self.payload, format="json")
+        self.assertEqual(login.data["user"]["id"], self.user.id)
+
+    def test_cannot_link_account_of_other_user(self):
+        other = User.objects.create_user(username="kakao_kakao-1")
+        SocialAccount.objects.create(user=other, provider="kakao", uid="kakao-1")
+        self.assertEqual(self.link().status_code, status.HTTP_409_CONFLICT)
+        self.assertFalse(self.user.social_accounts.exists())
+
+    def test_cannot_link_same_provider_twice(self):
+        self.link("kakao-1")
+        self.assertEqual(self.link("kakao-2").status_code, status.HTTP_409_CONFLICT)
+
+    def test_unlink(self):
+        self.link()
+        response = self.client.delete(self.url)
+        self.assertEqual(response.data["social_providers"], [])
+        self.assertFalse(SocialAccount.objects.exists())
+
+    def test_cannot_unlink_last_login_method(self):
+        social_user = User.objects.create_user(username="kakao_kakao-9")
+        social_user.set_unusable_password()
+        social_user.save()
+        SocialAccount.objects.create(user=social_user, provider="kakao", uid="kakao-9")
+        self.client.force_authenticate(social_user)
+        self.assertEqual(self.client.delete(self.url).status_code, status.HTTP_400_BAD_REQUEST)
+        # 네이버도 연결되어 있으면 카카오는 해제할 수 있다.
+        SocialAccount.objects.create(user=social_user, provider="naver", uid="naver-9")
+        self.assertEqual(self.client.delete(self.url).data["social_providers"], ["naver"])
+
+    def test_unknown_provider(self):
+        self.assertEqual(self.client.post("/api/v1/auth/me/social/google/", {}).status_code,
+                         status.HTTP_404_NOT_FOUND)

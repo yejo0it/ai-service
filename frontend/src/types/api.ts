@@ -188,6 +188,8 @@ export interface AuthUser {
   has_password: boolean;
   /** 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 소셜 가입 회원은 null */
   password_updated_at: string | null;
+  /** 연결된 소셜 계정 */
+  social_providers: SocialProvider[];
 }
 
 /** 로그인·가입·소셜 로그인 응답. 프론트는 이 값을 그대로 세션으로 저장한다. */
