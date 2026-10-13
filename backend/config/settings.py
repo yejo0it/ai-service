@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "accounts",
     "trips",
+    "guides",
 ]
 
 MIDDLEWARE = [
@@ -102,6 +103,9 @@ EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "PinRoute <no-reply@pinroute.local>")
 if not EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# 여행 정보 검색(RAG, Issue #49)의 다국어 임베딩 모델. 바꾸면 벡터 차원이 달라지므로
+# 마이그레이션과 `python manage.py ingest_guides`를 다시 해야 한다(guides/embeddings.py).
+GUIDES_EMBEDDING_MODEL = os.environ.get("GUIDES_EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 # 메일 속 링크가 가리키는 프론트 주소
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:8002")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

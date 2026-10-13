@@ -444,6 +444,17 @@ export interface AiPreviewDay {
   items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
 }
 
+/** AI 답변의 근거 문서 */
+export interface AiSource {
+  id: number;
+  /** 문서 제목 (예: Japan) */
+  title: string;
+  /** 섹션 경로 (예: Get in > By plane) */
+  section: string;
+  url: string;
+  license: string;
+}
+
 export interface AiProposeResponse {
   reply: string;
   /** 적용할 때 그대로 돌려보낸다 */
@@ -458,6 +469,8 @@ export interface AiProposeResponse {
   redacted?: string[];
   /** 답변 아래에 보여줄 선택 버튼 (예: 기존 정보 수정 / 새로 입력) */
   choices: string[];
+  /** 답변 근거로 쓴 여행 정보 문서 (Wikivoyage 발췌) */
+  sources?: AiSource[];
   /** 항공·숙소 등록 미리보기 */
   registration: {
     flight: FlightInfo | null;

@@ -4,7 +4,7 @@
 - 여행 계획과 관계없는 요청은 모델이 off_topic으로 표시하고, 서버가 정해진 거절 문구로 답한다.
 - 시스템 지시를 무시·변경·공개하라는 뻔한 입력(프롬프트 인젝션)은 모델을 부르기 전에 서버가 바로 거절한다.
   정상적인 여행 질문을 막지 않도록 '지시·프롬프트·규칙' 같은 단어와 '무시·공개' 같은 동작이 함께 있을 때만 잡는다.
-- 사용자 메시지에 서비스가 붙이는 여행 정보 태그(<current_trip>)를 흉내 낸 부분은 지운다.
+- 사용자 메시지에 서비스가 붙이는 여행 정보·참고 문서 태그(<current_trip>, <reference_docs>)를 흉내 낸 부분은 지운다.
 - 사용자가 적은 개인정보·인증 정보(비밀번호, 카드번호 등)는 외부 LLM으로 보내기 전에 가린다(redact_sensitive).
 """
 
@@ -38,7 +38,7 @@ INJECTION_PATTERNS = [
     re.compile(r"(developer|dev|개발자)\s*(mode|모드)|jailbreak|탈옥|\bDAN\b", re.IGNORECASE),
 ]
 
-_TRIP_TAG = re.compile(r"</?\s*current_trip\s*>", re.IGNORECASE)
+_TRIP_TAG = re.compile(r"</?\s*(current_trip|reference_docs)\s*>", re.IGNORECASE)
 
 
 def looks_like_injection(text):
@@ -47,7 +47,7 @@ def looks_like_injection(text):
 
 
 def strip_trip_tags(text):
-    """사용자 메시지에서 서비스용 여행 정보 태그를 흉내 낸 부분을 지운다."""
+    """사용자 메시지·참고 문서에서 서비스용 태그(<current_trip>, <reference_docs>)를 흉내 낸 부분을 지운다."""
     return _TRIP_TAG.sub("", text or "")
 
 

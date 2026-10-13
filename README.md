@@ -94,6 +94,14 @@ DB 테이블은 마이그레이션으로 만들어집니다. 마이그레이션�
 docker compose exec backend python manage.py migrate
 ```
 
+**여행 정보 검색 문서 수집 (선택)**
+
+'AI와 함께 만들기'가 여행 준비 질문에 근거 문서(Wikivoyage)를 붙여 답하게 하려면 문서를 한 번 수집합니다. 처음 실행할 때 임베딩 모델(약 0.5GB)을 내려받고 몇 분 걸립니다. 수집하지 않아도 AI 대화는 근거 없이 그대로 동작합니다.
+
+```bash
+docker compose exec backend python manage.py ingest_guides
+```
+
 ## Notes
 
 - **DB 데이터**는 `pgdata` 볼륨에 저장됩니다. `docker compose down -v`는 데이터까지 삭제하니 주의하세요.
