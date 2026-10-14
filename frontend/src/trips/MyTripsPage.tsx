@@ -7,6 +7,7 @@ import { formatMonthDay, todayISODate } from "../utils/date";
 import type { TripDetailState } from "./TripDetailPage";
 import { dDayLabel, tripColor, tripStatus, type TripStatus } from "./tripUtils";
 import useTrips from "./useTrips";
+import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 
 const SECTIONS: { status: TripStatus; title: string }[] = [
   { status: "ongoing", title: "여행 중" },
@@ -108,7 +109,7 @@ export default function MyTripsPage() {
   const today = todayISODate();
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className={`${PAGE_CONTAINER_CLASS} py-6 sm:py-8`}>
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">내 여행</h1>

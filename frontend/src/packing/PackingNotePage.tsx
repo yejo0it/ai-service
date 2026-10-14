@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { addPackingItem, deletePackingItem, getPackingItems, toErrorMessage, updatePackingItem } from "../api/client";
+import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { ROUTES, tripDetailPath, type HomeLocationState } from "../routes";
 import type { PackingCategory, PackingItem, Trip } from "../types/api";
 import { nextTrip, tripShortTitle } from "../trips/tripUtils";
@@ -194,20 +195,20 @@ export default function PackingNotePage() {
 
   if (trips.status === "loading") {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className={`${PAGE_CONTAINER_CLASS} py-8`}>
         <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />
       </div>
     );
   }
   if (trips.status === "error") {
-    return <p className="mx-auto max-w-6xl px-4 py-8 text-sm text-rose-600 sm:px-6">{trips.message}</p>;
+    return <p className={`${PAGE_CONTAINER_CLASS} py-8 text-sm text-rose-600`}>{trips.message}</p>;
   }
 
   const selected =
     trips.trips.find((trip) => String(trip.id) === params.get("trip")) ?? defaultTrip(trips.trips);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className={`${PAGE_CONTAINER_CLASS} py-6 sm:py-8`}>
       <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">짐싸기 노트</h1>
 
       {!selected ? (

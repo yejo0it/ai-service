@@ -30,6 +30,7 @@ import Avatar from "../components/layout/Avatar";
 import { nicknameOf } from "../components/layout/AppHeader";
 import { ROUTES, type MyPageLocationState } from "../routes";
 import type { AuthUser, SocialProvider } from "../types/api";
+import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 
 /** 백엔드 accounts.serializers.NICKNAME_PATTERN과 같은 규칙 */
 const NICKNAME_PATTERN = /^[가-힣A-Za-z0-9_]{2,12}$/;
@@ -1015,7 +1016,7 @@ export default function MyPage() {
   const phone = user.phone ?? "";
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className={`${PAGE_CONTAINER_CLASS} py-6 sm:py-8`}>
       <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">마이페이지</h1>
 
       {confirmingEmail && <p className="mt-4 text-sm text-slate-500">이메일 변경을 확인하는 중…</p>}
