@@ -25,7 +25,7 @@ const NAV_ITEMS: NavItem[] = [
 
 /** 화면에 부를 이름: 이름 → 이메일 아이디 → "여행자" */
 export const nicknameOf = (user: AuthUser | null) =>
-  user?.name?.trim() || user?.email?.split("@")[0] || "여행자";
+  user?.name?.trim() || "여행자";
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${

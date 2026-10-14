@@ -19,6 +19,8 @@ class Profile(models.Model):
     phone = models.CharField("휴대폰 번호", max_length=11, blank=True, default="")
     # 업로드한 사진은 accounts.avatar에서 정사각형 JPEG로 다시 만들어 저장한다(EXIF 위치 정보 제거).
     avatar = models.ImageField("프로필 사진", upload_to=avatar_upload_to, blank=True, default="")
+    # 화면에 보이는 이름. 중복을 허용하고, 가입할 때 비워 두면 랜덤으로 만든다(accounts.nickname).
+    nickname = models.CharField("닉네임", max_length=12, blank=True, default="")
     # 인증 메일을 보내 두고 아직 확인하지 않은 새 이메일. 취소하면 비워서 보낸 링크를 쓸 수 없게 한다.
     pending_email = models.EmailField("변경 대기 이메일", blank=True, default="")
     # 마이페이지 변경·비밀번호 재설정 시각. 비어 있으면 가입한 뒤로 바꾼 적이 없다(가입일로 표시).

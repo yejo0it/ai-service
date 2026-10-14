@@ -17,7 +17,8 @@ from rest_framework.test import APITestCase
 
 from trips.models import PackingItem, Trip, TripMember
 
-from .models import Profile, SocialAccount
+from .models import PhoneVerification, Profile, SocialAccount
+from .nickname import ADJECTIVES, ANIMALS, NICKNAME_PATTERN, nickname_of, random_nickname
 from .social import SocialProfile
 
 User = get_user_model()
@@ -56,6 +57,35 @@ class EmailSignupTests(PhoneVerificationMixin, APITestCase):
             **overrides,
         }
         return self.client.post("/api/v1/auth/signup/", payload)
+
+    def test_signup_with_nickname(self):
+        response = self.signup(name="핀루트_1")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["user"]["name"], "핀루트_1")
+        self.assertEqual(User.objects.get().profile.nickname, "핀루트_1")
+
+    def test_signup_without_nickname_creates_random_and_keeps_it_on_login(self):
+        for payload in ({}, {"name": ""}):
+            User.objects.all().delete()
+            PhoneVerification.objects.all().delete()
+            cache.clear()
+            response = self.signup(**payload)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            nickname = User.objects.get().profile.nickname  # DB에 저장됨
+            self.assertTrue(NICKNAME_PATTERN.match(nickname))
+            self.assertEqual(response.data["user"]["name"], nickname)
+
+            for _ in range(2):  # 로그인할 때마다 새로 만들지 않는다.
+                login = self.client.post(
+                    "/api/v1/auth/login/", {"email": "traveler@example.com", "password": PASSWORD}
+                )
+                self.assertEqual(login.data["user"]["name"], nickname)
+            self.assertEqual(User.objects.get().profile.nickname, nickname)
+
+    def test_signup_rejects_bad_nickname(self):
+        response = self.signup(name="a!b")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.exists())
 
     def test_signup_then_login(self):
         response = self.signup()
@@ -147,6 +177,13 @@ class SocialLoginTests(APITestCase):
             response = self.client.post("/api/v1/auth/naver/", {"code": "abc", "state": "xyz"})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["user"]["name"], "네이버")
+
+    def test_social_name_outside_nickname_rule_becomes_random(self):
+        profile = SocialProfile(uid="n-2", email="", email_verified=False, name="홍 길동 (Hong)")
+        with mock.patch("accounts.views.social.naver_profile", return_value=profile):
+            response = self.client.post("/api/v1/auth/naver/", {"code": "abc", "state": "xyz"})
+        self.assertTrue(NICKNAME_PATTERN.match(response.data["user"]["name"]))
+        self.assertNotIn("홍", response.data["user"]["name"])
 
 
 @override_settings(DEBUG=True)
@@ -257,30 +294,46 @@ class MyPageTests(PhoneVerificationMixin, APITestCase):
         self.user = User.objects.create_user(
             username="traveler@example.com", email="traveler@example.com", password=PASSWORD
         )
-        Profile.objects.create(user=self.user, phone=PHONE)
+        Profile.objects.create(user=self.user, phone=PHONE, nickname="여행자")
         self.client.force_authenticate(self.user)
 
     def test_me_shows_basic_info(self):
         data = self.client.get("/api/v1/auth/me/").data
         self.assertEqual(
             (data["email"], data["name"], data["phone"], data["avatar"], data["has_password"]),
-            ("traveler@example.com", "", PHONE, None, True),
+            ("traveler@example.com", "여행자", PHONE, None, True),
         )
 
-    def test_change_nickname_checks_format_and_duplicates(self):
-        User.objects.create_user(username="other@example.com", email="other@example.com", first_name="여행자")
-        check = lambda name: self.client.post("/api/v1/auth/me/check-name/", {"name": name})
-        self.assertFalse(check("여행자").data["available"])
-        self.assertTrue(check("핀루트_1").data["available"])
-        self.assertEqual(check("a").status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(check("공백 있음").status_code, status.HTTP_400_BAD_REQUEST)
-
-        self.assertEqual(self.client.patch("/api/v1/auth/me/", {"name": "여행자"}).status_code,
-                         status.HTTP_400_BAD_REQUEST)
+    def test_change_nickname_saves_to_profile_and_allows_duplicates(self):
+        other = User.objects.create_user(username="other@example.com", email="other@example.com")
+        Profile.objects.create(user=other, nickname="핀루트_1")
         response = self.client.patch("/api/v1/auth/me/", {"name": "핀루트_1"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "핀루트_1")
-        # 내 닉네임은 그대로 쓸 수 있다.
-        self.assertTrue(check("핀루트_1").data["available"])
+        self.assertEqual(Profile.objects.get(user=self.user).nickname, "핀루트_1")
+        self.assertEqual(self.client.get("/api/v1/auth/me/").data["name"], "핀루트_1")
+
+    def test_change_nickname_trims_outer_spaces_and_keeps_inner_space(self):
+        response = self.client.patch("/api/v1/auth/me/", {"name": "  여행하는 고래 "})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "여행하는 고래")
+        self.assertEqual(Profile.objects.get(user=self.user).nickname, "여행하는 고래")
+
+    def test_nickname_error_messages_are_separate(self):
+        spacing = ["단어 사이 공백은 한 칸만 허용합니다."]
+        rule = ["닉네임은 한글, 영문, 숫자, 밑줄(_)로 2~12자 입력해 주세요."]
+        for value, expected in (("여행  자", spacing), ("여행   자", spacing), ("여행 자!", rule), ("a", rule),
+                                ("열세글자를넘는닉네임입니다", rule), ("", None)):
+            response = self.client.patch("/api/v1/auth/me/", {"name": value})
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, value)
+            if expected:
+                self.assertEqual(response.data["name"], expected, value)
+
+    def test_change_nickname_rejects_blank_and_bad_format(self):
+        for bad in ("", "   ", "a", "여행  자", "열세글자를넘는닉네임입니다", "닉네임!"):
+            response = self.client.patch("/api/v1/auth/me/", {"name": bad})
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, bad)
+        self.assertEqual(Profile.objects.get(user=self.user).nickname, "여행자")
 
     def test_change_avatar_replaces_old_file(self):
         response = self.client.post("/api/v1/auth/me/avatar/", {"avatar": image_upload()}, format="multipart")
@@ -320,7 +373,7 @@ class MyPageTests(PhoneVerificationMixin, APITestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["new@example.com"])
         self.assertEqual(mail.outbox[0].subject, "[PinRoute]이메일 인증")
-        self.assertIn("안녕하세요. traveler님.", mail.outbox[0].body)
+        self.assertIn("안녕하세요. 여행자님.", mail.outbox[0].body)
         self.assertIn("등록하신 이메일 주소(new@example.com)", mail.outbox[0].body)
         self.assertIn("변경 이메일 인증하기", mail.outbox[0].alternatives[0][0])
         self.assertIn("http://localhost:8002/mypage?email_token=", mail.outbox[0].body)
@@ -553,3 +606,41 @@ class WithdrawTests(APITestCase):
 
     def test_withdraw_requires_login(self):
         self.assertEqual(self.client.delete("/api/v1/auth/me/").status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class NicknameGeneratorTests(APITestCase):
+    def test_every_combination_follows_nickname_rule(self):
+        for adjective in ADJECTIVES:
+            for animal in ANIMALS:
+                self.assertRegex(f"{adjective} {animal}", NICKNAME_PATTERN)
+        self.assertTrue(NICKNAME_PATTERN.match(random_nickname()))
+
+    def test_user_without_nickname_gets_one_once(self):
+        user = User.objects.create_user(username="old@example.com", email="old@example.com")
+        first = nickname_of(user)
+        self.assertEqual(nickname_of(user), first)
+        self.assertEqual(Profile.objects.get(user=user).nickname, first)
+
+
+class NicknameMigrationTests(APITestCase):
+    """0006_fill_nicknames: 기존 회원에게 닉네임을 채운다."""
+
+    def test_existing_users_get_nicknames(self):
+        import importlib
+
+        from django.apps import apps
+
+        migration = importlib.import_module("accounts.migrations.0006_fill_nicknames")
+        keep = User.objects.create_user(username="a@example.com", email="a@example.com", first_name="옛닉네임")
+        Profile.objects.create(user=keep)
+        odd = User.objects.create_user(username="b@example.com", email="b@example.com", first_name="홍 길동 Hong")
+        none = User.objects.create_user(username="c@example.com", email="c@example.com")  # Profile도 없음
+        done = User.objects.create_user(username="d@example.com", email="d@example.com", first_name="다른이름")
+        Profile.objects.create(user=done, nickname="이미있음")
+
+        migration.fill_nicknames(apps, None)
+
+        self.assertEqual(Profile.objects.get(user=keep).nickname, "옛닉네임")
+        self.assertEqual(Profile.objects.get(user=done).nickname, "이미있음")
+        for user in (odd, none):
+            self.assertRegex(Profile.objects.get(user=user).nickname, NICKNAME_PATTERN)

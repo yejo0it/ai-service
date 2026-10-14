@@ -12,10 +12,11 @@ import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "
 import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
 import { safeReturnPath, type ReturnPathState } from "./returnPath";
 import { saveSession } from "./session";
-import { EMAIL_PATTERN, firstError } from "./validation";
+import { EMAIL_PATTERN, firstError, nicknameError } from "./validation";
 
 interface SignupErrors extends NewPasswordErrors {
   email?: string;
+  name?: string;
   phone?: string;
 }
 
@@ -36,6 +37,8 @@ export default function SignupPage() {
   const [checkedEmail, setCheckedEmail] = useState("");
   const [emailMessage, setEmailMessage] = useState<FieldMessage>({ error: "", success: "" });
   const [checkingEmail, setCheckingEmail] = useState(false);
+
+  const [name, setName] = useState("");
 
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -82,6 +85,7 @@ export default function SignupPage() {
     const normalized = email.trim().toLowerCase();
     if (!EMAIL_PATTERN.test(normalized)) next.email = "이메일 형식이 올바르지 않아요.";
     else if (checkedEmail !== normalized) next.email = "이메일 중복 확인을 해 주세요.";
+    if (name.trim()) next.name = nicknameError(name.trim());
     if (!verifiedPhone) next.phone = "휴대폰 인증을 완료해 주세요.";
     return next;
   };
@@ -97,6 +101,7 @@ export default function SignupPage() {
     try {
       const session = await signup({
         email: checkedEmail,
+        name: name.trim() || undefined,
         password,
         password_confirm: passwordConfirm,
         phone: verifiedPhone.phone,
@@ -108,6 +113,7 @@ export default function SignupPage() {
       const data = errorDataOf(error);
       const fieldErrors: SignupErrors = {
         email: firstError(data, "email"),
+        name: firstError(data, "name"),
         password: firstError(data, "password"),
         passwordConfirm: firstError(data, "password_confirm"),
         phone: firstError(data, "phone"),
@@ -148,6 +154,26 @@ export default function SignupPage() {
               {checkedEmail ? "확인 완료" : "중복 확인"}
             </button>
           </div>
+        </AuthField>
+
+        <AuthField
+          label="닉네임 (선택)"
+          htmlFor="signup-name"
+          error={errors.name}
+          hint="입력하지 않으면 랜덤 닉네임이 생성됩니다."
+        >
+          <AuthInput
+            id="signup-name"
+            autoComplete="nickname"
+            maxLength={12}
+            placeholder="한글·영문·숫자·밑줄 2~12자"
+            value={name}
+            error={errors.name}
+            onChange={(event) => {
+              setName(event.target.value);
+              clearError("name");
+            }}
+          />
         </AuthField>
 
         <NewPasswordFields

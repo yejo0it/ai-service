@@ -247,10 +247,6 @@ export const verifyPhoneCode = (phone: string, code: string) =>
 /** 저장된 토큰이 아직 유효한지 확인하고 회원 정보를 받는다 (만료·폐기 시 401) */
 export const getMe = () => api.get<AuthUser>("/auth/me/").then((res) => res.data);
 
-/** 닉네임 형식 확인 후 쓸 수 있는지 (내 닉네임은 쓸 수 있다) */
-export const checkNickname = (name: string) =>
-  api.post<CheckEmailResponse>("/auth/me/check-name/", { name }).then((res) => res.data);
-
 /** 닉네임 변경 */
 export const updateNickname = (name: string) => api.patch<AuthUser>("/auth/me/", { name }).then((res) => res.data);
 
