@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { acceptTripInvitation, toErrorMessage } from "../api/client";
 import FullScreenLoader from "../components/FullScreenLoader";
+import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { ROUTES, tripDetailPath } from "../routes";
 
 /**
@@ -27,18 +28,20 @@ export default function InviteAcceptPage() {
   if (!error) return <FullScreenLoader message="초대받은 여행에 들어가는 중이에요..." />;
 
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center px-4 py-20 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
-        <i className="fas fa-unlink" aria-hidden="true" />
-      </span>
-      <h1 className="mt-4 text-lg font-bold text-slate-900">초대 링크를 열 수 없어요</h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">{error}</p>
-      <Link
-        to={ROUTES.HOME}
-        className="mt-6 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-      >
-        홈으로 가기
-      </Link>
+    <div className={`${PAGE_CONTAINER_CLASS} py-20`}>
+      <div className="mx-auto flex max-w-md flex-col items-center text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+          <i className="fas fa-unlink" aria-hidden="true" />
+        </span>
+        <h1 className="mt-4 text-lg font-bold text-slate-900">초대 링크를 열 수 없어요</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">{error}</p>
+        <Link
+          to={ROUTES.HOME}
+          className="mt-6 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
+          홈으로 가기
+        </Link>
+      </div>
     </div>
   );
 }
