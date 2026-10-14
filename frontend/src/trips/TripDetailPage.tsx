@@ -11,6 +11,7 @@ import {
 import { ROUTES } from "../routes";
 import type { Airport, ItineraryItem, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
+import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
@@ -529,7 +530,7 @@ export default function TripDetailPage() {
 
   if (!trip) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className={`${PAGE_CONTAINER_CLASS} py-8`}>
         {error ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
             <p className="text-sm text-slate-600">{error}</p>
@@ -555,7 +556,7 @@ export default function TripDetailPage() {
     .flatMap((item) => (item.kind === "flight" ? item.stops.map((stop) => stop.label) : [item.title]));
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className={`${PAGE_CONTAINER_CLASS} py-6 sm:py-8`}>
       <Link
         to={ROUTES.MY_TRIPS}
         className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"

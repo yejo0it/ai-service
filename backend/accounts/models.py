@@ -1,5 +1,12 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
+
+
+def avatar_upload_to(instance, filename):
+    """추측할 수 없는 파일 이름으로 저장한다 (회원 id·원래 파일 이름을 드러내지 않는다)."""
+    return f"avatars/{uuid.uuid4().hex}.jpg"
 
 
 class Profile(models.Model):
@@ -10,6 +17,14 @@ class Profile(models.Model):
     )
     # 이메일 가입은 인증을 마친 번호만 저장한다. 소셜 가입은 비어 있을 수 있다.
     phone = models.CharField("휴대폰 번호", max_length=11, blank=True, default="")
+    # 업로드한 사진은 accounts.avatar에서 정사각형 JPEG로 다시 만들어 저장한다(EXIF 위치 정보 제거).
+    avatar = models.ImageField("프로필 사진", upload_to=avatar_upload_to, blank=True, default="")
+    # 화면에 보이는 이름. 중복을 허용하고, 가입할 때 비워 두면 랜덤으로 만든다(accounts.nickname).
+    nickname = models.CharField("닉네임", max_length=12, blank=True, default="")
+    # 인증 메일을 보내 두고 아직 확인하지 않은 새 이메일. 취소하면 비워서 보낸 링크를 쓸 수 없게 한다.
+    pending_email = models.EmailField("변경 대기 이메일", blank=True, default="")
+    # 마이페이지 변경·비밀번호 재설정 시각. 비어 있으면 가입한 뒤로 바꾼 적이 없다(가입일로 표시).
+    password_changed_at = models.DateTimeField("비밀번호 변경 시각", null=True, blank=True)
 
     class Meta:
         verbose_name = "회원 정보"

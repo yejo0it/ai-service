@@ -14,6 +14,8 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from accounts.models import Profile
+
 from . import ai_planner, chat_guard
 from .itinerary_views import days_map
 from .models import ChecklistItem, Hotel, ItineraryItem, Trip
@@ -64,8 +66,8 @@ class RedactTests(APITestCase):
 class AiDataScopeTests(APITestCase):
     def setUp(self):
         cache.clear()
-        self.user = User.objects.create_user(username="private@example.com", email="private@example.com",
-                                             first_name="홍길동")
+        self.user = User.objects.create_user(username="private@example.com", email="private@example.com")
+        Profile.objects.create(user=self.user, nickname="홍길동")
         self.client.force_authenticate(self.user)
         self.trip = Trip.objects.create(owner=self.user, destinations=[{"city": "도쿄", "city_code": "tokyo"}],
                                         start_date="2026-11-10", end_date="2026-11-12", itinerary_initialized=True)

@@ -7,6 +7,7 @@ export const ROUTES = {
   ONBOARDING: "/onboarding",
   MY_TRIPS: "/trips",
   PACKING: "/packing",
+  MYPAGE: "/mypage",
   TRIP_DETAIL: "/trips/:tripId",
   TRIP_INVITE: "/trips/invite/:token",
   LOGIN: "/login",
@@ -18,6 +19,11 @@ export const ROUTES = {
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
+
+/** 마이페이지로 이동하며 결과 토스트를 띄울 때 넘기는 라우터 state (소셜 계정 연결 등) */
+export interface MyPageLocationState {
+  toast?: { ok: boolean; message: string };
+}
 
 /** 홈으로 이동하며 새 여행 만들기 모달을 열 때 넘기는 라우터 state */
 export interface HomeLocationState {

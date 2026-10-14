@@ -13,7 +13,7 @@ import type {
   ItineraryCardInput,
   ItineraryItem,
   ItineraryResponse,
-  PackingLinkedItem,
+  PackingItem,
   PlaceKind,
   ApiErrorData,
   AuthSession,
@@ -186,9 +186,17 @@ export const acceptTripInvitation = (token: string) =>
     .post<InvitationAcceptResponse>(`/trips/invitations/${encodeURIComponent(token)}/accept/`)
     .then((res) => res.data);
 
-/** 짐싸기 노트 '일정 연동 항목' */
-export const getPackingNote = (tripId: number) =>
-  api.get<{ linked: PackingLinkedItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data);
+/** 짐싸기 노트 준비물 (처음 열면 서버가 기본 준비물을 넣어 돌려준다) */
+export const getPackingItems = (tripId: number) =>
+  api.get<{ items: PackingItem[] }>(`/trips/${tripId}/packing-note/`).then((res) => res.data.items);
+
+export const addPackingItem = (tripId: number, payload: Pick<PackingItem, "category" | "text">) =>
+  api.post<PackingItem>(`/trips/${tripId}/packing-note/`, payload).then((res) => res.data);
+
+export const updatePackingItem = (packingId: number, payload: { done: boolean }) =>
+  api.patch<PackingItem>(`/packing-items/${packingId}/`, payload).then((res) => res.data);
+
+export const deletePackingItem = (packingId: number) => api.delete<void>(`/packing-items/${packingId}/`);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>
@@ -238,6 +246,72 @@ export const verifyPhoneCode = (phone: string, code: string) =>
 
 /** 저장된 토큰이 아직 유효한지 확인하고 회원 정보를 받는다 (만료·폐기 시 401) */
 export const getMe = () => api.get<AuthUser>("/auth/me/").then((res) => res.data);
+
+/** 닉네임 변경 */
+export const updateNickname = (name: string) => api.patch<AuthUser>("/auth/me/", { name }).then((res) => res.data);
+
+/** 프로필 사진 변경 (서버가 정사각형으로 잘라 저장한다) */
+export const uploadAvatar = (file: File) => {
+  const form = new FormData();
+  form.append("avatar", file);
+  return api
+    .post<AuthUser>("/auth/me/avatar/", form, { headers: { "Content-Type": "multipart/form-data" } })
+    .then((res) => res.data);
+};
+
+/** 회원 탈퇴. 만든 여행과 회원 정보·로그인이 모두 지워진다. */
+export const deleteAccount = () => api.delete<void>("/auth/me/");
+
+/** 프로필 사진 삭제 (기본 아바타로 돌아간다) */
+export const deleteAvatar = () => api.delete<AuthUser>("/auth/me/avatar/").then((res) => res.data);
+
+/** 이메일 변경 1단계: 현재 비밀번호 확인 -> { password_ticket } (10분) */
+export const checkEmailChangePassword = (password: string) =>
+  api.post<{ password_ticket: string }>("/auth/me/email/password/", { password }).then((res) => res.data);
+
+/** 이메일 변경 2단계: 새 이메일로 '변경 이메일 인증하기' 메일 발송 (debug_link는 개발 서버에서만) */
+export const requestEmailChange = (email: string, passwordTicket: string) =>
+  api
+    .post<{ email: string; expires_in: number; debug_link?: string }>("/auth/me/email/", {
+      email,
+      password_ticket: passwordTicket,
+    })
+    .then((res) => res.data);
+
+/** 변경 대기 중인 이메일로 인증 메일 다시 보내기 */
+export const resendEmailChange = () =>
+  api
+    .post<{ email: string; expires_in: number; debug_link?: string }>("/auth/me/email/resend/")
+    .then((res) => res.data);
+
+/** 이메일 변경 취소 (이미 보낸 인증 링크도 쓸 수 없게 된다) */
+export const cancelEmailChange = () => api.delete<void>("/auth/me/email/");
+
+/** 이메일 변경 3단계: 메일 링크(/mypage?email_token=)로 들어오면 변경을 마친다. */
+export const confirmEmailChange = (emailToken: string) =>
+  api.post<AuthUser>("/auth/me/email/confirm/", { email_token: emailToken }).then((res) => res.data);
+
+/** 비밀번호 변경 (가입과 같은 규칙, 현재 비밀번호와 같으면 거절). 성공하면 모든 로그인이 해제된다. */
+export const changePassword = (payload: { current_password: string; password: string; password_confirm: string }) =>
+  api.post<void>("/auth/me/password/", payload);
+
+/** 마이페이지 계정 연동: 인가 코드로 소셜 계정을 지금 계정에 연결 */
+export const linkSocialAccount = (provider: SocialProvider, payload: SocialLoginPayload) =>
+  api.post<AuthUser>(`/auth/me/social/${provider}/`, payload).then((res) => res.data);
+
+/** 마이페이지 계정 연동: 연결 해제 */
+export const unlinkSocialAccount = (provider: SocialProvider) =>
+  api.delete<AuthUser>(`/auth/me/social/${provider}/`).then((res) => res.data);
+
+/** 휴대폰 번호 변경. phone/verify에서 받은 토큰을 함께 보낸다. */
+export const changePhone = (phone: string, phoneVerificationToken: string) =>
+  api
+    .post<AuthUser>("/auth/me/phone/", { phone, phone_verification_token: phoneVerificationToken })
+    .then((res) => res.data);
+
+/** 서버가 준 업로드 파일 경로(`/media/...`)를 API 서버 기준 전체 주소로 바꾼다. */
+export const mediaUrl = (path: string | null | undefined) =>
+  path ? new URL(path, api.defaults.baseURL).toString() : null;
 
 /** 서버의 API 토큰 폐기 (useLogout에서 세션 삭제와 함께 쓴다) */
 export const logout = () => api.post<void>("/auth/logout/");

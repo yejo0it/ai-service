@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { getExchangeRates, getWeather, toErrorMessage } from "../api/client";
+import { Link } from "react-router-dom";
+import { getExchangeRates, getPackingItems, getWeather, toErrorMessage } from "../api/client";
+import { ROUTES } from "../routes";
 import type { CityWeather, Destination, ExchangeRatesResponse, Trip } from "../types/api";
 import { WEEKDAYS_KO, diffDays, parseISODate } from "../utils/date";
 import { formatTemp, weatherLook } from "./weatherCodes";
@@ -265,32 +267,61 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 짐싸기 진행률 (짐싸기 노트 준비 중)
+ * 짐싸기 진행률
  * ------------------------------------------------------------------ */
 
 const PACKING_STEPS = 5;
 
-/** 짐싸기 체크리스트 진행률 자리. 짐싸기 노트가 생기면 실제 진행률을 붙인다. */
-export function PackingWidget() {
+/** 짐싸기 노트 준비물 체크리스트 진행률. 홈에 올 때마다 새로 불러와 짐싸기 노트에서 체크한 결과를 보여준다. */
+export function PackingWidget({ trip }: { trip: Trip }) {
+  const state = useLoad(String(trip.id), () => getPackingItems(trip.id));
+  const items = state.status === "ready" ? state.data : [];
+  const doneCount = items.filter((item) => item.done).length;
+  const percent = items.length === 0 ? 0 : Math.round((doneCount / items.length) * 100);
+  const filledSteps = Math.floor((percent / 100) * PACKING_STEPS);
+
   return (
     <section aria-label="짐싸기 진행률" className={CARD_CLASS}>
       <WidgetHeader
         title="짐싸기 진행률"
         aside={
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-400">
-            준비 중
-          </span>
+          <Link
+            to={`${ROUTES.PACKING}?trip=${trip.id}`}
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            짐싸기 노트
+          </Link>
         }
       />
-      <div className="mt-4 flex items-center gap-3" aria-hidden="true">
-        <div className="flex flex-1 gap-1">
-          {Array.from({ length: PACKING_STEPS }, (_, index) => (
-            <span key={index} className="h-2.5 flex-1 rounded-sm bg-slate-100" />
-          ))}
-        </div>
-        <span className="text-sm font-semibold tabular-nums text-slate-300">0%</span>
-      </div>
-      <p className="mt-3 text-xs text-slate-400">짐싸기 노트가 열리면 준비물 챙김 현황을 여기서 볼 수 있어요.</p>
+      {state.status === "loading" ? (
+        <Skeleton className="mt-4 h-10" />
+      ) : state.status === "error" ? (
+        <p className="mt-3 text-sm text-rose-600">{state.message}</p>
+      ) : (
+        <>
+          <div
+            className="mt-4 flex items-center gap-3"
+            role="progressbar"
+            aria-label="짐싸기 진행률"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div className="flex flex-1 gap-1">
+              {Array.from({ length: PACKING_STEPS }, (_, index) => (
+                <span
+                  key={index}
+                  className={`h-2.5 flex-1 rounded-sm ${index < filledSteps ? "bg-indigo-500" : "bg-slate-100"}`}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            준비물 {items.length}개 중 {doneCount}개 챙겼어요.
+          </p>
+        </>
+      )}
     </section>
   );
 }

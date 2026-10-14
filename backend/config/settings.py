@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "accounts",
     "trips",
+    "guides",
 ]
 
 MIDDLEWARE = [
@@ -87,6 +88,26 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+# 업로드 파일(프로필 사진). 개발 서버(DEBUG)는 Django가 직접 서빙하고, 운영은 웹 서버·스토리지에서 서빙한다.
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# 이메일 변경 인증 메일(SMTP). EMAIL_HOST가 비어 있으면 개발(DEBUG)은 콘솔(백엔드 로그)로 보내고,
+# 운영은 발송하지 않는다(503).
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "PinRoute <no-reply@pinroute.local>")
+if not EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# 여행 정보 검색(RAG, Issue #49)의 다국어 임베딩 모델. 바꾸면 벡터 차원이 달라지므로
+# 마이그레이션과 `python manage.py ingest_guides`를 다시 해야 한다(guides/embeddings.py).
+GUIDES_EMBEDDING_MODEL = os.environ.get("GUIDES_EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
+# 메일 속 링크가 가리키는 프론트 주소
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:8002")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
@@ -98,9 +119,9 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    # 인증 API(accounts.views.AuthAPIView)의 IP당 요청 제한,
+    # 인증 API(accounts.views.AuthAPIView)·이메일 변경의 요청 제한(ScopedRateThrottle),
     # AI와 함께 만들기(모델 호출)의 사용자당 요청 제한: 1분 10회, 최근 24시간 100회
-    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "ai_minute": "10/min", "ai_day": "100/day"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day"},
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",

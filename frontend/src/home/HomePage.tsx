@@ -11,6 +11,7 @@ import useTrips from "../trips/useTrips";
 import type { Trip, TripColorKey } from "../types/api";
 import { parseISODate, todayISODate } from "../utils/date";
 import { DDayCard, RouteTimeline } from "./DashboardWidgets";
+import { homeDDayMessage } from "./ddayMessage";
 import TripCalendar from "./TripCalendar";
 import TripSummaryCard from "./TripSummaryCard";
 import { ExchangeWidget, PackingWidget, WeatherWidget } from "./TravelInfoWidgets";
@@ -45,8 +46,10 @@ export default function HomePage() {
 
   const trips = tripsState.status === "ready" ? tripsState.trips : [];
   const upcoming = useMemo(() => nextTrip(trips, today), [trips, today]);
+  // 인사말 아래 문구: 가장 가까운 예정 여행의 D-Day 안내. 예정 여행이 없으면 기본 안내를 보여준다.
+  const ddayText = homeDDayMessage(trips, today);
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) ?? null;
-  // 위젯(경로·날씨·환율)은 선택한 여행, 없으면 다가오는 여행 기준
+  // 위젯(경로·날씨·환율·짐싸기)은 선택한 여행, 없으면 다가오는 여행 기준
   const focusTrip = selectedTrip ?? upcoming;
 
   // 처음 들어오면 오늘이 아니라 다가오는 여행이 있는 달을 보여준다(한 번만).
@@ -88,7 +91,15 @@ export default function HomePage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">안녕하세요, {nicknameOf(user)} 님</h1>
-          <p className="mt-1 text-sm text-slate-500">여행 일정을 한눈에 보고, 날짜를 눌러 요약을 확인하세요.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {ddayText ? (
+              <>
+                {ddayText.lead} <span className="inline-block">{ddayText.tail}</span>
+              </>
+            ) : (
+              "여행 일정을 한눈에 보고, 날짜를 눌러 요약을 확인하세요."
+            )}
+          </p>
         </div>
         <button
           type="button"
@@ -125,7 +136,7 @@ export default function HomePage() {
                 <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} onNewTrip={openNewTrip} />
                 {focusTrip && <WeatherWidget trip={focusTrip} today={today} />}
                 {focusTrip && <ExchangeWidget trip={focusTrip} />}
-                <PackingWidget />
+                {focusTrip && <PackingWidget trip={focusTrip} />}
                 <RouteTimeline trip={focusTrip} />
               </>
             )}

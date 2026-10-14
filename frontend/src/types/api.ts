@@ -176,8 +176,20 @@ export interface HotelDetail {
 
 export interface AuthUser {
   id: number;
+  /** 소셜 가입 회원은 비어 있을 수 있다. */
   email: string;
+  /** 닉네임 (가입할 때 비우면 서버가 만든 랜덤 닉네임) */
   name: string;
+  /** 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다. 없으면 빈 문자열 */
+  phone: string;
+  /** 프로필 사진 경로(`/media/...`). 화면에서는 mediaUrl로 바꿔 쓴다. */
+  avatar: string | null;
+  /** 이메일 가입 회원인지 (소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다) */
+  has_password: boolean;
+  /** 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 소셜 가입 회원은 null */
+  password_updated_at: string | null;
+  /** 연결된 소셜 계정 */
+  social_providers: SocialProvider[];
 }
 
 /** 로그인·가입·소셜 로그인 응답. 프론트는 이 값을 그대로 세션으로 저장한다. */
@@ -204,6 +216,8 @@ export interface NewPasswordPayload {
 
 export interface SignupPayload extends VerifiedPhonePayload, NewPasswordPayload {
   email: string;
+  /** 선택. 비우면 서버가 랜덤 닉네임을 만든다. */
+  name?: string;
 }
 
 export interface CheckEmailResponse {
@@ -376,10 +390,15 @@ export interface AddPlacePayload {
   session_token: string;
 }
 
-export interface PackingLinkedItem extends ChecklistItem {
-  item_id: number;
-  item_title: string;
-  day: ISODate;
+export type PackingCategory = "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
+
+/** 짐싸기 노트 준비물. is_default는 처음 넣어 준 기본 준비물 */
+export interface PackingItem {
+  id: number;
+  category: PackingCategory;
+  text: string;
+  done: boolean;
+  is_default: boolean;
 }
 
 export interface ChatTurn {
@@ -427,6 +446,17 @@ export interface AiPreviewDay {
   items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
 }
 
+/** AI 답변의 근거 문서 */
+export interface AiSource {
+  id: number;
+  /** 문서 제목 (예: Japan) */
+  title: string;
+  /** 섹션 경로 (예: Get in > By plane) */
+  section: string;
+  url: string;
+  license: string;
+}
+
 export interface AiProposeResponse {
   reply: string;
   /** 적용할 때 그대로 돌려보낸다 */
@@ -441,6 +471,8 @@ export interface AiProposeResponse {
   redacted?: string[];
   /** 답변 아래에 보여줄 선택 버튼 (예: 기존 정보 수정 / 새로 입력) */
   choices: string[];
+  /** 답변 근거로 쓴 여행 정보 문서 (Wikivoyage 발췌) */
+  sources?: AiSource[];
   /** 항공·숙소 등록 미리보기 */
   registration: {
     flight: FlightInfo | null;

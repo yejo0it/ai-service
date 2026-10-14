@@ -6,8 +6,10 @@
 - POST       /trips/{id}/itinerary/reorder/  하루 안의 순서 저장
 - PATCH/DEL  /itinerary-items/{id}/          메모·시간 수정 / 삭제
 - POST       /itinerary-items/{id}/checklist/, PATCH/DEL /checklist-items/{id}/
-- GET        /trips/{id}/packing-note/       짐싸기 노트 '일정 연동 항목'
+- GET/POST   /trips/{id}/packing-note/       짐싸기 노트 준비물 조회(처음엔 기본 준비물을 넣는다) / 추가
+- PATCH/DEL  /packing-items/{id}/            준비물 챙김 표시 / 삭제
 - POST       /trips/{id}/ai/propose/, /trips/{id}/ai/apply/   AI와 함께 만들기 (제안 미리보기 / 적용)
+             제안 전에 여행지 안내 문서를 검색해 근거로 붙이고, 답변에 쓴 출처(sources)를 돌려준다(guides.search).
 - GET        /places/search/                 일정 장소 자동완성
 """
 
@@ -23,11 +25,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
+from guides import search as guide_search
+
 from . import ai_planner, chat_guard, places, registration
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
-from .models import ChecklistItem, ItineraryItem, Trip
-from .packing import belongs_to_packing_note
+from .models import ChecklistItem, ItineraryItem, PackingItem, Trip
+from .packing import DEFAULT_PACKING_ITEMS, belongs_to_packing_note
 from .serializers import TripSerializer
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -42,6 +46,13 @@ class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChecklistItem
         fields = ("id", "text", "done", "in_packing_note")
+
+
+class PackingItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PackingItem
+        fields = ("id", "category", "text", "done", "is_default")
+        read_only_fields = ("id", "is_default")
 
 
 class ItineraryItemSerializer(serializers.ModelSerializer):
@@ -480,30 +491,55 @@ class ChecklistItemView(APIView):
 
 
 class PackingNoteView(APIView):
-    """짐싸기 노트: 일정 체크리스트 중 짐싸기 노트에 표시한 항목 (일정 연동 항목)"""
+    """짐싸기 노트 준비물. 처음 열 때 기본 준비물을 한 번 넣고, 그 뒤로는 사용자가 더하고 지운다."""
 
     permission_classes = [IsAuthenticated]
+    # 한 여행에 둘 수 있는 준비물 수
+    MAX_ITEMS = 100
 
     def get(self, request, pk):
         trip = accessible_trip(request, pk)
-        checks = (
-            ChecklistItem.objects.filter(item__trip=trip, in_packing_note=True)
-            .select_related("item")
-            .order_by("item__day", "item__order", "id")
+        with transaction.atomic():
+            trip = Trip.objects.select_for_update().get(pk=trip.pk)
+            if not trip.packing_initialized:
+                PackingItem.objects.bulk_create(
+                    PackingItem(trip=trip, category=category, text=text, is_default=True)
+                    for category, text in DEFAULT_PACKING_ITEMS
+                )
+                trip.packing_initialized = True
+                trip.save(update_fields=["packing_initialized"])
+        return Response({"items": PackingItemSerializer(trip.packing_items.all(), many=True).data})
+
+    def post(self, request, pk):
+        trip = accessible_trip(request, pk)
+        serializer = PackingItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if trip.packing_items.count() >= self.MAX_ITEMS:
+            return Response(
+                {"detail": f"준비물은 {self.MAX_ITEMS}개까지 둘 수 있어요."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        item = serializer.save(trip=trip)
+        return Response(PackingItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class PackingItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_packing_item(self, request, packing_id):
+        return get_object_or_404(
+            PackingItem, pk=packing_id, trip__in=Trip.objects.accessible_to(request.user)
         )
-        return Response(
-            {
-                "linked": [
-                    {
-                        **ChecklistItemSerializer(check).data,
-                        "item_id": check.item_id,
-                        "item_title": check.item.title,
-                        "day": check.item.day,
-                    }
-                    for check in checks
-                ]
-            }
-        )
+
+    def patch(self, request, packing_id):
+        item = self.get_packing_item(request, packing_id)
+        serializer = PackingItemSerializer(item, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, packing_id):
+        self.get_packing_item(request, packing_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PlaceSearchView(APIView):
@@ -652,8 +688,10 @@ class AiProposeView(APIView):
         days = days_map(trip)
         ordered_days = sorted(days)
         draft = _validated_draft(request.data.get("draft"))
+        # 여행 정보 질문의 근거: 여행지 안내 문서에서 마지막 질문과 관련된 발췌를 찾는다(없으면 빈 목록).
+        references = guide_search.search_for_trip(trip, messages[-1]["content"])
         try:
-            plan = ai_planner.propose(trip, ordered_days, days, messages, draft)
+            plan = ai_planner.propose(trip, ordered_days, days, messages, draft, references)
         except ai_planner.PlannerError as exc:
             return Response({"detail": str(exc)}, status=exc.status_code)
         # 여행과 관계없는 요청: 정해진 문구로 거절하고 아무것도 바꾸지 않는다.
@@ -758,8 +796,24 @@ class AiProposeView(APIView):
                     for item in trip.itinerary_items.filter(id__in=remove_ids)
                 ],
                 "unresolved": unresolved,
+                "sources": _cited_sources(references, plan.source_ids),
             }
         )
+
+
+def _cited_sources(references, source_ids):
+    """
+    답변 근거로 쓴 여행 정보 문서. 모델이 돌려준 번호 중 이번에 보낸 문서만 인정하고,
+    같은 문서·섹션의 청크를 여러 개 인용했으면 한 번만 보여 준다.
+    """
+    cited, seen = [], set()
+    for ref in references:
+        key = (ref.title, ref.section)
+        if ref.id in set(source_ids) and key not in seen:
+            seen.add(key)
+            cited.append({"id": ref.id, "title": ref.title, "section": ref.section, "url": ref.url,
+                          "license": ref.license})
+    return cited
 
 
 def _refusal_response():

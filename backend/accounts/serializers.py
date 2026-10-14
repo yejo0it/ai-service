@@ -3,9 +3,12 @@ import re
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
 
 from . import phone as phone_verification
+from .nickname import nickname_error, nickname_of
+from .models import Profile
 
 User = get_user_model()
 
@@ -31,12 +34,91 @@ def phone_field():
     )
 
 
+def profile_of(user):
+    """회원 부가 정보. 관리자 명령으로 만든 회원 등 Profile이 없으면 만든다."""
+    try:
+        return user.profile
+    except Profile.DoesNotExist:
+        return Profile.objects.create(user=user)
+
+
 class UserSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source="first_name")
+    """
+    로그인·가입 응답과 마이페이지 공통 회원 정보.
+    - phone: 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다.
+    - avatar: 프로필 사진 경로(`/media/...`). 없으면 null.
+    - has_password: 이메일 가입 회원인지(소셜 가입 회원은 비밀번호가 없어 이메일을 바꿀 수 없다).
+    - password_updated_at: 비밀번호를 마지막으로 바꾼 날짜(YYYY-MM-DD). 바꾼 적이 없으면 가입일, 비밀번호가 없으면 null.
+    - social_providers: 연결된 소셜 계정(["kakao", "naver"] 중).
+    """
+
+    name = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    has_password = serializers.SerializerMethodField()
+    password_updated_at = serializers.SerializerMethodField()
+    social_providers = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "name")
+        fields = (
+            "id", "email", "name", "phone", "avatar", "has_password", "password_updated_at", "social_providers",
+        )
+
+    def get_name(self, user):
+        return nickname_of(user)
+
+    def get_phone(self, user):
+        profile = getattr(user, "profile", None)
+        return profile.phone if profile else ""
+
+    def get_avatar(self, user):
+        profile = getattr(user, "profile", None)
+        return profile.avatar.url if profile and profile.avatar else None
+
+    def get_has_password(self, user):
+        return user.has_usable_password()
+
+    def get_social_providers(self, user):
+        return sorted(user.social_accounts.values_list("provider", flat=True))
+
+    def get_password_updated_at(self, user):
+        if not user.has_usable_password():
+            return None
+        profile = getattr(user, "profile", None)
+        changed_at = (profile.password_changed_at if profile else None) or user.date_joined
+        return timezone.localdate(changed_at).isoformat()
+
+
+def validate_nickname(value):
+    """CharField가 앞뒤 공백을 지운 값을 받아 형식을 확인한다."""
+    message = nickname_error(value)
+    if message:
+        raise serializers.ValidationError(message)
+
+
+class NicknameSerializer(serializers.Serializer):
+    name = serializers.CharField(validators=[validate_nickname])
+
+
+class AvatarSerializer(serializers.Serializer):
+    avatar = serializers.FileField(error_messages={"required": "사진을 골라 주세요."})
+
+
+class PasswordCheckSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+
+
+class EmailChangeRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password_ticket = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        return normalize_email(value)
+
+
+class EmailChangeConfirmSerializer(serializers.Serializer):
+    email_token = serializers.CharField()
 
 
 class EmailSerializer(serializers.Serializer):
@@ -90,6 +172,8 @@ class NewPasswordSerializer(serializers.Serializer):
 
 class SignupSerializer(VerifiedPhoneSerializer, NewPasswordSerializer):
     email = serializers.EmailField()
+    # 선택 입력. 비우면 가입할 때 랜덤 닉네임을 만든다.
+    name = serializers.CharField(required=False, allow_blank=True, validators=[validate_nickname])
 
     def validate_email(self, value):
         email = normalize_email(value)
@@ -120,6 +204,10 @@ class PasswordResetVerifySerializer(VerifiedPhoneSerializer):
 
     def validate_email(self, value):
         return normalize_email(value)
+
+
+class PasswordChangeSerializer(NewPasswordSerializer):
+    current_password = serializers.CharField(write_only=True)
 
 
 class PasswordResetConfirmSerializer(NewPasswordSerializer):

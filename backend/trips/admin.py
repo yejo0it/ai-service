@@ -43,7 +43,7 @@ class TripMemberAdmin(admin.ModelAdmin):
     """초대 링크로 함께하는 일행 (만든 회원은 Trip.owner)"""
 
     list_display = ("user", "trip", "joined_at")
-    search_fields = ("user__username", "user__first_name")
+    search_fields = ("user__username", "user__profile__nickname")
     raw_id_fields = ("trip", "user")
     readonly_fields = ("joined_at",)
 

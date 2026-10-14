@@ -107,7 +107,7 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthLayout title="로그인" description="핀만 찍으면 최적 경로를 찾아드려요.">
+    <AuthLayout title="로그인" description="핀만 찍으면 최적의 여행 경로를 찾아드려요.">
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <AuthField label="이메일" htmlFor="login-email">
           <AuthInput

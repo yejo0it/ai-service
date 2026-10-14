@@ -15,3 +15,6 @@ dist/
 # Windows에서 config를 읽을 때 생기는 임시 파일
 vite.config.*.timestamp-*
 *.local
+
+# 업로드 파일 (프로필 사진)
+backend/media/
