@@ -3,6 +3,7 @@
 import type { ApiErrorData } from "../types/api";
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_FORMAT_MESSAGE = "이메일 형식이 올바르지 않아요.";
 export const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])\S{8,20}$/;
 export const PASSWORD_RULE = "영문, 숫자, 특수문자를 모두 포함해 8~20자";
 export const PASSWORD_RULE_MESSAGE = `비밀번호는 ${PASSWORD_RULE}로 입력해 주세요.`;

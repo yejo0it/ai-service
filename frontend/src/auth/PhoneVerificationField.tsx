@@ -139,7 +139,7 @@ export default function PhoneVerificationField({
           <button
             type="button"
             onClick={handleRequest}
-            disabled={busy || !phone}
+            disabled={busy || !PHONE_PATTERN.test(phone)}
             className={SIDE_BUTTON_CLASS}
           >
             {codeSent ? "재요청" : "인증요청"}
