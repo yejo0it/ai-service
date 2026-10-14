@@ -12,7 +12,7 @@ import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "
 import PhoneVerificationField, { type VerifiedPhone } from "./PhoneVerificationField";
 import { safeReturnPath, type ReturnPathState } from "./returnPath";
 import { saveSession } from "./session";
-import { EMAIL_PATTERN, firstError, nicknameError } from "./validation";
+import { EMAIL_FORMAT_MESSAGE, EMAIL_PATTERN, firstError, nicknameError } from "./validation";
 
 interface SignupErrors extends NewPasswordErrors {
   email?: string;
@@ -37,6 +37,8 @@ export default function SignupPage() {
   const [checkedEmail, setCheckedEmail] = useState("");
   const [emailMessage, setEmailMessage] = useState<FieldMessage>({ error: "", success: "" });
   const [checkingEmail, setCheckingEmail] = useState(false);
+  // 이메일 입력칸을 한 번 벗어난 뒤부터 형식 오류를 보여준다(입력하는 동안에는 보여주지 않는다).
+  const [emailTouched, setEmailTouched] = useState(false);
 
   const [name, setName] = useState("");
 
@@ -61,7 +63,7 @@ export default function SignupPage() {
   const handleCheckEmail = async () => {
     const value = email.trim().toLowerCase();
     if (!EMAIL_PATTERN.test(value)) {
-      setEmailMessage({ error: "이메일 형식이 올바르지 않아요.", success: "" });
+      setEmailMessage({ error: EMAIL_FORMAT_MESSAGE, success: "" });
       return;
     }
     setCheckingEmail(true);
@@ -80,10 +82,18 @@ export default function SignupPage() {
     }
   };
 
+  // 실시간으로 보여주는 형식 오류(서버·제출 오류가 있으면 그것을 먼저 보여준다). 이메일은 입력칸을 벗어난 뒤부터.
+  // 비밀번호·비밀번호 확인은 NewPasswordFields가 같은 방식으로 처리한다.
+  const emailError =
+    errors.email ||
+    emailMessage.error ||
+    (emailTouched && email.trim() && !EMAIL_PATTERN.test(email.trim().toLowerCase()) ? EMAIL_FORMAT_MESSAGE : "");
+  const nameError = errors.name || (name.trim() ? nicknameError(name.trim()) : "");
+
   const validate = (): SignupErrors => {
     const next: SignupErrors = validateNewPassword(password, passwordConfirm);
     const normalized = email.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(normalized)) next.email = "이메일 형식이 올바르지 않아요.";
+    if (!EMAIL_PATTERN.test(normalized)) next.email = EMAIL_FORMAT_MESSAGE;
     else if (checkedEmail !== normalized) next.email = "이메일 중복 확인을 해 주세요.";
     if (name.trim()) next.name = nicknameError(name.trim());
     if (!verifiedPhone) next.phone = "휴대폰 인증을 완료해 주세요.";
@@ -131,7 +141,7 @@ export default function SignupPage() {
         <AuthField
           label="이메일"
           htmlFor="signup-email"
-          error={errors.email || emailMessage.error}
+          error={emailError}
           success={emailMessage.success}
         >
           <div className="flex gap-2">
@@ -141,14 +151,15 @@ export default function SignupPage() {
               autoComplete="email"
               placeholder="example@pinroute.com"
               value={email}
-              error={errors.email || emailMessage.error}
+              error={emailError}
               onChange={(event) => changeEmail(event.target.value)}
+              onBlur={() => setEmailTouched(true)}
               autoFocus
             />
             <button
               type="button"
               onClick={handleCheckEmail}
-              disabled={checkingEmail || !email.trim() || Boolean(checkedEmail)}
+              disabled={checkingEmail || !EMAIL_PATTERN.test(email.trim().toLowerCase()) || Boolean(checkedEmail)}
               className={SIDE_BUTTON_CLASS}
             >
               {checkedEmail ? "확인 완료" : "중복 확인"}
@@ -159,7 +170,7 @@ export default function SignupPage() {
         <AuthField
           label="닉네임 (선택)"
           htmlFor="signup-name"
-          error={errors.name}
+          error={nameError}
           hint="입력하지 않으면 랜덤 닉네임이 생성됩니다."
         >
           <AuthInput
@@ -168,7 +179,7 @@ export default function SignupPage() {
             maxLength={12}
             placeholder="한글·영문·숫자·밑줄 2~12자"
             value={name}
-            error={errors.name}
+            error={nameError}
             onChange={(event) => {
               setName(event.target.value);
               clearError("name");
