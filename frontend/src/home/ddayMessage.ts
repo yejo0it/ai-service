@@ -20,7 +20,9 @@ export function ddayMessage(days: number, destination: string): DDayMessage {
     return { lead: `여행이 ${days}일 앞으로 다가왔어요!`, tail: "필요한 건 다 챙겼는지 다시 한번 확인해 볼까요?" };
   }
   if (days === 7) return { lead: "벌써 일주일 앞으로 다가왔어요!", tail: "눈 깜빡하면 공항이에요 ✈️" };
-  if (days < 30) return { lead: `여행이 ${days}일 앞으로 다가왔어요!`, tail: "눈 깜빡하면 공항이에요 ✈️" };
+  if (days < 30) {
+    return { lead: `여행이 ${days}일 앞으로 다가왔어요!`, tail: "여행을 기다리는 지금 이 순간도 소중한 추억이 될 거예요 🌷" };
+  }
   if (days < 60) return { lead: `여행이 ${days}일 남았어요!`, tail: `마음은 벌써 ${destination}에서 뛰어노는 중 🏃` };
   if (days < 100) return { lead: `여행까지 ${days}일 남았어요.`, tail: "슬슬 여행 계획을 세워볼까요?" };
   return { lead: `여행까지 ${days}일!`, tail: "벌써부터 설레기 시작하지 않나요?" };
