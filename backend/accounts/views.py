@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from . import phone as phone_verification
 from . import email_change, social
+from .nickname import nickname_of, random_nickname, usable_nickname
 from .avatar import AvatarError, make_avatar
 from .password_reset import make_reset_token, user_from_reset_token
 from .models import Profile, SocialAccount
@@ -35,7 +36,6 @@ from .serializers import (
     UserSerializer,
     VerifiedPhoneSerializer,
     email_taken,
-    nickname_taken,
     profile_of,
 )
 
@@ -110,7 +110,9 @@ class SignupView(AuthAPIView):
             user = User.objects.create_user(
                 username=data["email"], email=data["email"], password=data["password"]
             )
-            Profile.objects.create(user=user, phone=data["phone"])
+            Profile.objects.create(
+                user=user, phone=data["phone"], nickname=data.get("name") or random_nickname()
+            )
         return auth_response(user, status.HTTP_201_CREATED)
 
 
@@ -136,7 +138,7 @@ class LoginView(AuthAPIView):
 class MeView(APIView):
     """
     `GET /api/v1/auth/me/` — 토큰이 유효한지 확인하고 로그인한 회원 정보를 돌려준다(만료·폐기 시 401).
-    `PATCH /api/v1/auth/me/` — 닉네임 변경 ({name}). 형식·중복을 다시 확인한다.
+    `PATCH /api/v1/auth/me/` — 닉네임 변경 ({name}). 형식만 확인한다(중복은 허용).
     `DELETE /api/v1/auth/me/` — 회원 탈퇴. 만든 여행(일정·숙소·짐싸기 노트 포함)과 회원 정보·로그인을 모두 지운다.
       일행으로 참여한 다른 사람의 여행에서는 빠지기만 한다.
     """
@@ -150,10 +152,9 @@ class MeView(APIView):
         serializer = NicknameSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         name = serializer.validated_data["name"]
-        if nickname_taken(name, exclude_user=request.user):
-            return Response({"name": ["이미 사용 중인 닉네임이에요."]}, status=status.HTTP_400_BAD_REQUEST)
-        request.user.first_name = name
-        request.user.save(update_fields=["first_name"])
+        profile = profile_of(request.user)
+        profile.nickname = name
+        profile.save(update_fields=["nickname"])
         return Response(UserSerializer(request.user).data)
 
     def delete(self, request):
@@ -167,18 +168,6 @@ class MeView(APIView):
         if avatar:
             Profile._meta.get_field("avatar").storage.delete(avatar)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class NicknameCheckView(APIView):
-    """`POST /api/v1/auth/me/check-name/` — 닉네임 형식 확인 후 쓸 수 있는지(내 닉네임은 쓸 수 있음)."""
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        serializer = NicknameSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        name = serializer.validated_data["name"]
-        return Response({"available": not nickname_taken(name, exclude_user=request.user)})
 
 
 class AvatarView(APIView):
@@ -245,7 +234,7 @@ class EmailChangePasswordView(EmailAccountMixin, APIView):
 def send_email_change_link(user, new_email):
     """새 이메일로 인증 링크를 보내고 변경 대기 이메일로 둔다."""
     link = email_change.confirm_link(email_change.make_email_token(user, new_email))
-    nickname = user.first_name.strip() or user.email.split("@")[0]
+    nickname = nickname_of(user)
     try:
         email_change.send_confirm_email(new_email, link, nickname)
     except email_change.EmailChangeError as exc:
@@ -498,11 +487,11 @@ def social_login(provider, profile):
 
     with transaction.atomic():
         user = User.objects.create_user(
-            username=f"{provider}_{profile.uid}", email=email, first_name=profile.name[:150]
+            username=f"{provider}_{profile.uid}", email=email
         )
         user.set_unusable_password()
         user.save(update_fields=["password"])
-        Profile.objects.create(user=user)
+        Profile.objects.create(user=user, nickname=usable_nickname(profile.name))
         SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
     return auth_response(user, status.HTTP_201_CREATED)
 

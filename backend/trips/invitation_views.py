@@ -18,15 +18,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.nickname import nickname_of
+
 from .models import Trip, TripInvitation, TripMember
-
-
-def display_name(user) -> str:
-    """
-    일행 목록에 보여줄 이름. 상단 메뉴(AppHeader)와 같이 닉네임, 없으면 이메일 아이디(@ 앞)를 쓴다.
-    이메일 전체는 다른 회원에게 보여주지 않는다.
-    """
-    return user.first_name.strip() or user.email.split("@")[0] or "PinRoute 회원"
 
 
 def invitation_data(invitation):
@@ -48,9 +42,9 @@ class TripMembersView(APIView):
         return Response(
             {
                 "is_owner": trip.owner_id == request.user.id,
-                "owner": {"id": trip.owner_id, "name": display_name(trip.owner)} if trip.owner else None,
+                "owner": {"id": trip.owner_id, "name": nickname_of(trip.owner)} if trip.owner else None,
                 "members": [
-                    {"id": member.user_id, "name": display_name(member.user), "joined_at": member.joined_at}
+                    {"id": member.user_id, "name": nickname_of(member.user), "joined_at": member.joined_at}
                     for member in members
                 ],
                 "max_members": TripMember.MAX_PER_TRIP,

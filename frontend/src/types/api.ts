@@ -178,7 +178,7 @@ export interface AuthUser {
   id: number;
   /** 소셜 가입 회원은 비어 있을 수 있다. */
   email: string;
-  /** 닉네임. 없으면 빈 문자열 */
+  /** 닉네임 (가입할 때 비우면 서버가 만든 랜덤 닉네임) */
   name: string;
   /** 휴대폰 인증을 마친 번호만 저장되므로 값이 있으면 인증된 번호다. 없으면 빈 문자열 */
   phone: string;
@@ -216,6 +216,8 @@ export interface NewPasswordPayload {
 
 export interface SignupPayload extends VerifiedPhonePayload, NewPasswordPayload {
   email: string;
+  /** 선택. 비우면 서버가 랜덤 닉네임을 만든다. */
+  name?: string;
 }
 
 export interface CheckEmailResponse {

@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from . import phone as phone_verification
+from .nickname import nickname_error, nickname_of
 from .models import Profile
 
 User = get_user_model()
@@ -33,18 +34,6 @@ def phone_field():
     )
 
 
-# 닉네임: 한글·영문·숫자·밑줄 2~12자 (공백 불가)
-NICKNAME_PATTERN = re.compile(r"^[가-힣A-Za-z0-9_]{2,12}$")
-NICKNAME_RULE_MESSAGE = "닉네임은 한글, 영문, 숫자, 밑줄(_)로 2~12자 입력해 주세요."
-
-
-def nickname_taken(name, exclude_user=None):
-    users = User.objects.filter(first_name__iexact=name)
-    if exclude_user is not None:
-        users = users.exclude(pk=exclude_user.pk)
-    return users.exists()
-
-
 def profile_of(user):
     """회원 부가 정보. 관리자 명령으로 만든 회원 등 Profile이 없으면 만든다."""
     try:
@@ -63,7 +52,7 @@ class UserSerializer(serializers.ModelSerializer):
     - social_providers: 연결된 소셜 계정(["kakao", "naver"] 중).
     """
 
-    name = serializers.CharField(source="first_name")
+    name = serializers.SerializerMethodField()
     phone = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
@@ -75,6 +64,9 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             "id", "email", "name", "phone", "avatar", "has_password", "password_updated_at", "social_providers",
         )
+
+    def get_name(self, user):
+        return nickname_of(user)
 
     def get_phone(self, user):
         profile = getattr(user, "profile", None)
@@ -98,8 +90,15 @@ class UserSerializer(serializers.ModelSerializer):
         return timezone.localdate(changed_at).isoformat()
 
 
+def validate_nickname(value):
+    """CharField가 앞뒤 공백을 지운 값을 받아 형식을 확인한다."""
+    message = nickname_error(value)
+    if message:
+        raise serializers.ValidationError(message)
+
+
 class NicknameSerializer(serializers.Serializer):
-    name = serializers.RegexField(NICKNAME_PATTERN, error_messages={"invalid": NICKNAME_RULE_MESSAGE})
+    name = serializers.CharField(validators=[validate_nickname])
 
 
 class AvatarSerializer(serializers.Serializer):
@@ -173,6 +172,8 @@ class NewPasswordSerializer(serializers.Serializer):
 
 class SignupSerializer(VerifiedPhoneSerializer, NewPasswordSerializer):
     email = serializers.EmailField()
+    # 선택 입력. 비우면 가입할 때 랜덤 닉네임을 만든다.
+    name = serializers.CharField(required=False, allow_blank=True, validators=[validate_nickname])
 
     def validate_email(self, value):
         email = normalize_email(value)

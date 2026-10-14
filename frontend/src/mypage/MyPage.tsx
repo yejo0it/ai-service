@@ -5,7 +5,6 @@ import {
   changePassword,
   changePhone,
   checkEmailChangePassword,
-  checkNickname,
   confirmEmailChange,
   deleteAccount,
   deleteAvatar,
@@ -19,22 +18,19 @@ import {
   uploadAvatar,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { AuthField, AuthInput, PasswordInput, SIDE_BUTTON_CLASS } from "../auth/AuthLayout";
+import { AuthField, AuthInput, PasswordInput } from "../auth/AuthLayout";
 import NewPasswordFields, { validateNewPassword, type NewPasswordErrors } from "../auth/NewPasswordFields";
 import PhoneVerificationField from "../auth/PhoneVerificationField";
 import type { LoginLocationState } from "../auth/LoginPage";
 import { isSocialLoginConfigured, startSocialLogin } from "../auth/oauth";
 import { clearSession, getSession, saveSession } from "../auth/session";
-import { EMAIL_PATTERN, firstError } from "../auth/validation";
+import { EMAIL_PATTERN, firstError, nicknameError } from "../auth/validation";
 import Avatar from "../components/layout/Avatar";
 import { nicknameOf } from "../components/layout/AppHeader";
 import { ROUTES, type MyPageLocationState } from "../routes";
 import type { AuthUser, SocialProvider } from "../types/api";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 
-/** 백엔드 accounts.serializers.NICKNAME_PATTERN과 같은 규칙 */
-const NICKNAME_PATTERN = /^[가-힣A-Za-z0-9_]{2,12}$/;
-const NICKNAME_RULE_MESSAGE = "닉네임은 한글, 영문, 숫자, 밑줄(_)로 2~12자 입력해 주세요.";
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -211,78 +207,48 @@ function AvatarEditor({ user }: { user: AuthUser }) {
 
 function NicknameForm({ user, onDone }: { user: AuthUser; onDone: () => void }) {
   const [name, setName] = useState(user.name);
-  // 중복 확인을 통과한 닉네임. 입력이 바뀌면 다시 확인한다.
-  const [checkedName, setCheckedName] = useState("");
-  const [message, setMessage] = useState({ error: "", success: "" });
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const value = name.trim();
-  const formatError = value && !NICKNAME_PATTERN.test(value) ? NICKNAME_RULE_MESSAGE : "";
-
-  const change = (next: string) => {
-    setName(next);
-    setCheckedName("");
-    setMessage({ error: "", success: "" });
-  };
-
-  const check = async () => {
-    if (!NICKNAME_PATTERN.test(value)) {
-      setMessage({ error: NICKNAME_RULE_MESSAGE, success: "" });
-      return;
-    }
-    setBusy(true);
-    try {
-      const { available } = await checkNickname(value);
-      setCheckedName(available ? value : "");
-      setMessage(available ? { error: "", success: "사용할 수 있는 닉네임이에요." } : { error: "이미 사용 중인 닉네임이에요.", success: "" });
-    } catch (err) {
-      setMessage({ error: firstError(errorDataOf(err), "name") ?? toErrorMessage(err), success: "" });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const formatError = value ? nicknameError(value) : "";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (checkedName !== value) return;
+    if (!value || formatError) {
+      setError(formatError);
+      return;
+    }
     setBusy(true);
     try {
       applyUser(await updateNickname(value));
       onDone();
     } catch (err) {
-      setMessage({ error: firstError(errorDataOf(err), "name") ?? toErrorMessage(err), success: "" });
+      setError(firstError(errorDataOf(err), "name") ?? toErrorMessage(err));
       setBusy(false);
     }
   };
 
-  const error = message.error || formatError;
+  const shownError = error || formatError;
 
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <div className="flex gap-2">
-          <AuthInput
-            aria-label="새 닉네임"
-            value={name}
-            maxLength={12}
-            placeholder="한글·영문·숫자·밑줄 2~12자"
-            error={error}
-            autoFocus
-            onChange={(event) => change(event.target.value)}
-          />
-          <button type="button" onClick={check} disabled={busy || !value} className={SIDE_BUTTON_CLASS}>
-            중복 확인
-          </button>
-        </div>
-        {error ? (
-          <p className="mt-1 text-xs text-rose-600">{error}</p>
-        ) : message.success ? (
-          <p className="mt-1 text-xs text-emerald-600">{message.success}</p>
-        ) : (
-          <p className="mt-1 text-xs text-slate-400">중복 확인 후 저장할 수 있어요.</p>
-        )}
+        <AuthInput
+          aria-label="새 닉네임"
+          value={name}
+          maxLength={12}
+          placeholder="한글·영문·숫자·밑줄 2~12자"
+          error={shownError}
+          autoFocus
+          onChange={(event) => {
+            setName(event.target.value);
+            setError("");
+          }}
+        />
+        {shownError && <p className="mt-1 text-xs text-rose-600">{shownError}</p>}
       </div>
-      <FormActions onCancel={onDone} submitLabel="저장" disabled={busy || checkedName !== value} />
+      <FormActions onCancel={onDone} submitLabel="저장" disabled={busy || !value || Boolean(formatError)} />
     </form>
   );
 }

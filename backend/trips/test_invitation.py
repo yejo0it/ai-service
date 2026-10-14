@@ -14,6 +14,9 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from accounts.models import Profile
+from accounts.nickname import NICKNAME_PATTERN
+
 from .models import ChecklistItem, Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
 
 User = get_user_model()
@@ -21,10 +24,10 @@ User = get_user_model()
 
 class InvitationTestBase(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username="owner@example.com", email="owner@example.com",
-                                              first_name="만든이")
-        self.guest = User.objects.create_user(username="guest@example.com", email="guest@example.com",
-                                              first_name="일행")
+        self.owner = User.objects.create_user(username="owner@example.com", email="owner@example.com")
+        self.guest = User.objects.create_user(username="guest@example.com", email="guest@example.com")
+        Profile.objects.create(user=self.owner, nickname="만든이")
+        Profile.objects.create(user=self.guest, nickname="일행")
         self.stranger = User.objects.create_user(username="stranger@example.com", email="stranger@example.com")
         self.trip = Trip.objects.create(owner=self.owner, destinations=[{"city": "도쿄", "city_code": "tokyo"}],
                                         start_date="2026-11-10", end_date="2026-11-12", itinerary_initialized=True)
@@ -170,13 +173,13 @@ class MemberAccessTests(InvitationTestBase):
         self.assertEqual(data["max_members"], 10)
         self.assertNotIn("guest@example.com", str(data))
 
-    def test_name_falls_back_to_email_id(self):
-        # 닉네임이 없는 회원(만든 사람 포함)은 이메일 아이디로 보인다.
-        self.owner.first_name = ""
-        self.owner.save()
+    def test_user_without_nickname_gets_random_one_not_email(self):
+        # 닉네임이 없는 회원(만든 사람 포함)도 이메일 대신 랜덤 닉네임으로 보인다.
+        Profile.objects.filter(user=self.owner).update(nickname="")
         self.as_user(self.guest)
         data = self.client.get(f"/api/v1/trips/{self.trip.id}/members/").data
-        self.assertEqual(data["owner"]["name"], "owner")
+        self.assertRegex(data["owner"]["name"], NICKNAME_PATTERN)
+        self.assertNotIn("owner", data["owner"]["name"])
         self.assertNotIn("owner@example.com", str(data))
 
     def test_owner_removes_member_and_member_leaves(self):
