@@ -66,6 +66,23 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # 서버가 요청에 응답하는지 확인한다. 응답만 오면 정상으로 보므로(로그인 전 401 포함) 연결이 안 될 때만 unhealthy가 된다.
+    # 시작 직후 마이그레이션 시간을 고려해 start_period를 둔다. 상태는 `docker compose ps`로 확인한다.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, urllib.error
+          try:
+              urllib.request.urlopen("http://127.0.0.1:8000/api/v1/auth/me/", timeout=3)
+          except urllib.error.HTTPError:
+              pass
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   frontend:
