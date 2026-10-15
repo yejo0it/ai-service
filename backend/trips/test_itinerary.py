@@ -162,6 +162,31 @@ class ItineraryTests(APITestCase):
         self.assertEqual((items[-2]["text"], items[-2]["done"]), ("수영복", True))
         self.assertNotIn(DEFAULT_PACKING_ITEMS[0][1], [i["text"] for i in items])
 
+    def test_todo_category_add_edit_check_delete(self):
+        url = f"/api/v1/trips/{self.trip.pk}/packing-note/"
+        defaults = self.client.get(url).data["items"]
+        # 기본 준비물에는 '해야 할 일'을 넣지 않고, 기존 항목은 그대로다.
+        self.assertEqual(len(defaults), len(DEFAULT_PACKING_ITEMS))
+        self.assertNotIn("todo", {i["category"] for i in defaults})
+
+        created = self.client.post(url, {"text": "전망대 입장권 예약하기", "category": "todo"}, format="json")
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual((created.data["category"], created.data["is_default"]), ("todo", False))
+        item_url = f"/api/v1/packing-items/{created.data['id']}/"
+
+        self.assertEqual(self.client.patch(item_url, {"done": True}, format="json").data["done"], True)
+        edited = self.client.patch(item_url, {"text": "카페에 전화하기"}, format="json")
+        self.assertEqual((edited.data["text"], edited.data["done"]), ("카페에 전화하기", True))
+
+        # 새로 불러와도 분류와 체크 상태가 유지되고, 전체 개수에 포함된다.
+        items = self.client.get(url).data["items"]
+        todo = [i for i in items if i["category"] == "todo"]
+        self.assertEqual([(i["text"], i["done"]) for i in todo], [("카페에 전화하기", True)])
+        self.assertEqual(len(items), len(DEFAULT_PACKING_ITEMS) + 1)
+
+        self.assertEqual(self.client.delete(item_url).status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(self.client.get(url).data["items"]), len(DEFAULT_PACKING_ITEMS))
+
     def test_memo_and_delete_only_own_items(self):
         self.init()
         item = self.trip.itinerary_items.first()

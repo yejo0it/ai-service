@@ -390,9 +390,9 @@ export interface AddPlacePayload {
   session_token: string;
 }
 
-export type PackingCategory = "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
+export type PackingCategory = "todo" | "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
 
-/** 짐싸기 노트 준비물. is_default는 처음 넣어 준 기본 준비물 */
+/** 여행 체크리스트 항목(준비물·해야 할 일). is_default는 처음 넣어 준 기본 준비물 */
 export interface PackingItem {
   id: number;
   category: PackingCategory;

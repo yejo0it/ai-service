@@ -267,12 +267,12 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 짐싸기 진행률
+ * 체크리스트 진행률
  * ------------------------------------------------------------------ */
 
 const PACKING_STEPS = 5;
 
-/** 짐싸기 노트 준비물 체크리스트 진행률. 홈에 올 때마다 새로 불러와 짐싸기 노트에서 체크한 결과를 보여준다. */
+/** 여행 체크리스트(준비물·해야 할 일) 진행률. 홈에 올 때마다 새로 불러와 여행 체크리스트에서 체크한 결과를 보여준다. */
 export function PackingWidget({ trip }: { trip: Trip }) {
   const state = useLoad(String(trip.id), () => getPackingItems(trip.id));
   const items = state.status === "ready" ? state.data : [];
@@ -281,15 +281,15 @@ export function PackingWidget({ trip }: { trip: Trip }) {
   const filledSteps = Math.floor((percent / 100) * PACKING_STEPS);
 
   return (
-    <section aria-label="짐싸기 진행률" className={CARD_CLASS}>
+    <section aria-label="체크리스트 진행률" className={CARD_CLASS}>
       <WidgetHeader
-        title="짐싸기 진행률"
+        title="체크리스트 진행률"
         aside={
           <Link
             to={`${ROUTES.PACKING}?trip=${trip.id}`}
             className="text-xs font-medium text-indigo-600 hover:underline"
           >
-            짐싸기 노트
+            여행 체크리스트
           </Link>
         }
       />
@@ -302,7 +302,7 @@ export function PackingWidget({ trip }: { trip: Trip }) {
           <div
             className="mt-4 flex items-center gap-3"
             role="progressbar"
-            aria-label="짐싸기 진행률"
+            aria-label="체크리스트 진행률"
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -318,7 +318,7 @@ export function PackingWidget({ trip }: { trip: Trip }) {
             <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
           </div>
           <p className="mt-3 text-xs text-slate-500">
-            준비물 {items.length}개 중 {doneCount}개 챙겼어요.
+            항목 {items.length}개 중 {doneCount}개 완료했어요.
           </p>
         </>
       )}

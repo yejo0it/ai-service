@@ -235,6 +235,7 @@ class PackingItem(TimeStampedModel):
     class Category(models.TextChoices):
         """화면에도 이 순서대로 나온다."""
 
+        TODO = "todo", "해야 할 일"
         ESSENTIALS = "essentials", "필수 준비물"
         TOILETRIES = "toiletries", "세면도구/화장품"
         CLOTHING = "clothing", "의류"
