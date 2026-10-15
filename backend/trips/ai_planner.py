@@ -33,7 +33,6 @@ MAX_TOKENS = 16000
 # 모델 응답 상한 (서비스가 쓰기 전에 자른다)
 MAX_REPLY_CHARS = 2000
 MAX_ADDITIONS = 60
-MAX_CHECKLIST = 10
 
 
 class PlanAddition(BaseModel):
@@ -45,7 +44,6 @@ class PlanAddition(BaseModel):
     )
     time: Optional[str] = Field(description="'HH:MM'. 사용자가 시간을 말했거나 식사 시간처럼 분명할 때만, 아니면 null")
     reason: str = Field(description="이 장소를 고른 이유 한 문장")
-    checklist: list[str] = Field(description="사전 예약·티켓 예매·준비물처럼 미리 챙길 것 (없으면 빈 목록)")
 
 
 class PlanMove(BaseModel):
@@ -135,7 +133,6 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
   - 전체 계획을 짜 달라고 하면 하루에 3~4곳(출국·귀국일은 1~2곳)을 고르고, 같은 날에는 서로 가까운 동네의
     장소를 묶어 day_index를 정하세요. 숙소가 있으면 그 주변을 우선하세요.
 - 현재 일정에 이미 있는 장소는 다시 추가하지 마세요. 빼거나 옮길 때는 현재 일정에 있는 id만 쓰세요.
-- 사전 예약·티켓 예매가 필요한 곳이면 checklist에 "웹으로 티켓 사전 예매"처럼 짧게 적으세요.
 - reply는 친근한 한국어로 2~4문장. 무엇을 추가·이동·삭제하자고 제안하는지 설명하세요.
 - 여행에 관한 질문이지만 일정을 바꿀 필요가 없으면(예: 날씨, 환전, 준비물) reply로만 답하고 나머지는 빈 값으로
   두세요.
@@ -288,6 +285,4 @@ def limit_plan(plan):
     """
     plan.reply = plan.reply[:MAX_REPLY_CHARS]
     plan.additions = plan.additions[:MAX_ADDITIONS]
-    for addition in plan.additions:
-        addition.checklist = [text[:200] for text in addition.checklist[:MAX_CHECKLIST]]
     return plan

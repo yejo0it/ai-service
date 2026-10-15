@@ -314,14 +314,6 @@ export interface ItineraryStop {
   lng?: number | null;
 }
 
-export interface ChecklistItem {
-  id: number;
-  text: string;
-  done: boolean;
-  /** 짐싸기 노트 '일정 연동 항목'에 표시 */
-  in_packing_note: boolean;
-}
-
 export interface ItineraryItem {
   id: number;
   day: ISODate;
@@ -340,8 +332,6 @@ export interface ItineraryItem {
   phone: string;
   /** 요일별 영업시간 문장 */
   opening_hours: string[];
-  memo: string;
-  checklist: ChecklistItem[];
 }
 
 export interface ItineraryResponse {

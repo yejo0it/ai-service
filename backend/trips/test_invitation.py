@@ -17,7 +17,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Profile
 from accounts.nickname import NICKNAME_PATTERN
 
-from .models import ChecklistItem, Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
+from .models import Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
 
 User = get_user_model()
 
@@ -116,7 +116,6 @@ class MemberAccessTests(InvitationTestBase):
         TripMember.objects.create(trip=self.trip, user=self.guest)
         self.item = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=0, kind="sight",
                                                  source="manual", title="센소지", stops=[])
-        self.check = ChecklistItem.objects.create(item=self.item, text="입장권")
         self.hotel = Hotel.objects.create(trip=self.trip, name="숙소", address="", check_in="2026-11-10",
                                           check_out="2026-11-12")
 
@@ -127,11 +126,7 @@ class MemberAccessTests(InvitationTestBase):
         self.assertFalse(listed.data[0]["is_owner"])
         self.assertEqual(self.client.get(f"/api/v1/trips/{self.trip.id}/itinerary/").status_code, 200)
         self.assertEqual(self.client.patch(f"/api/v1/trips/{self.trip.id}/", {"color": "red"}).status_code, 200)
-        self.assertEqual(self.client.patch(f"/api/v1/itinerary-items/{self.item.id}/", {"memo": "아침"}).status_code,
-                         200)
-        self.assertEqual(self.client.post(f"/api/v1/itinerary-items/{self.item.id}/checklist/",
-                                          {"text": "우산"}).status_code, 201)
-        self.assertEqual(self.client.patch(f"/api/v1/checklist-items/{self.check.id}/", {"done": True}).status_code,
+        self.assertEqual(self.client.patch(f"/api/v1/itinerary-items/{self.item.id}/", {"time": "09:00"}).status_code,
                          200)
         self.assertEqual(self.client.patch(f"/api/v1/hotels/{self.hotel.id}/", {"name": "새 숙소"}).status_code,
                          200)
@@ -148,9 +143,7 @@ class MemberAccessTests(InvitationTestBase):
                     f"/api/v1/trips/{self.trip.id}/members/", f"/api/v1/hotels/{self.hotel.id}/",
                     f"/api/v1/trips/{self.trip.id}/packing-note/"):
             self.assertEqual(self.client.get(url).status_code, status.HTTP_404_NOT_FOUND, url)
-        self.assertEqual(self.client.patch(f"/api/v1/itinerary-items/{self.item.id}/", {"memo": "x"}).status_code,
-                         404)
-        self.assertEqual(self.client.patch(f"/api/v1/checklist-items/{self.check.id}/", {"done": True}).status_code,
+        self.assertEqual(self.client.patch(f"/api/v1/itinerary-items/{self.item.id}/", {"time": "09:00"}).status_code,
                          404)
         packing = PackingItem.objects.create(trip=self.trip, text="여권")
         self.assertEqual(self.client.patch(f"/api/v1/packing-items/{packing.id}/", {"done": True}).status_code, 404)

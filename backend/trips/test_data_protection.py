@@ -18,7 +18,7 @@ from accounts.models import Profile
 
 from . import ai_planner, chat_guard
 from .itinerary_views import days_map
-from .models import ChecklistItem, Hotel, ItineraryItem, Trip
+from .models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 
@@ -75,8 +75,7 @@ class AiDataScopeTests(APITestCase):
                              phone="03-1111-2222", check_in="2026-11-10", check_out="2026-11-12")
         item = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=0, kind="sight", source="manual",
                                             title="도쿄타워", address="미나토구 숨은주소", phone="03-3333-4444",
-                                            memo="개인 메모: 카드 비번 적어둠", stops=[])
-        ChecklistItem.objects.create(item=item, text="여권 사본 챙기기")
+                                            stops=[])
         other = User.objects.create_user(username="someone@example.com", email="someone@example.com")
         other_trip = Trip.objects.create(owner=other, destinations=[{"city": "오사카", "city_code": "osaka"}],
                                          start_date="2026-11-10", end_date="2026-11-12")
@@ -93,7 +92,7 @@ class AiDataScopeTests(APITestCase):
         for expected in ("도쿄", "2026-11-10", "신주쿠 호텔", "도쿄타워"):
             self.assertIn(expected, context)
         for hidden in ("private@example.com", "홍길동", "비밀주소", "숨은주소", "03-1111-2222", "03-3333-4444",
-                       "개인 메모", "여권 사본", "남의 비밀 일정", "오사카", "someone@example.com"):
+                       "남의 비밀 일정", "오사카", "someone@example.com"):
             self.assertNotIn(hidden, context)
 
     def test_chat_is_masked_and_not_stored(self):

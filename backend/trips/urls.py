@@ -36,8 +36,6 @@ urlpatterns = [
     path("trips/<int:pk>/invitations/", invitation.TripInvitationCreateView.as_view(), name="trip-invitations"),
     path("trips/invitations/<str:token>/accept/", invitation.InvitationAcceptView.as_view(), name="trip-invitation-accept"),
     path("itinerary-items/<int:item_id>/", itinerary.ItineraryItemView.as_view(), name="itinerary-item"),
-    path("itinerary-items/<int:item_id>/checklist/", itinerary.ChecklistCreateView.as_view(), name="itinerary-checklist"),
-    path("checklist-items/<int:check_id>/", itinerary.ChecklistItemView.as_view(), name="checklist-item"),
     path("packing-items/<int:packing_id>/", itinerary.PackingItemView.as_view(), name="packing-item"),
     path("places/search/", itinerary.PlaceSearchView.as_view(), name="place-search"),
     path("", include(router.urls)),

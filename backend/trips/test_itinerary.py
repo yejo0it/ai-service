@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from . import ai_planner, chat_guard
-from .models import ChecklistItem, Hotel, ItineraryItem, Trip
+from .models import Hotel, ItineraryItem, Trip
 from .packing import DEFAULT_PACKING_ITEMS
 
 User = get_user_model()
@@ -127,16 +127,6 @@ class ItineraryTests(APITestCase):
         response = self.client.post(self.url("reorder/"), {"day": "2026-10-13", "ids": ids[:1]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_checklist_classification(self):
-        self.init()
-        self.add("스카이트리", SKYTREE, "2026-10-13")
-        item = self.trip.itinerary_items.get(title="스카이트리")
-        url = f"/api/v1/itinerary-items/{item.pk}/checklist/"
-        ticket = self.client.post(url, {"text": "웹으로 티켓 사전 예매"}, format="json").data
-        photo = self.client.post(url, {"text": "전망대에서 사진 찍기"}, format="json").data
-        self.assertTrue(ticket["in_packing_note"])
-        self.assertFalse(photo["in_packing_note"])
-
     def test_packing_note_defaults_and_custom_items(self):
         url = f"/api/v1/trips/{self.trip.pk}/packing-note/"
         items = self.client.get(url).data["items"]
@@ -187,11 +177,9 @@ class ItineraryTests(APITestCase):
         self.assertEqual(self.client.delete(item_url).status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(len(self.client.get(url).data["items"]), len(DEFAULT_PACKING_ITEMS))
 
-    def test_memo_and_delete_only_own_items(self):
+    def test_delete_only_own_items(self):
         self.init()
         item = self.trip.itinerary_items.first()
-        response = self.client.patch(f"/api/v1/itinerary-items/{item.pk}/", {"memo": "전화 예약 필수"}, format="json")
-        self.assertEqual(response.data["memo"], "전화 예약 필수")
         other = User.objects.create_user(username="other@example.com")
         self.client.force_authenticate(other)
         self.assertEqual(self.client.delete(f"/api/v1/itinerary-items/{item.pk}/").status_code, 404)
@@ -207,11 +195,11 @@ class AiPlanTests(ItineraryTests):
             reply="스카이트리와 도톤보리를 넣었어요.",
             additions=[
                 ai_planner.PlanAddition(name="스카이트리", search_query="도쿄 스카이트리", kind="sight",
-                                        day_index=None, time=None, reason="전망", checklist=["웹으로 티켓 사전 예매"]),
+                                        day_index=None, time=None, reason="전망"),
                 ai_planner.PlanAddition(name="도톤보리", search_query="도톤보리 오사카", kind="sight",
-                                        day_index=None, time=None, reason="야경", checklist=[]),
+                                        day_index=None, time=None, reason="야경"),
                 ai_planner.PlanAddition(name="없는 곳", search_query="없는 곳", kind="cafe",
-                                        day_index=0, time=None, reason="", checklist=[]),
+                                        day_index=0, time=None, reason=""),
             ],
             remove_item_ids=[],
             moves=[],
@@ -250,7 +238,6 @@ class AiPlanTests(ItineraryTests):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         skytree = ItineraryItem.objects.get(trip=self.trip, title="스카이트리")
         self.assertEqual(skytree.source, "ai")
-        self.assertTrue(ChecklistItem.objects.get(item=skytree).in_packing_note)
         self.assertEqual(self.titles("2026-10-14"), ["도톤보리"])
 
     def test_propose_without_key(self):
@@ -576,7 +563,7 @@ class ChatScopeTests(APITestCase):
 
     def test_off_topic_refused_and_changes_dropped(self):
         addition = ai_planner.PlanAddition(name="도쿄타워", search_query="도쿄타워 도쿄", kind="sight", day_index=0,
-                                           time=None, reason="", checklist=[])
+                                           time=None, reason="")
         response, propose = self.ask("Python으로 Django 로그인 기능 만들어줘",
                                      self.plan(reply="코드는 이렇게...", additions=[addition], off_topic=True))
         self.assertTrue(propose.called)
@@ -651,7 +638,7 @@ class ItineraryItemEditTests(APITestCase):
                                         start_date="2026-11-10", end_date="2026-11-12", itinerary_initialized=True)
         self.place = ItineraryItem.objects.create(
             trip=self.trip, day="2026-11-10", order=0, kind="sight", source="manual", title="도쿄타워",
-            address="옛 주소", phone="03-0000-1111", opening_hours=["월요일: 09:00~18:00"], memo="메모 유지",
+            address="옛 주소", phone="03-0000-1111", opening_hours=["월요일: 09:00~18:00"],
             stops=[{"kind": "place", "caption": "주소", "label": "옛 주소", "lat": 35.65, "lng": 139.74}],
         )
         self.hotel_auto = ItineraryItem.objects.create(trip=self.trip, day="2026-11-10", order=1, kind="hotel",
@@ -671,7 +658,7 @@ class ItineraryItemEditTests(APITestCase):
                          ("스카이트리", "sky", "스카이트리 주소", "03-0000-0000"))
         self.assertEqual(self.place.opening_hours, ["월요일: 10:00~22:00"])
         self.assertEqual((self.place.stops[0]["lat"], self.place.stops[0]["label"]), (SKYTREE[0], "스카이트리 주소"))
-        self.assertEqual((self.place.time.strftime("%H:%M"), self.place.memo), ("19:30", "메모 유지"))
+        self.assertEqual(self.place.time.strftime("%H:%M"), "19:30")
         self.assertEqual(response.data["time"], "19:30")
 
     def test_time_only_and_clear(self):

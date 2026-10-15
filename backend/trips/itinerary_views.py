@@ -4,8 +4,7 @@
 - GET/POST   /trips/{id}/itinerary/          일정 조회 / 장소 직접 추가(배치 로직으로 자리 결정)
 - POST       /trips/{id}/itinerary/init/     처음 열 때 항공편·숙소 카드 저장(한 번만)
 - POST       /trips/{id}/itinerary/reorder/  하루 안의 순서 저장
-- PATCH/DEL  /itinerary-items/{id}/          메모·시간 수정 / 삭제
-- POST       /itinerary-items/{id}/checklist/, PATCH/DEL /checklist-items/{id}/
+- PATCH/DEL  /itinerary-items/{id}/          시간·장소 수정 / 삭제
 - GET/POST   /trips/{id}/packing-note/       짐싸기 노트 준비물 조회(처음엔 기본 준비물을 넣는다) / 추가
 - PATCH/DEL  /packing-items/{id}/            준비물 챙김 표시 / 삭제
 - POST       /trips/{id}/ai/propose/, /trips/{id}/ai/apply/   AI와 함께 만들기 (제안 미리보기 / 적용)
@@ -30,8 +29,8 @@ from guides import search as guide_search
 from . import ai_planner, chat_guard, places, registration
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
-from .models import ChecklistItem, ItineraryItem, PackingItem, Trip
-from .packing import DEFAULT_PACKING_ITEMS, belongs_to_packing_note
+from .models import ItineraryItem, PackingItem, Trip
+from .packing import DEFAULT_PACKING_ITEMS
 from .serializers import TripSerializer
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -40,12 +39,6 @@ TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # ------------------------------------------------------------------ #
 # 직렬화
 # ------------------------------------------------------------------ #
-
-
-class ChecklistItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ChecklistItem
-        fields = ("id", "text", "done", "in_packing_note")
 
 
 class PackingItemSerializer(serializers.ModelSerializer):
@@ -57,15 +50,14 @@ class PackingItemSerializer(serializers.ModelSerializer):
 
 class ItineraryItemSerializer(serializers.ModelSerializer):
     time = serializers.TimeField(format="%H:%M", allow_null=True, required=False)
-    checklist = ChecklistItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = ItineraryItem
         fields = (
             "id", "day", "order", "kind", "source", "title", "time", "time_label", "subtitle",
-            "stops", "place_id", "address", "phone", "opening_hours", "memo", "checklist",
+            "stops", "place_id", "address", "phone", "opening_hours",
         )
-        read_only_fields = ("id", "order", "source", "checklist")
+        read_only_fields = ("id", "order", "source")
 
 
 # 클라이언트가 보내는 카드(AI 제안 적용·자동 카드)는 그대로 믿지 않는다: 값의 종류·범위·개수를 제한한다.
@@ -73,7 +65,6 @@ STOP_KINDS = ["airport", "hotel", "place", "city"]
 PHONE_PATTERN = re.compile(r"^[0-9+\-().\s]*$")
 MAX_STOPS = 10
 MAX_OPENING_HOURS = 14
-MAX_CHECKLIST = 20
 
 
 class StopSerializer(serializers.Serializer):
@@ -100,13 +91,10 @@ class CardSerializer(serializers.Serializer):
     opening_hours = serializers.ListField(
         child=serializers.CharField(max_length=200), required=False, default=list, max_length=MAX_OPENING_HOURS
     )
-    checklist = serializers.ListField(
-        child=serializers.CharField(max_length=200), required=False, default=list, max_length=MAX_CHECKLIST
-    )
 
 
 def itinerary_response(trip):
-    items = trip.itinerary_items.prefetch_related("checklist")
+    items = trip.itinerary_items.all()
     return Response(
         {"initialized": trip.itinerary_initialized, "items": ItineraryItemSerializer(items, many=True).data}
     )
@@ -151,7 +139,7 @@ def _model_fields(card, source):
 
 
 def save_days(trip, days, source):
-    """카드의 날짜·순서를 저장하고, id가 없는 카드는 새로 만든다(체크리스트 포함)."""
+    """카드의 날짜·순서를 저장하고, id가 없는 카드는 새로 만든다."""
     for day, cards in days.items():
         for order, card in enumerate(cards):
             if card.get("id"):
@@ -162,16 +150,9 @@ def save_days(trip, days, source):
                 continue
             item = ItineraryItem.objects.create(trip=trip, day=day, order=order, **_model_fields(card, source))
             card["id"] = item.id
-            ChecklistItem.objects.bulk_create(
-                [
-                    ChecklistItem(item=item, text=text[:200], in_packing_note=belongs_to_packing_note(text))
-                    for text in card.get("checklist", [])
-                    if text.strip()
-                ]
-            )
 
 
-def place_card(detail, kind, time="", checklist=()):
+def place_card(detail, kind, time=""):
     """Places 상세 -> 장소 카드"""
     stop_kind = kind if kind in ("hotel", "airport") else "place"
     return {
@@ -193,7 +174,6 @@ def place_card(detail, kind, time="", checklist=()):
         "address": detail.get("address", ""),
         "phone": detail.get("phone", ""),
         "opening_hours": detail.get("opening_hours", []),
-        "checklist": list(checklist),
     }
 
 
@@ -265,7 +245,6 @@ def flight_card(data):
         "time_label": "",
         "subtitle": "",
         "stops": [stop(data["departure_airport"], "출발"), stop(data["arrival_airport"], "도착")],
-        "checklist": [],
     }
 
 
@@ -393,7 +372,7 @@ PLACE_EDIT_KINDS = {
 class ItineraryItemView(APIView):
     """
     일정 카드 수정·삭제.
-    - memo, time("HH:MM" 또는 null=시간 미정)을 바꾼다.
+    - time("HH:MM" 또는 null=시간 미정)을 바꾼다.
     - place_id(+session_token)를 주면 장소를 다시 검색해 고른 것으로 보고, 이름·주소·좌표·전화·영업시간을 새 장소로 바꾼다.
       여행 등록 정보에서 만든 항공·숙소 카드(source=auto)는 등록 정보로 관리하므로 장소를 바꾸지 않는다.
     """
@@ -409,7 +388,7 @@ class ItineraryItemView(APIView):
         item = self.get_item(request, item_id)
         serializer = ItineraryItemSerializer(item, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        allowed = {key: value for key, value in serializer.validated_data.items() if key in ("memo", "time")}
+        allowed = {key: value for key, value in serializer.validated_data.items() if key in ("time",)}
 
         place_id = str(request.data.get("place_id") or "").strip()
         if place_id:
@@ -449,45 +428,6 @@ class ItineraryItemView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         trip_data = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
         return Response({"trip": trip_data, "removed_ids": [item_id, *other_ids]})
-
-
-class ChecklistCreateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, item_id):
-        item = get_object_or_404(
-            ItineraryItem, pk=item_id, trip__in=Trip.objects.accessible_to(request.user)
-        )
-        serializer = ChecklistItemSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        text = serializer.validated_data["text"].strip()
-        checklist = ChecklistItem.objects.create(
-            item=item,
-            text=text,
-            # 명시하지 않으면 예약·티켓·준비물 낱말로 자동 분류한다.
-            in_packing_note=request.data.get("in_packing_note", belongs_to_packing_note(text)),
-        )
-        return Response(ChecklistItemSerializer(checklist).data, status=status.HTTP_201_CREATED)
-
-
-class ChecklistItemView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get_check(self, request, check_id):
-        return get_object_or_404(
-            ChecklistItem, pk=check_id, item__trip__in=Trip.objects.accessible_to(request.user)
-        )
-
-    def patch(self, request, check_id):
-        check = self.get_check(request, check_id)
-        serializer = ChecklistItemSerializer(check, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    def delete(self, request, check_id):
-        self.get_check(request, check_id).delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PackingNoteView(APIView):
@@ -710,7 +650,7 @@ class AiProposeView(APIView):
                 unresolved.append(addition.name)
                 continue
             time = addition.time if addition.time and TIME_PATTERN.match(addition.time) else ""
-            card = place_card(detail, addition.kind, time, addition.checklist)
+            card = place_card(detail, addition.kind, time)
             card["day"] = day
             card["reason"] = addition.reason
             additions.append(card)
