@@ -895,7 +895,7 @@ function WithdrawDialog({ onClose }: { onClose: () => void }) {
           정말 탈퇴하겠습니까?
         </p>
         <ul className="mt-4 space-y-1.5 rounded-xl bg-rose-50/60 px-4 py-3 text-xs leading-relaxed text-rose-800">
-          <li>· 만든 여행의 일정·숙소·짐싸기 노트가 모두 삭제되고, 함께하던 일행도 더 이상 볼 수 없어요.</li>
+          <li>· 만든 여행의 일정·숙소·여행 체크리스트가 모두 삭제되고, 함께하던 일행도 더 이상 볼 수 없어요.</li>
           <li>· 프로필·연락처·소셜 계정 연동 정보가 삭제되고, 모든 기기에서 로그아웃돼요.</li>
           <li>· 삭제된 정보는 되돌릴 수 없어요.</li>
         </ul>

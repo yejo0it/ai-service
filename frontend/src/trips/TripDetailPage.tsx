@@ -418,7 +418,7 @@ function InviteButton({ trip }: { trip: Trip }) {
 
 /**
  * `/trips/:tripId` 여행 상세.
- * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
+ * - 제목 오른쪽 끝에 여행 체크리스트 바로가기 · 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
  * - 지도 핀 번호는 일정 카드 순서를 따르고, 카드를 끌어 순서를 바꾸면 번호도 바뀐다.
@@ -593,7 +593,13 @@ export default function TripDetailPage() {
             {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
           </p>
         </div>
-        <InviteButton trip={trip} />
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <Link to={`${ROUTES.PACKING}?trip=${trip.id}`} className={`${OUTLINE_BUTTON} shrink-0 whitespace-nowrap`}>
+            <i className="fas fa-clipboard-list text-xs" aria-hidden="true" />
+            여행 체크리스트
+          </Link>
+          <InviteButton trip={trip} />
+        </div>
       </header>
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}

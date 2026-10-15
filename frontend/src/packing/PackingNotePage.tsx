@@ -11,6 +11,7 @@ import { diffDays, formatMonthDay, formatShortDot, todayISODate } from "../utils
 const defaultTrip = (trips: Trip[]) => nextTrip(trips, todayISODate()) ?? trips[trips.length - 1] ?? null;
 
 const PACKING_CATEGORIES: { key: PackingCategory; label: string; icon: string; example: string }[] = [
+  { key: "todo", label: "해야 할 일", icon: "fas fa-clipboard-check", example: "전망대 입장권 예약하기" },
   { key: "essentials", label: "필수 준비물", icon: "fas fa-passport", example: "국제운전면허증" },
   { key: "toiletries", label: "세면도구/화장품", icon: "fas fa-pump-soap", example: "클렌징폼" },
   { key: "clothing", label: "의류", icon: "fas fa-tshirt", example: "패딩" },
@@ -93,7 +94,7 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
     }
   };
 
-  // "체크 모두 해제": 챙긴 항목만 PATCH
+  // "체크 모두 해제": 체크된 항목만 PATCH
   const resetAll = () => items?.filter((i) => i.done).forEach((i) => setDone(i, false));
 
   const stats = useMemo(() => {
@@ -121,7 +122,7 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
     <div className="grid items-start gap-8 lg:grid-cols-[300px_minmax(0,1fr)]">
       {/* 왼쪽 요약 사이드바 */}
       <aside className="flex flex-col gap-5 lg:sticky lg:top-24">
-        <h1 className="text-[28px] font-extrabold leading-10 tracking-[-0.02em] text-slate-900">짐싸기 노트</h1>
+        <h1 className="text-[28px] font-extrabold leading-10 tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
         <div className="flex flex-col gap-[18px] rounded-[18px] border border-slate-200 bg-white p-5">
           <div className="flex flex-col gap-2">
             <label htmlFor="packing-trip" className="sr-only">여행 선택</label>
@@ -154,12 +155,12 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
             </div>
             <div
               className="mb-2 mt-3.5 h-2 overflow-hidden rounded bg-slate-100"
-              role="progressbar" aria-label="짐싸기 진행률" aria-valuenow={stats.percent} aria-valuemin={0} aria-valuemax={100}
+              role="progressbar" aria-label="체크리스트 진행률" aria-valuenow={stats.percent} aria-valuemin={0} aria-valuemax={100}
             >
               <div className="h-full rounded bg-indigo-600 transition-all duration-300" style={{ width: `${stats.percent}%` }} />
             </div>
             <p className="text-[13px] text-slate-500">
-              {stats.total}개 중 {stats.done}개 챙김 · 남은 {stats.total - stats.done}개
+              {stats.total}개 중 {stats.done}개 완료 · 남은 {stats.total - stats.done}개
             </p>
           </div>
 
@@ -206,7 +207,7 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
       <main className="flex min-w-0 flex-col gap-5">
         <div className="flex h-10 items-center justify-between gap-3">
           <div className="flex gap-0.5 rounded-xl bg-[#eef0f4] p-[3px]" role="tablist" aria-label="보기">
-            {([["all", "전체", stats.total], ["left", "남은 것", stats.total - stats.done], ["done", "챙긴 것", stats.done]] as const).map(([key, label, count]) => (
+            {([["all", "전체", stats.total], ["left", "남은 것", stats.total - stats.done], ["done", "완료한 것", stats.done]] as const).map(([key, label, count]) => (
               <button
                 key={key}
                 type="button"
@@ -231,9 +232,9 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
             <div className="mx-auto mb-3.5 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-emerald-50 text-[22px] text-emerald-500">
               <i className="fas fa-check" aria-hidden="true" />
             </div>
-            <p className="text-[17px] font-bold">{filter === "left" ? "모두 챙겼어요" : "아직 챙긴 준비물이 없어요"}</p>
+            <p className="text-[17px] font-bold">{filter === "left" ? "모두 완료했어요" : "아직 완료한 항목이 없어요"}</p>
             <p className="mt-1.5 text-sm text-slate-500">
-              {filter === "left" ? `${stats.total}개 준비물을 전부 챙겼어요. 즐거운 여행 되세요.` : "준비물을 체크하면 여기에 모여요."}
+              {filter === "left" ? `${stats.total}개 항목을 모두 완료했어요. 즐거운 여행 되세요.` : "항목을 체크하면 여기에 모여요."}
             </p>
           </div>
         ) : (
@@ -328,7 +329,7 @@ export default function PackingNotePage() {
     <div className={`${PAGE_CONTAINER_CLASS} pb-14 pt-8`}>
       {!selected ? (
         <>
-          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-slate-900">짐싸기 노트</h1>
+          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
             <p className="text-sm text-slate-600">아직 여행이 없어요.</p>
             <Link to={ROUTES.HOME} state={{ newTrip: true } satisfies HomeLocationState} className="mt-3 inline-block text-sm font-semibold text-indigo-600">
