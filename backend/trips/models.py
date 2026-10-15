@@ -201,7 +201,6 @@ class ItineraryItem(TimeStampedModel):
     address = models.CharField("주소", max_length=255, blank=True, default="")
     phone = models.CharField("전화번호", max_length=40, blank=True, default="")
     opening_hours = models.JSONField("영업시간", default=list, blank=True)
-    memo = models.TextField("메모", blank=True, default="")
 
     class Meta:
         verbose_name = "일정"
@@ -210,23 +209,6 @@ class ItineraryItem(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.day} #{self.order} {self.title}"
-
-
-class ChecklistItem(TimeStampedModel):
-    """일정 카드의 체크리스트. in_packing_note가 켜진 항목은 짐싸기 노트 '일정 연동 항목'에 나온다."""
-
-    item = models.ForeignKey(ItineraryItem, related_name="checklist", on_delete=models.CASCADE)
-    text = models.CharField("내용", max_length=200)
-    done = models.BooleanField("완료", default=False)
-    in_packing_note = models.BooleanField("짐싸기 노트 표시", default=False)
-
-    class Meta:
-        verbose_name = "체크리스트"
-        verbose_name_plural = "체크리스트"
-        ordering = ("created_at", "id")
-
-    def __str__(self) -> str:
-        return self.text
 
 
 class PackingItem(TimeStampedModel):

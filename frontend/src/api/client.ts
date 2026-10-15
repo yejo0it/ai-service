@@ -9,7 +9,6 @@ import type {
   AiRegistrationDraft,
   Airline,
   ChatTurn,
-  ChecklistItem,
   ItineraryCardInput,
   ItineraryItem,
   ItineraryResponse,
@@ -146,7 +145,7 @@ export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
  */
 export const updateItineraryItem = (
   itemId: number,
-  payload: { memo?: string; time?: string | null; place_id?: string; session_token?: string },
+  payload: { time?: string | null; place_id?: string; session_token?: string },
 ) =>
   api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
 
@@ -159,14 +158,6 @@ export const deleteItineraryItem = (itemId: number) =>
   api
     .delete<{ trip: Trip; removed_ids: number[] } | "">(`/itinerary-items/${itemId}/`)
     .then((res) => (res.data && typeof res.data === "object" ? res.data : null));
-
-export const addChecklistItem = (itemId: number, text: string) =>
-  api.post<ChecklistItem>(`/itinerary-items/${itemId}/checklist/`, { text }).then((res) => res.data);
-
-export const updateChecklistItem = (checkId: number, payload: Partial<Omit<ChecklistItem, "id">>) =>
-  api.patch<ChecklistItem>(`/checklist-items/${checkId}/`, payload).then((res) => res.data);
-
-export const deleteChecklistItem = (checkId: number) => api.delete<void>(`/checklist-items/${checkId}/`);
 
 /** 일행 목록·최대 인원·지금 쓸 수 있는 초대 링크 */
 export const getTripMembers = (tripId: number) =>
