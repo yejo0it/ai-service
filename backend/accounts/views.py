@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from . import phone as phone_verification
 from . import email_change, social
+from .authentication import start_session
 from .nickname import nickname_of, random_nickname, usable_nickname
 from .avatar import AvatarError, make_avatar
 from .password_reset import make_reset_token, user_from_reset_token
@@ -44,7 +45,7 @@ User = get_user_model()
 
 def auth_response(user, status_code=status.HTTP_200_OK):
     """로그인·가입 공통 응답: API 토큰 + 회원 정보."""
-    token, _ = Token.objects.get_or_create(user=user)
+    token = start_session(user)
     return Response({"token": token.key, "user": UserSerializer(user).data}, status=status_code)
 
 

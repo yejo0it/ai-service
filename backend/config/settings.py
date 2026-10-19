@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
 
@@ -115,8 +116,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     # 프론트는 로그인·가입 응답의 토큰을 `Authorization: Token <key>`로 보낸다.
+    # 토큰은 비활동 7일·로그인 후 30일에 만료된다(accounts.authentication, 아래 AUTH_* 설정).
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        "accounts.authentication.ExpiringTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     # 인증 API(accounts.views.AuthAPIView)·이메일 변경의 요청 제한(ScopedRateThrottle),
@@ -128,7 +130,15 @@ REST_FRAMEWORK = {
     ],
 }
 
+# 로그인 만료 정책(서버 시계 기준). 비활동: 마지막 사용자 활동 후 N일, 절대: 로그인 후 N일(활동해도 연장 안 됨).
+AUTH_INACTIVITY_DAYS = int(os.environ.get("AUTH_INACTIVITY_DAYS", "7"))
+AUTH_ABSOLUTE_DAYS = int(os.environ.get("AUTH_ABSOLUTE_DAYS", "30"))
+# 사용자 활동 시각을 DB에 쓰는 최소 간격(초). 활동이 잦아도 이 간격마다 한 번만 쓴다.
+AUTH_ACTIVITY_WRITE_SECONDS = int(os.environ.get("AUTH_ACTIVITY_WRITE_SECONDS", "60"))
+
 # 브라우저 Origin 기준. Docker compose에서는 http://localhost:8002 가 주입된다.
+# 프런트가 사용자 조작 직후의 요청에 붙이는 헤더(accounts.authentication.ACTIVITY_HEADER)를 허용한다.
+CORS_ALLOW_HEADERS = (*default_headers, "x-user-activity")
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:8002,http://127.0.0.1:8002",
