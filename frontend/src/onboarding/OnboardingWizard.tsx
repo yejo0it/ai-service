@@ -109,7 +109,6 @@ const INITIAL_DATA: OnboardingData = {
   startDate: "",
   endDate: "",
   // Step 3
-  skipHotel: false,
   hotels: [emptyHotel()],
 };
 
@@ -170,22 +169,20 @@ export function buildTripPayload(data: OnboardingData): TripPayload {
     hotels: [],
   };
 
-  if (!data.skipHotel) {
-    // 목록에서 고른 숙소만 보낸다. 주소·좌표는 선택 시 Places Details로 채워진 값이다.
-    payload.hotels = data.hotels
-      .filter((hotel) => hotel.place_id)
-      .map((hotel) => ({
-        name: hotel.name.trim(),
-        address: hotel.address,
-        place_id: hotel.place_id,
-        latitude: hotel.latitude,
-        longitude: hotel.longitude,
-        phone: hotel.phone,
-        city_code: hotel.city_code,
-        check_in: hotel.check_in,
-        check_out: hotel.check_out || null,
-      }));
-  }
+  // 목록에서 고른 숙소만 보낸다. 주소·좌표는 선택 시 Places Details로 채워진 값이다.
+  payload.hotels = data.hotels
+    .filter((hotel) => hotel.place_id)
+    .map((hotel) => ({
+      name: hotel.name.trim(),
+      address: hotel.address,
+      place_id: hotel.place_id,
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
+      phone: hotel.phone,
+      city_code: hotel.city_code,
+      check_in: hotel.check_in,
+      check_out: hotel.check_out || null,
+    }));
   return payload;
 }
 
@@ -268,7 +265,7 @@ function validateStep(step: number, data: OnboardingData): OnboardingErrors {
       }
     }
   }
-  if (step === 3 && !data.skipHotel) {
+  if (step === 3) {
     const hotelErrors = validateHotels(data.hotels);
     if (Object.keys(hotelErrors).length > 0) errors.hotels = hotelErrors;
   }
@@ -974,6 +971,7 @@ function HotelRow({
           onPick={pickHotel}
           placeholder={city ? `${city.city}의 숙소 검색` : "숙소 검색"}
           aria-label={`숙소 ${index + 1} 이름`}
+          clearable
         />
         {hotel.address && (
           <span className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-500">
@@ -1072,7 +1070,7 @@ function StepHotel() {
         </div>
       )}
 
-      <fieldset disabled={data.skipHotel} className="space-y-3 disabled:opacity-40">
+      <fieldset className="space-y-3">
         {hotels.map((hotel, index) => (
           <HotelRow
             key={hotel.id}
@@ -1100,14 +1098,6 @@ function StepHotel() {
           </button>
         </div>
       </fieldset>
-
-      <button
-        type="button"
-        onClick={() => update({ skipHotel: !data.skipHotel })}
-        className="w-full rounded-xl border border-dashed border-slate-300 py-3 text-sm font-medium text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
-      >
-        {data.skipHotel ? "숙소 직접 입력하기" : "숙소 선택 없이 계속하기 · 건너뛰기"}
-      </button>
     </div>
   );
 }
@@ -1252,7 +1242,7 @@ export default function OnboardingWizard({ onComplete, onClose }: OnboardingWiza
     else setConfirmingClose(true);
   };
 
-  const hasHotel = !data.skipHotel && data.hotels.some((hotel) => !isBlankHotel(hotel));
+  const hasHotel = data.hotels.some((hotel) => !isBlankHotel(hotel));
   const nextLabel =
     step < TOTAL_STEPS ? "다음" : hasHotel ? "여행 만들기" : "숙소 없이 시작하기";
 
