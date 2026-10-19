@@ -40,11 +40,11 @@ export const inputSizeClass = (compact = false) => (compact ? "px-3 py-2.5 text-
 
 type TextInputProps = InputHTMLAttributes<HTMLInputElement> & { error?: string; compact?: boolean };
 
-export function TextInput({ error, compact = false, ...props }: TextInputProps) {
+export function TextInput({ error, compact = false, className = "", ...props }: TextInputProps) {
   const errorClass = error
     ? "border-rose-400 focus:border-rose-500 focus:ring-rose-100"
     : "";
-  return <input {...props} className={`${INPUT_CLASS} ${inputSizeClass(compact)} ${errorClass}`} />;
+  return <input {...props} className={`${INPUT_CLASS} ${inputSizeClass(compact)} ${errorClass} ${className}`} />;
 }
 
 /**
@@ -72,6 +72,8 @@ type SuggestInputProps<T> = Omit<
   onBlur?: () => void;
   /** 작은 입력 칸 */
   compact?: boolean;
+  /** 값이 있으면 입력칸 오른쪽에 지우기(x) 버튼을 보여준다. 누르면 onChange("")로 비운다. */
+  clearable?: boolean;
 };
 
 export function SuggestInput<T>({
@@ -87,6 +89,7 @@ export function SuggestInput<T>({
   error,
   onBlur,
   compact = false,
+  clearable = false,
   ...inputProps
 }: SuggestInputProps<T>) {
   const [open, setOpen] = useState(false);
@@ -134,6 +137,7 @@ export function SuggestInput<T>({
         value={value}
         error={error}
         compact={compact}
+        className={clearable && value ? "pr-10" : ""}
         onChange={(event) => {
           onChange(event.target.value);
           setHighlight(0);
@@ -150,6 +154,23 @@ export function SuggestInput<T>({
         aria-autocomplete="list"
         autoComplete="off"
       />
+
+      {clearable && value && (
+        <button
+          type="button"
+          // 입력칸의 포커스가 빠지지 않게 하고, 누르면 값과 후보 목록을 함께 비운다.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            onChange("");
+            setOpen(false);
+          }}
+          aria-label="입력 지우기"
+          title="지우기"
+          className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+        >
+          <i className="fas fa-times text-xs" aria-hidden="true" />
+        </button>
+      )}
 
       {open && suggestions.length > 0 && (
         <ul
