@@ -27,6 +27,14 @@ const STATUS_BADGE = {
   moved: { label: "이동", className: "bg-amber-50 text-amber-700" },
 } as const;
 
+const LEG_MODE = {
+  walk: { label: "도보", icon: "fas fa-walking" },
+  transit: { label: "대중교통", icon: "fas fa-subway" },
+} as const;
+
+/** 이동 거리: 1km 미만은 m, 이상은 소수 첫째 자리 km */
+const formatDistance = (meters: number) => (meters < 1000 ? `${Math.round(meters / 10) * 10}m` : `${(meters / 1000).toFixed(1)}km`);
+
 const EMPTY = "미입력";
 
 /** "2026-11-10T09:00" -> "오전 9:00", 날짜만 있거나 비어 있으면 "" */
@@ -138,6 +146,16 @@ function ProposalPreview({ result, dates }: { result: AiProposeResponse; dates: 
   return (
     <div className="mt-2 space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3">
       <RegistrationPreview registration={result.registration} />
+      {/* 실제 이동 시간으로 정했을 때는 안내를 따로 보이지 않고, 그렇지 못했을 때만 이유를 알린다. */}
+      {result.route && (result.route.basis === "straight_line" || result.route.basis === "partial") && (
+        <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700">
+          <i className="fas fa-ruler mr-1" aria-hidden="true" />
+          {result.route.basis === "straight_line"
+            ? "직선거리 기준 순서예요(실제 이동 시간 아님)."
+            : "일부 구간은 이동 정보가 없어요."}
+          {result.route.note && ` ${result.route.note}`}
+        </p>
+      )}
       {changedDays.map((day) => (
         <div key={day.day}>
           <p className="mb-1.5 text-xs font-semibold text-slate-600">
@@ -147,22 +165,43 @@ function ProposalPreview({ result, dates }: { result: AiProposeResponse; dates: 
             {day.items.map((item, index) => {
               const badge = item.status === "same" ? null : STATUS_BADGE[item.status];
               return (
-                <li
-                  key={`${item.id ?? "new"}-${index}`}
-                  className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${badge ? "bg-white shadow-sm" : "text-slate-400"}`}
-                >
-                  <i className={`${KIND_STYLE[item.kind].icon} w-3.5 text-center`} aria-hidden="true" />
-                  <span className={`min-w-0 flex-1 truncate ${badge ? "font-medium text-slate-800" : ""}`}>{item.title}</span>
-                  <span className="shrink-0 tabular-nums">{item.time || item.time_label}</span>
-                  {badge && (
-                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}>
-                      {badge.label}
-                    </span>
+                <li key={`${item.id ?? "new"}-${index}`}>
+                  <div
+                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${badge ? "bg-white shadow-sm" : "text-slate-400"}`}
+                  >
+                    <i className={`${KIND_STYLE[item.kind].icon} w-3.5 text-center`} aria-hidden="true" />
+                    <span className={`min-w-0 flex-1 truncate ${badge ? "font-medium text-slate-800" : ""}`}>{item.title}</span>
+                    {item.eta && !item.time && (
+                      <span className="shrink-0 tabular-nums text-[10px] text-slate-400">예상 {item.eta}</span>
+                    )}
+                    <span className="shrink-0 tabular-nums">{item.time || item.time_label}</span>
+                    {badge && (
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    )}
+                  </div>
+                  {day.legs?.[index] && (
+                    <p className="ml-4 flex items-center gap-1.5 py-0.5 text-[10px] text-slate-400">
+                      <i className={`${LEG_MODE[day.legs[index]!.mode].icon} w-3 text-center`} aria-hidden="true" />
+                      {LEG_MODE[day.legs[index]!.mode].label} {day.legs[index]!.minutes}분 · {formatDistance(day.legs[index]!.meters)}
+                      {day.legs[index]!.mode === "transit" && (day.legs[index]!.transfers ?? 0) > 0 && ` · 환승 ${day.legs[index]!.transfers}회`}
+                    </p>
                   )}
                 </li>
               );
             })}
           </ol>
+          {day.warnings && day.warnings.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {day.warnings.map((warning) => (
+                <li key={warning} className="text-[11px] text-amber-700">
+                  <i className="fas fa-exclamation-triangle mr-1" aria-hidden="true" />
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ))}
       {result.removed.length > 0 && (

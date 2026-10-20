@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
@@ -135,6 +136,32 @@ AUTH_INACTIVITY_DAYS = int(os.environ.get("AUTH_INACTIVITY_DAYS", "7"))
 AUTH_ABSOLUTE_DAYS = int(os.environ.get("AUTH_ABSOLUTE_DAYS", "30"))
 # 사용자 활동 시각을 DB에 쓰는 최소 간격(초). 활동이 잦아도 이 간격마다 한 번만 쓴다.
 AUTH_ACTIVITY_WRITE_SECONDS = int(os.environ.get("AUTH_ACTIVITY_WRITE_SECONDS", "60"))
+
+# AI 일정 제안의 실제 이동 시간 계산(Google Routes API, trips.routes). 키는 환경변수 GOOGLE_ROUTES_API_KEY.
+# 비용은 요소(출발지×도착지 쌍) 수로 제한한다: 제안 한 번 / 사용자별 하루 / 전체 하루.
+# 테스트 실행 중에는 실제 Google·NAVITIME 호출을 막는다(키가 환경에 있어도 요금이 나가지 않도록). 테스트는 호출 함수를 모킹한다.
+TESTING = "test" in sys.argv
+ROUTES_ENABLED = os.environ.get("ROUTES_ENABLED", "1") == "1"
+# 지원 지역: 나라 코드(ISO) 목록 + 따로 더할 도시 id 목록. 기본은 동아시아(일본·한국·대만·홍콩·마카오·몽골)이고 점차 넓힌다.
+# 일본은 NAVITIME, 그 밖의 나라는 Google 대중교통 결과를 쓴다(중국 본토는 Google이 대중교통 경로를 주지 않아 기본에서 뺐다).
+ROUTES_COUNTRIES = [c.strip().upper() for c in os.environ.get("ROUTES_COUNTRIES", "JP,KR,TW,HK,MO,MN").split(",") if c.strip()]
+ROUTES_CITIES = [c.strip() for c in os.environ.get("ROUTES_CITIES", "").split(",") if c.strip()]
+ROUTES_CITY_RADIUS_KM = int(os.environ.get("ROUTES_CITY_RADIUS_KM", "80"))
+ROUTES_TIMEZONE = os.environ.get("ROUTES_TIMEZONE", "Asia/Tokyo")
+ROUTES_MAX_FUTURE_DAYS = int(os.environ.get("ROUTES_MAX_FUTURE_DAYS", "14"))
+ROUTES_MAX_ELEMENTS_PER_PROPOSAL = int(os.environ.get("ROUTES_MAX_ELEMENTS_PER_PROPOSAL", "300"))
+ROUTES_USER_DAILY_ELEMENTS = int(os.environ.get("ROUTES_USER_DAILY_ELEMENTS", "600"))
+ROUTES_DAILY_ELEMENTS = int(os.environ.get("ROUTES_DAILY_ELEMENTS", "3000"))
+# 일본 대중교통 이동 시간(NAVITIME Route, RapidAPI, trips.transit). 키는 환경변수 NAVITIME_RAPIDAPI_KEY.
+# 무료 요금제는 월 500건 하드 리밋이라, 제안 한 번의 호출 수와 월 호출 수를 제한하고 남은 횟수가 적으면 호출을 멈춘다.
+NAVITIME_ENABLED = os.environ.get("NAVITIME_ENABLED", "1") == "1"
+NAVITIME_MAX_REQUESTS_PER_PROPOSAL = int(os.environ.get("NAVITIME_MAX_REQUESTS_PER_PROPOSAL", "30"))
+NAVITIME_MONTHLY_REQUESTS = int(os.environ.get("NAVITIME_MONTHLY_REQUESTS", "450"))
+NAVITIME_RESERVE = int(os.environ.get("NAVITIME_RESERVE", "20"))
+NAVITIME_TIMEOUT_SECONDS = int(os.environ.get("NAVITIME_TIMEOUT_SECONDS", "8"))
+# Google 데이터는 DB에 저장하지 않고 이 시간 동안만 서버 메모리 캐시에 둔다(초).
+ROUTES_CACHE_TTL_SECONDS = int(os.environ.get("ROUTES_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
+ROUTES_TIMEOUT_SECONDS = int(os.environ.get("ROUTES_TIMEOUT_SECONDS", "8"))
 
 # 브라우저 Origin 기준. Docker compose에서는 http://localhost:8002 가 주입된다.
 # 프런트가 사용자 조작 직후의 요청에 붙이는 헤더(accounts.authentication.ACTIVITY_HEADER)를 허용한다.
