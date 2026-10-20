@@ -504,3 +504,48 @@ export interface AiProposeResponse {
     removed_hotels: { id: number; title: string }[];
   };
 }
+
+/** 일정 카드 사이 이동 구간의 한 단계 (Google Routes·NAVITIME 결과) */
+export type LegStep =
+  | { type: "walk"; minutes: number; meters: number; start_time: string; description: string }
+  | { type: "drive"; minutes: number; meters: number; start_time: string; description: string }
+  | {
+      type: "transit";
+      minutes: number;
+      start_time: string;
+      line_name: string;
+      line_color: string;
+      from_stop: string;
+      to_stop: string;
+      /** 통과 정거장 수. 모르면 0 */
+      stop_count: number;
+      /** 아래는 NAVITIME(일본) 구간에만 있다. 한국어 이름과 원어를 함께 준다(한국어를 확보하지 못하면 둘 다 원어). */
+      line_name_ja?: string;
+      /** 열차 종별(예: "쾌속", "신쾌속", "특급"). 보통(각역 정차)이거나 모르면 빈 문자열 */
+      train_type?: string;
+      train_type_ja?: string;
+      operator?: string;
+      operator_ja?: string;
+      from_stop_ja?: string;
+      to_stop_ja?: string;
+      /** 역 번호 (예: "JY20") */
+      from_number?: string;
+      to_number?: string;
+      /** 행선지 (예: "시나가와행") */
+      direction?: string;
+      direction_ja?: string;
+      /** 이 탑승을 마친 뒤 다음 열차로 갈아타는 데 걸리는 시간(분) */
+      transfer_minutes?: number | null;
+    };
+
+/** 직전 일정 -> 이 일정 이동 구간. 정보가 없는 구간은 status가 not_found이고 단계가 비어 있다(시간을 추정하지 않는다). */
+export interface ItineraryLeg {
+  from_item_id: number;
+  to_item_id: number;
+  status: "ok" | "not_found";
+  mode: "transit" | "walk" | "drive";
+  total_minutes: number;
+  /** 요금 표기 (예: "¥253"). 모르면 null */
+  fare_label: string | null;
+  steps: LegStep[];
+}

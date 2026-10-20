@@ -11,6 +11,7 @@ import type {
   ChatTurn,
   ItineraryCardInput,
   ItineraryItem,
+  ItineraryLeg,
   ItineraryResponse,
   PackingItem,
   PlaceKind,
@@ -172,6 +173,13 @@ export const initItinerary = (tripId: number, items: ItineraryCardInput[]) =>
 /** 숙소를 숙박 기간과 함께 등록하면 요약 카드도 바뀌므로 바뀐 여행(trip)을 함께 돌려준다. */
 export const addItineraryPlace = (tripId: number, payload: AddPlacePayload | AddFlightPayload | AddHotelStayPayload) =>
   api.post<ItineraryResponse & { trip?: Trip }>(`/trips/${tripId}/itinerary/`, payload).then((res) => res.data);
+
+/**
+ * 그날 일정 카드 사이의 이동 구간(도보·대중교통·택시). 두 번째 카드부터 '직전 카드 -> 이 카드'.
+ * 지원 지역 밖이거나 이동 시간 계산을 쓸 수 없으면 빈 목록이다. 서버가 Google Routes·NAVITIME에서 가져와 잠깐 캐시한다.
+ */
+export const getDayLegs = (tripId: number, day: string) =>
+  api.get<ItineraryLeg[]>(`/trips/${tripId}/days/${day}/legs/`).then((res) => res.data);
 
 export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
   api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/reorder/`, { day, ids }).then((res) => res.data);

@@ -124,7 +124,7 @@ REST_FRAMEWORK = {
     ],
     # 인증 API(accounts.views.AuthAPIView)·이메일 변경의 요청 제한(ScopedRateThrottle),
     # AI와 함께 만들기(모델 호출)의 사용자당 요청 제한: 1분 10회, 최근 24시간 100회
-    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day", "legs": "120/hour"},
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
@@ -159,6 +159,11 @@ NAVITIME_MAX_REQUESTS_PER_PROPOSAL = int(os.environ.get("NAVITIME_MAX_REQUESTS_P
 NAVITIME_MONTHLY_REQUESTS = int(os.environ.get("NAVITIME_MONTHLY_REQUESTS", "450"))
 NAVITIME_RESERVE = int(os.environ.get("NAVITIME_RESERVE", "20"))
 NAVITIME_TIMEOUT_SECONDS = int(os.environ.get("NAVITIME_TIMEOUT_SECONDS", "8"))
+# 한국어 역 이름 데이터(data/station_names_ja_ko.json, Wikidata) 사용 여부. 기본은 켬(0으로 끌 수 있다).
+STATION_NAMES_ENABLED = os.environ.get("STATION_NAMES_ENABLED", "1") == "1"
+# 한국어로 바꾸지 못한 역·노선 이름 수집(trips.untranslated). 사전을 보완할 때 `python manage.py untranslated_names`로 본다.
+UNTRANSLATED_LOG_ENABLED = os.environ.get("UNTRANSLATED_LOG_ENABLED", "1") == "1"
+UNTRANSLATED_LOG_PATH = os.environ.get("UNTRANSLATED_LOG_PATH", str(BASE_DIR / "logs" / "untranslated_names.jsonl"))
 # Google 데이터는 DB에 저장하지 않고 이 시간 동안만 서버 메모리 캐시에 둔다(초).
 ROUTES_CACHE_TTL_SECONDS = int(os.environ.get("ROUTES_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 ROUTES_TIMEOUT_SECONDS = int(os.environ.get("ROUTES_TIMEOUT_SECONDS", "8"))

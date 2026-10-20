@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deleteItineraryItem,
+  getDayLegs,
   getItinerary,
   getTrip,
   initItinerary,
@@ -9,7 +10,7 @@ import {
   toErrorMessage,
 } from "../api/client";
 import { ROUTES } from "../routes";
-import type { Airport, ItineraryItem, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
@@ -463,6 +464,30 @@ export default function TripDetailPage() {
   const day = dates[dayIndex] ?? dates[0];
   const dayItems = useMemo(() => (items ?? []).filter((item) => item.day === day), [items, day]);
   const { points, numbers } = useMemo(() => numberStops(dayItems), [dayItems]);
+
+  // 그날 일정 사이의 이동 구간(도보·대중교통·택시). 순서·일정이 바뀌면 잠깐 기다렸다가 다시 불러온다
+  // (서버가 같은 구간은 캐시하므로 외부 API를 다시 부르지 않는다).
+  const [legs, setLegs] = useState<Map<string, ItineraryLeg>>(new Map());
+  const [legsLoading, setLegsLoading] = useState(false);
+  useEffect(() => {
+    if (!trip || !day || dayItems.length < 2) {
+      setLegs(new Map());
+      setLegsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLegsLoading(true);
+    const timer = window.setTimeout(() => {
+      getDayLegs(trip.id, day)
+        .then((list) => !cancelled && setLegs(new Map(list.map((leg) => [`${leg.from_item_id}-${leg.to_item_id}`, leg]))))
+        .catch(() => !cancelled && setLegs(new Map())) // 구간은 부가 정보라 실패해도 일정은 그대로 보여준다.
+        .finally(() => !cancelled && setLegsLoading(false));
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [trip?.id, day, dayItems]); // eslint-disable-line react-hooks/exhaustive-deps
   // 그날 좌표가 있는 위치가 없으면 여행 도시를 대신 보여준다.
   const fallbackPoints = useMemo(() => (trip && points.length === 0 ? cityPoints(trip) : []), [trip, points]);
   const mapPoints = points.length > 0 ? points : fallbackPoints;
@@ -655,6 +680,8 @@ export default function TripDetailPage() {
                 onReorder={onReorder}
                 onRemove={onRemove}
                 onEdit={setEditing}
+                legs={legs}
+                legsLoading={legsLoading}
               />
             )}
           </div>
