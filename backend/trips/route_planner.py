@@ -21,6 +21,9 @@ from itertools import combinations, permutations
 from . import routes
 from . import transit as navitime
 from .itinerary_planner import (
+    DEFAULT_STAY,
+    MAX_STAY,
+    MIN_STAY,
     PLACE_KINDS,
     START_LABELS,
     _bounds,
@@ -28,6 +31,7 @@ from .itinerary_planner import (
     distance_km,
     entry_point,
     exit_point,
+    stay_minutes,
 )
 
 WALK_PREFERRED_MIN = 20  # 이 시간 이하의 도보는 대중교통보다 우선
@@ -42,8 +46,6 @@ WAIT_PENALTY = 2
 DAY_START_MIN = 9 * 60
 CLOSING_BUFFER_MIN = 20
 MAX_EXHAUSTIVE = 8  # 장소(고정+이동 가능) 수가 이 이하면 모든 순서를 비교한다
-DEFAULT_STAY = {"sight": 90, "restaurant": 60, "cafe": 40}
-MIN_STAY, MAX_STAY = 10, 240
 
 # --------------------------------------------------------------------------- #
 # 영업시간 문장 읽기 (Places 응답, 한국어)
@@ -186,13 +188,6 @@ class LegTable:
 # --------------------------------------------------------------------------- #
 
 
-def stay_minutes(card):
-    value = card.get("stay_minutes")
-    if isinstance(value, int) and value > 0:
-        return max(MIN_STAY, min(MAX_STAY, value))
-    return DEFAULT_STAY.get(card.get("kind"), 0)
-
-
 def _time_minutes(value):
     if not value:
         return None
@@ -304,6 +299,15 @@ class RoutePlan:
     note: str
     days: dict  # {date: DayPlan}
     elements_used: int = 0
+
+    @property
+    def etas(self):
+        """{날짜: {카드 키: 'HH:MM'}} 실제 이동 시간으로 계산한 날의 예상 도착 시각(저장해 두었다가 적용할 때 쓴다)."""
+        return {
+            day.isoformat(): {key: format_minutes(minutes) for key, minutes in plan.etas.items()}
+            for day, plan in self.days.items()
+            if plan.basis != "straight_line" and plan.etas
+        }
 
     @property
     def order(self):
@@ -472,9 +476,10 @@ def plan_days(trip, days, user_id=None, budget=None, transit_budget=None):
 
 def apply_order(days, order):
     """
-    미리보기에서 정한 날짜별 순서(카드 키 목록)를 days에 반영한다. 적용할 때 Routes API를 다시 부르지 않고
+    미리보기에서 정한 날짜별 순서(카드 키 목록)를 days에 반영하고, 반영한 날짜의 집합을 돌려준다. 적용할 때 Routes API를 다시 부르지 않고
     미리본 순서 그대로 저장하기 위해서다. 그날 카드 구성이 미리볼 때와 다르면(그사이 일정이 바뀜) 그 날짜는 건드리지 않는다.
     """
+    applied = set()
     for raw_day, keys in (order or {}).items():
         try:
             day = date.fromisoformat(raw_day)
@@ -486,3 +491,5 @@ def apply_order(days, order):
         if len(by_key) != len(days[day]) or set(keys) != set(by_key):
             continue
         days[day] = [by_key[key] for key in keys]
+        applied.add(day)
+    return applied

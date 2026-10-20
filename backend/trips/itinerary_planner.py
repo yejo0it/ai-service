@@ -2,7 +2,8 @@
 일정 배치: 새 장소를 어느 날, 그날의 어느 자리에 넣을지 정한다(직선거리 기준).
 
 - 날짜를 정하지 않은 장소는 그날 묵는 숙소(없으면 그날 일정의 중심, 그것도 없으면 여행 도시)에서
-  가장 가까운 날로 보낸다. 하루 장소 수에는 상한을 둔다(출국·귀국일은 더 적게).
+  가장 가까운 날로 보낸다. 하루에 쓸 수 있는 시간(체류+이동 여유)이 남은 날을 먼저 고른다(출국·귀국일은 더 적게).
+  장소 '개수'가 아니라 예상 체류 시간으로 따지므로 하루에 몇 곳까지라는 고정 상한은 없다. 모든 날이 찼어도 거절하지 않는다.
 - 하루 안에서는 시작 고정 카드(출국편·체크아웃·숙박) 뒤, 끝 고정 카드(체크인·귀국편) 앞 사이에 넣는다.
   - 시간을 정한 장소: 시간 순서에 맞는 자리
   - 시간이 없는 장소: 앞뒤 일정 사이 이동 거리가 가장 적게 늘어나는 자리
@@ -20,8 +21,20 @@ from . import cities
 START_LABELS = {"출국", "체크아웃", "숙박"}
 END_LABELS = {"체크인", "귀국"}
 PLACE_KINDS = {"sight", "restaurant", "cafe"}
-MAX_PLACES_PER_DAY = 5
-MAX_PLACES_FLIGHT_DAY = 3
+DAY_BUDGET_MIN = 13 * 60  # 하루에 쓸 수 있는 시간(체류 + 이동 여유). 9시~22시
+FLIGHT_DAY_BUDGET_MIN = 6 * 60  # 항공편이 있는 날
+TRAVEL_ALLOWANCE_MIN = 30  # 장소 하나당 이동 여유
+
+# 예상 체류 시간: AI가 정한 값(stay_minutes), 없으면 종류별 기본값
+DEFAULT_STAY = {"sight": 90, "restaurant": 60, "cafe": 40}
+MIN_STAY, MAX_STAY = 10, 240
+
+
+def stay_minutes(card):
+    value = card.get("stay_minutes")
+    if isinstance(value, int) and value > 0:
+        return max(MIN_STAY, min(MAX_STAY, value))
+    return DEFAULT_STAY.get(card.get("kind"), 0)
 
 
 def distance_km(a, b):
@@ -106,21 +119,27 @@ def day_anchor(trip, day, cards):
     return cities.trip_center(trip)
 
 
-def _capacity(cards):
-    has_flight = any(card.get("kind") == "flight" for card in cards)
-    return MAX_PLACES_FLIGHT_DAY if has_flight else MAX_PLACES_PER_DAY
+def _load(cards):
+    """그날 장소들이 차지하는 예상 시간(분)."""
+    return sum(stay_minutes(card) + TRAVEL_ALLOWANCE_MIN for card in cards if card.get("kind") in PLACE_KINDS)
 
 
-def choose_day(trip, days, point):
+def _budget(cards):
+    return FLIGHT_DAY_BUDGET_MIN if any(card.get("kind") == "flight" for card in cards) else DAY_BUDGET_MIN
+
+
+def choose_day(trip, days, point, stay=0):
     """
     날짜를 정하지 않은 장소의 날짜. days: {date: [cards]}.
-    자리가 남은 날 중 기준 위치가 가장 가까운 날, 모두 찼으면 가장 가까운 날.
+    시간이 남은 날(그날 일정 + 이 장소의 체류·이동 시간이 하루 예산 안) 중 기준 위치가 가장 가까운 날,
+    모두 찼으면 가장 가까운 날(거절하지 않는다).
     """
     def score(day):
         anchor = day_anchor(trip, day, days[day])
         return distance_km(anchor, point) if anchor and point else 0
 
-    open_days = [d for d in sorted(days) if sum(c.get("kind") in PLACE_KINDS for c in days[d]) < _capacity(days[d])]
+    extra = stay + TRAVEL_ALLOWANCE_MIN
+    open_days = [d for d in sorted(days) if _load(days[d]) + extra <= _budget(days[d])]
     candidates = open_days or sorted(days)
     return min(candidates, key=lambda d: (round(score(d), 3), d))
 
@@ -137,7 +156,7 @@ def place_cards(trip, days, additions):
         point = entry_point(card)
         day = card.get("day")
         if day not in days:
-            day = choose_day(trip, days, point)
+            day = choose_day(trip, days, point, stay_minutes(card))
         cards = days[day]
         anchor = day_anchor(trip, day, cards)
         cards.insert(insert_index(cards, point, card.get("time", ""), anchor), card)

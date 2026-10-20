@@ -332,6 +332,10 @@ export interface ItineraryItem {
   phone: string;
   /** 요일별 영업시간 문장 */
   opening_hours: string[];
+  /** AI가 정한 예상 체류 시간(분). 없으면 null */
+  stay_minutes?: number | null;
+  /** 이동 시간으로 계산한 예상 도착 시각(HH:MM, 추정치). 순서·시간을 바꾸면 사라진다 */
+  expected_arrival?: string | null;
 }
 
 export interface ItineraryResponse {
@@ -425,6 +429,8 @@ export interface AiProposal {
   auto_cards?: ItineraryCardInput[];
   /** 미리보기에서 실제 이동 시간으로 정한 날짜별 방문 순서. 적용할 때 그대로 돌려보낸다(서버가 저장). */
   order?: Record<string, string[]>;
+  /** 순서를 정한 날짜별 예상 도착 시각({날짜: {카드 키: "HH:MM"}}). 적용할 때 그대로 돌려보내면 서버가 저장한다. */
+  etas?: Record<string, Record<string, string>>;
 }
 
 /** 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 */

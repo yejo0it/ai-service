@@ -196,6 +196,10 @@ class ItineraryItem(TimeStampedModel):
     time_label = models.CharField("시간 표기", max_length=20, blank=True, default="")
     subtitle = models.CharField("부가 설명", max_length=100, blank=True, default="")
     stops = models.JSONField("위치", default=list, blank=True)
+    # 예상 체류 시간(분). AI가 정한 값. 비어 있으면 모른다(일정 계산에서는 종류별 기본값을 쓴다).
+    stay_minutes = models.PositiveSmallIntegerField("예상 체류 시간(분)", null=True, blank=True)
+    # 예상 도착 시각. 'AI와 함께 만들기'가 이동 시간으로 계산한 값이며 추정치다. 순서·시간을 직접 바꾸면 지워진다.
+    expected_arrival = models.TimeField("예상 도착 시각", null=True, blank=True)
     # 장소 상세 (Google Places)
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     address = models.CharField("주소", max_length=255, blank=True, default="")
