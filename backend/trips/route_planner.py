@@ -370,6 +370,8 @@ def _fill_transit(day, cards, sim, table, transit_budget):
         leg = table.leg(a, b)
         if leg.known and leg.mode in ("walk", "transit"):
             continue
+        if routes.service_area(a) != "JP" or routes.service_area(b) != "JP":
+            continue  # NAVITIME은 일본 구간만. 다른 나라는 Google 대중교통 결과를 쓴다
         eta = sim.etas.get(card_key(current))
         wanted.append((a, b, day, (eta if eta is not None else DAY_START_MIN + 60) + stay_minutes(current)))
     if not wanted:
@@ -382,12 +384,15 @@ def _fill_transit(day, cards, sim, table, transit_budget):
     return changed
 
 
-def _fetch_tables(day, points, budget):
-    """한 날의 도보·대중교통(·필요하면 자동차) 행렬. Routes API를 쓸 수 없으면 RoutesError."""
-    departure, bucket = routes.departure_for(day)
+def _fetch_tables(day, points, budget, country=None):
+    """
+    한 날의 도보·대중교통(·필요하면 자동차) 행렬. Routes API를 쓸 수 없으면 RoutesError.
+    일본은 Google이 대중교통 경로를 주지 않으므로(대중교통 시간은 NAVITIME) Google 대중교통 행렬은 부르지 않는다.
+    """
+    departure, bucket = routes.departure_for(day, country=country)
     walk = routes.travel_matrix(points, "WALK", budget=budget)
     pairs = [(i, j) for i in range(len(points)) for j in range(len(points)) if i != j]
-    need_transit = any(not walk.get(p) or walk[p].seconds > 15 * 60 for p in pairs)
+    need_transit = country != "JP" and any(not walk.get(p) or walk[p].seconds > 15 * 60 for p in pairs)
     transit = routes.travel_matrix(points, "TRANSIT", bucket, departure, budget) if need_transit else {}
     need_drive = any(
         not transit.get(p) and (not walk.get(p) or walk[p].seconds > WALK_PREFERRED_MIN * 60) for p in pairs
@@ -420,11 +425,12 @@ def plan_days(trip, days, user_id=None, budget=None, transit_budget=None):
 
         if not routes.enabled():
             reasons.add("disabled")
-        elif not all(routes.in_service_area(p) for p in points):
+        elif any(routes.service_area(p) is None for p in points):
             reasons.add("area")
         else:
+            countries = {routes.service_area(p) for p in points}
             try:
-                walk, transit, drive = _fetch_tables(day, points, budget)
+                walk, transit, drive = _fetch_tables(day, points, budget, "JP" if countries == {"JP"} else None)
             except routes.BudgetExceeded:
                 reasons.add("limit")
             except routes.RoutesError:

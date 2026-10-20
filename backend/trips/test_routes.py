@@ -322,7 +322,7 @@ class ProposeApplyFlowTests(APITestCase):
         return {"place_id": text, "name": text, "address": "", "latitude": point[0], "longitude": point[1],
                 "phone": "", "opening_hours": []}
 
-    def fake_tables(self, day, points, budget):
+    def fake_tables(self, day, points, budget, country=None):
         # 이동 시간: 좌표 사이 거리(km) x 4분 (도보 불가), 대중교통만 사용
         from .itinerary_planner import distance_km
         n = len(points)
@@ -465,3 +465,77 @@ class NavitimeInPlanTests(OrderingTests):
             plan = route_planner.plan_days(self.trip, days, user_id=1)
         self.assertEqual(plan.days[self.day].legs, [None])
         self.assertEqual(plan.basis, "partial")
+
+
+SEOUL = (37.5665, 126.9780)
+SEOUL_GANGNAM = (37.4979, 127.0276)
+
+
+class ServiceAreaTests(TestCase):
+    """지원 지역은 나라(기본 동아시아) 단위다. 일본은 NAVITIME, 그 밖의 나라는 Google 대중교통을 쓴다."""
+
+    def setUp(self):
+        cache.clear()
+        owner = User.objects.create_user(username="area@example.com")
+        self.trip = Trip.objects.create(owner=owner, destinations=[{"city": "서울", "city_code": "seoul"}],
+                                        start_date="2030-01-07", end_date="2030-01-07", itinerary_initialized=True)
+        self.day = date(2030, 1, 7)
+
+    def test_east_asia_is_supported_by_default(self):
+        self.assertEqual(routes.service_area(TOKYO_STATION), "JP")
+        self.assertEqual(routes.service_area(SEOUL), "KR")
+        self.assertEqual(routes.service_area((25.0478, 121.5170)), "TW")  # 타이베이
+        self.assertEqual(routes.service_area((22.2820, 114.1580)), "HK")
+        self.assertIsNone(routes.service_area((13.7563, 100.5018)))  # 방콕은 아직 아님
+        self.assertIsNone(routes.service_area((39.9087, 116.3975)))  # 중국 본토는 Google이 대중교통 경로를 주지 않아 기본에서 제외
+
+    @override_settings(ROUTES_COUNTRIES=["JP"], ROUTES_CITIES=["bangkok"])
+    def test_countries_and_extra_cities_are_configurable(self):
+        self.assertIsNone(routes.service_area(SEOUL))
+        self.assertEqual(routes.service_area((13.7563, 100.5018)), "TH")
+
+    def test_timezone_follows_country(self):
+        now = datetime(2026, 10, 15, 3, 0, tzinfo=dt_timezone.utc)
+        value_kr, _ = routes.departure_for(date(2026, 10, 17), now=now, country="KR")
+        value_tw, _ = routes.departure_for(date(2026, 10, 17), now=now, country="TW")
+        self.assertEqual(value_kr, "2026-10-17T02:00:00Z")  # 서울 11시 = 02:00Z
+        self.assertEqual(value_tw, "2026-10-17T03:00:00Z")  # 타이베이 11시 = 03:00Z
+
+    def plan(self, points_cards, tables, navitime_key="k"):
+        days = {self.day: points_cards}
+        with mock.patch.dict("os.environ", {"GOOGLE_ROUTES_API_KEY": "k", "NAVITIME_RAPIDAPI_KEY": navitime_key}),                 mock.patch("trips.route_planner._fetch_tables", return_value=tables) as fetch,                 mock.patch("trips.transit._request", return_value=(NAVITIME_SAMPLE, 400)) as navitime:
+            plan = route_planner.plan_days(self.trip, days, user_id=1)
+        return plan, fetch, navitime
+
+    def seoul_cards(self):
+        a, b = card("광화문", SEOUL), card("강남", SEOUL_GANGNAM)
+        a["_key"], b["_key"] = "new:0", "new:1"
+        return [a, b]
+
+    def test_korea_uses_google_transit_and_never_calls_navitime(self):
+        cards = self.seoul_cards()
+        points = route_planner._unique_points(cards, route_planner.day_anchor(self.trip, self.day, cards))
+        n = len(points)
+        walk = {(i, j): (routes.Leg("WALK", 0, 0) if i == j else routes.Leg("WALK", 7200, 9000)) for i in range(n) for j in range(n)}
+        transit_ = {(i, j): (routes.Leg("TRANSIT", 0, 0) if i == j else routes.Leg("TRANSIT", 1500, 9500)) for i in range(n) for j in range(n)}
+        plan, fetch, navitime = self.plan(cards, (walk, transit_, {}))
+        self.assertEqual(fetch.call_args.args[3], None)  # 일본이 아니면 Google 대중교통 행렬도 받는다
+        navitime.assert_not_called()
+        self.assertEqual(plan.days[self.day].legs[0]["mode"], "transit")
+        self.assertEqual(plan.days[self.day].legs[0]["minutes"], 25)
+
+    def test_japan_skips_google_transit_matrix(self):
+        a, b = card("A", TOKYO_STATION), card("B", HOTEL)
+        a["_key"], b["_key"] = "new:0", "new:1"
+        trip = self.trip
+        points = route_planner._unique_points([a, b], HOTEL)
+        n = len(points)
+        walk = {(i, j): (routes.Leg("WALK", 0, 0) if i == j else routes.Leg("WALK", 7200, 9000)) for i in range(n) for j in range(n)}
+        with mock.patch.dict("os.environ", {"GOOGLE_ROUTES_API_KEY": "k"}),                 mock.patch("trips.routes._post", return_value=[]) as post,                 mock.patch("trips.routes.travel_matrix", wraps=routes.travel_matrix) as matrix:
+            try:
+                route_planner._fetch_tables(self.day, points, routes.Budget(1), "JP")
+            except routes.RoutesError:
+                pass
+        modes = [call.args[1] for call in matrix.call_args_list]
+        self.assertNotIn("TRANSIT", modes)  # 일본은 Google 대중교통을 부르지 않아 요소 수(비용)를 아낀다
+        self.assertEqual(trip.pk, self.trip.pk)

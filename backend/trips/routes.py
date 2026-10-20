@@ -3,7 +3,8 @@ Google Routes API(경로 행렬)로 장소 사이의 실제 이동 시간·거�
 
 - 교통수단은 도보(WALK)·대중교통(TRANSIT)이 기본이고, 대중교통 정보가 없는 구간에만 자동차(DRIVE, 택시 가정)를 보조로 쓴다.
   Google이 경로를 찾지 못한 구간은 None으로 돌려주며, 이동 시간을 추정해서 채우지 않는다.
-- 서비스 지역은 설정(ROUTES_CITIES, 기본 도쿄)으로 제한한다. 데이터가 풍부한 지역에서 먼저 검증한 뒤 넓힌다.
+- 서비스 지역은 설정(ROUTES_COUNTRIES·ROUTES_CITIES, 기본 동아시아)으로 제한한다. 일본 대중교통은 Google이 주지 않아 trips.transit(NAVITIME)이
+  맡고, 그 밖의 나라는 Google 대중교통 결과를 쓴다. 지원 지역을 확인한 뒤 점차 넓힌다.
 - 비용 제한: 한 번의 제안 / 사용자별 하루 / 전체 하루 요소 수 상한(Budget), 같은 쌍은 캐시해서 다시 부르지 않는다.
   교통량·혼잡 반영 옵션(TRAFFIC_AWARE)은 쓰지 않는다(더 비싼 등급이므로).
 - 캐시 정책: Google Maps 콘텐츠를 DB에 저장하지 않고, 짧은 유효 시간(기본 6시간)의 서버 메모리 캐시에만 둔다.
@@ -15,6 +16,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
@@ -54,15 +56,35 @@ def enabled():
     return bool(api_key()) and settings.ROUTES_ENABLED
 
 
-def in_service_area(point):
-    """point(lat, lng)가 서비스 지역(설정한 도시 주변)에 있는지."""
+# 나라별 시간대(대중교통 시간표 조회 날짜·시각 계산용). 없으면 ROUTES_TIMEZONE.
+TIMEZONES = {
+    "JP": "Asia/Tokyo", "KR": "Asia/Seoul", "TW": "Asia/Taipei", "HK": "Asia/Hong_Kong",
+    "MO": "Asia/Macau", "CN": "Asia/Shanghai", "MN": "Asia/Ulaanbaatar",
+}
+
+
+@lru_cache(maxsize=8)
+def _centers(countries, city_ids):
+    return tuple(
+        (city["lat"], city["lng"], city["country"])
+        for city in cities.all_cities()
+        if city["country"] in countries or city["id"] in city_ids
+    )
+
+
+def service_area(point):
+    """
+    point(lat, lng)가 서비스 지역(설정한 나라·도시의 도시 중심 주변 ROUTES_CITY_RADIUS_KM 이내)이면 그 나라 코드, 아니면 None.
+    """
     from .itinerary_planner import distance_km
 
-    for key in settings.ROUTES_CITIES:
-        center = cities.city_center(key)
-        if center and distance_km(center, point) <= settings.ROUTES_CITY_RADIUS_KM:
-            return True
-    return False
+    centers = _centers(tuple(settings.ROUTES_COUNTRIES), tuple(settings.ROUTES_CITIES))
+    nearest = min(((distance_km((lat, lng), point), country) for lat, lng, country in centers), default=None)
+    return nearest[1] if nearest and nearest[0] <= settings.ROUTES_CITY_RADIUS_KM else None
+
+
+def in_service_area(point):
+    return service_area(point) is not None
 
 
 class Budget:
@@ -97,12 +119,16 @@ class Budget:
         self.used += count
 
 
-def representative_date(day, now=None):
+def _zone(country=None):
+    return ZoneInfo(TIMEZONES.get(country) or settings.ROUTES_TIMEZONE)
+
+
+def representative_date(day, now=None, country=None):
     """
     시간표 조회에 쓸 날짜(현지). 지난 날이나 너무 먼 미래는 조회할 수 없으므로 같은 요일의 가장 가까운 미래 날짜를 대표로 쓴다.
     (공휴일은 구분하지 않는다)
     """
-    tz = ZoneInfo(settings.ROUTES_TIMEZONE)
+    tz = _zone(country)
     local_now = (now or timezone.now()).astimezone(tz)
     candidate = datetime.combine(day, time(DEPARTURE_HOUR, 0), tz)
     if candidate > local_now + timedelta(hours=1) and candidate <= local_now + timedelta(days=settings.ROUTES_MAX_FUTURE_DAYS):
@@ -113,13 +139,13 @@ def representative_date(day, now=None):
     return target
 
 
-def departure_for(day, now=None):
+def departure_for(day, now=None, country=None):
     """
     대중교통 출발 시각(RFC 3339, UTC)과 캐시용 시간대 이름.
     Google은 과거·너무 먼 미래의 출발 시각을 받지 않으므로 representative_date로 대표 날짜를 쓴다.
     """
-    tz = ZoneInfo(settings.ROUTES_TIMEZONE)
-    target = representative_date(day, now)
+    tz = _zone(country)
+    target = representative_date(day, now, country)
     candidate = datetime.combine(target, time(DEPARTURE_HOUR, 0), tz)
     daytype = "weekday" if day.weekday() < 5 else ("sat" if day.weekday() == 5 else "sun")
     return candidate.astimezone(dt_timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), f"{daytype}-{DEPARTURE_HOUR}h"

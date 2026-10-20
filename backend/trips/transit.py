@@ -112,7 +112,7 @@ def _bucket(day, minute):
 
 def start_time_for(day, minute):
     """시간표 기준 출발 시각(현지, 시간대 없는 ISO). 지난 날·먼 미래는 같은 요일의 가까운 미래 날짜를 대표로 쓴다."""
-    target = routes.representative_date(day)
+    target = routes.representative_date(day, country="JP")
     minute = minute // 30 * 30
     return datetime(target.year, target.month, target.day, minute // 60 % 24, minute % 60).isoformat()
 

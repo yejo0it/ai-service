@@ -138,11 +138,14 @@ AUTH_ABSOLUTE_DAYS = int(os.environ.get("AUTH_ABSOLUTE_DAYS", "30"))
 AUTH_ACTIVITY_WRITE_SECONDS = int(os.environ.get("AUTH_ACTIVITY_WRITE_SECONDS", "60"))
 
 # AI 일정 제안의 실제 이동 시간 계산(Google Routes API, trips.routes). 키는 환경변수 GOOGLE_ROUTES_API_KEY.
-# 지원 지역은 도시 id 목록(기본: 도쿄). 비용은 요소(출발지×도착지 쌍) 수로 제한한다: 제안 한 번 / 사용자별 하루 / 전체 하루.
+# 비용은 요소(출발지×도착지 쌍) 수로 제한한다: 제안 한 번 / 사용자별 하루 / 전체 하루.
 # 테스트 실행 중에는 실제 Google·NAVITIME 호출을 막는다(키가 환경에 있어도 요금이 나가지 않도록). 테스트는 호출 함수를 모킹한다.
 TESTING = "test" in sys.argv
 ROUTES_ENABLED = os.environ.get("ROUTES_ENABLED", "1") == "1"
-ROUTES_CITIES = [c.strip() for c in os.environ.get("ROUTES_CITIES", "tokyo").split(",") if c.strip()]
+# 지원 지역: 나라 코드(ISO) 목록 + 따로 더할 도시 id 목록. 기본은 동아시아(일본·한국·대만·홍콩·마카오·몽골)이고 점차 넓힌다.
+# 일본은 NAVITIME, 그 밖의 나라는 Google 대중교통 결과를 쓴다(중국 본토는 Google이 대중교통 경로를 주지 않아 기본에서 뺐다).
+ROUTES_COUNTRIES = [c.strip().upper() for c in os.environ.get("ROUTES_COUNTRIES", "JP,KR,TW,HK,MO,MN").split(",") if c.strip()]
+ROUTES_CITIES = [c.strip() for c in os.environ.get("ROUTES_CITIES", "").split(",") if c.strip()]
 ROUTES_CITY_RADIUS_KM = int(os.environ.get("ROUTES_CITY_RADIUS_KM", "80"))
 ROUTES_TIMEZONE = os.environ.get("ROUTES_TIMEZONE", "Asia/Tokyo")
 ROUTES_MAX_FUTURE_DAYS = int(os.environ.get("ROUTES_MAX_FUTURE_DAYS", "14"))
