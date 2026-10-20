@@ -79,6 +79,8 @@ docker compose up -d --build
 | --- | --- |
 | `GOOGLE_PLACES_API_KEY` | 숙소 검색 |
 | `ANTHROPIC_API_KEY` | 여행 상세 'AI와 함께 만들기' (Claude) |
+| `NAVITIME_RAPIDAPI_KEY` | 'AI와 함께 만들기'의 일본 대중교통 이동 시간 (NAVITIME Route, RapidAPI 무료 요금제 월 500건). 비우면 대중교통 시간은 표시하지 않습니다. |
+| `GOOGLE_ROUTES_API_KEY` | 'AI와 함께 만들기'의 실제 이동 시간 계산 (Google Routes API, 유료·서버 전용). 비우면 직선거리 기준으로 동작하며, 지금은 도쿄만 지원합니다. |
 | `GOOGLE_MAPS_API_KEY` | 여행 상세 지도 (브라우저용 Maps JavaScript API 키, HTTP 리퍼러 제한 권장) |
 | `KAKAO_REST_API_KEY` · `KAKAO_CLIENT_SECRET` | 카카오 로그인 |
 | `NAVER_CLIENT_ID` · `NAVER_CLIENT_SECRET` | 네이버 로그인 |

@@ -423,6 +423,8 @@ export interface AiProposal {
   hotels: AiHotelProposal[] | null;
   /** 바뀐 항공·숙소로 다시 만든 경로의 자동 항공·숙소 카드 (적용할 때 프론트가 채운다) */
   auto_cards?: ItineraryCardInput[];
+  /** 미리보기에서 실제 이동 시간으로 정한 날짜별 방문 순서. 적용할 때 그대로 돌려보낸다(서버가 저장). */
+  order?: Record<string, string[]>;
 }
 
 /** 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 */
@@ -431,9 +433,33 @@ export interface AiRegistrationDraft {
   hotels: AiHotelProposal[] | null;
 }
 
+/** 두 장소 사이 이동 (Google 길찾기 결과). 정보를 찾지 못한 구간은 null이며, 시간을 추정해 채우지 않는다. */
+export interface AiRouteLeg {
+  mode: "walk" | "transit";
+  minutes: number;
+  meters: number;
+  /** 대중교통 환승 횟수 (0이면 환승 없음) */
+  transfers?: number;
+}
+
 export interface AiPreviewDay {
   day: ISODate;
-  items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
+  items: {
+    id: number | null;
+    title: string;
+    kind: ItineraryKind;
+    time: string;
+    time_label: string;
+    status: "new" | "moved" | "same";
+    /** 예상 도착 시각(HH:MM). 실제 이동 시간으로 계산한 날의 새·이동 장소만 */
+    eta?: string;
+  }[];
+  /** items[i] -> items[i + 1] 이동. 실제 이동 시간으로 순서를 정하지 않은 날은 모두 null */
+  legs?: (AiRouteLeg | null)[];
+  /** 이 날의 순서를 정한 근거: google(실제 이동 시간) · partial(일부 구간만) · straight_line(직선거리) */
+  route_basis?: "google" | "partial" | "straight_line" | null;
+  /** 영업시간·시간 충돌 경고 */
+  warnings?: string[];
 }
 
 /** AI 답변의 근거 문서 */
@@ -455,6 +481,8 @@ export interface AiProposeResponse {
   removed: { id: number; title: string }[];
   /** 실제 장소를 찾지 못한 이름 */
   unresolved: string[];
+  /** 방문 순서를 정한 근거. none이면 새로 넣거나 옮긴 장소가 없어 해당 없음 */
+  route?: { basis: "google" | "partial" | "straight_line" | "none"; note: string };
   /** 서비스 범위 밖 요청이라 거절했는지 (변경 제안 없음) */
   refused?: boolean;
   /** 가리고 AI에 보낸 민감정보 종류 (예: 카드번호, 비밀번호) */

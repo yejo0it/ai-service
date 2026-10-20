@@ -123,7 +123,7 @@ class AiInputSecurityTests(APITestCase):
 
     def test_model_output_is_limited_before_use(self):
         addition = ai_planner.PlanAddition(name="a", search_query="a", kind="sight", day_index=None, time=None,
-                                           reason="")
+                                           reason="", stay_minutes=None)
         limited = ai_planner.limit_plan(plan(reply="가" * 5000, additions=[addition] * 100))
         self.assertEqual(len(limited.reply), ai_planner.MAX_REPLY_CHARS)
         self.assertEqual(len(limited.additions), ai_planner.MAX_ADDITIONS)

@@ -26,7 +26,7 @@ from rest_framework.views import APIView
 
 from guides import search as guide_search
 
-from . import ai_planner, chat_guard, places, registration
+from . import ai_planner, chat_guard, places, registration, route_planner
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ItineraryItem, PackingItem, Trip
@@ -117,6 +117,8 @@ def days_map(trip):
                 "time": item.time.strftime("%H:%M") if item.time else "",
                 "time_label": item.time_label,
                 "stops": item.stops,
+                # 이동 시간 계산에서 영업시간 충돌을 확인하는 데 쓴다(AI에게는 보내지 않는다).
+                "opening_hours": item.opening_hours,
             }
         )
     return days
@@ -653,6 +655,8 @@ class AiProposeView(APIView):
             card = place_card(detail, addition.kind, time)
             card["day"] = day
             card["reason"] = addition.reason
+            if addition.stay_minutes:
+                card["stay_minutes"] = max(route_planner.MIN_STAY, min(route_planner.MAX_STAY, int(addition.stay_minutes)))
             additions.append(card)
 
         known_ids = {card["id"] for cards in days.values() for card in cards}
@@ -700,7 +704,13 @@ class AiProposeView(APIView):
             proposal["hotels"] = [_hotel_json(hotel) for hotel in hotels]
             hotel_preview = proposal["hotels"]
             removed_hotels = registration.removed_hotels(trip, hotels)
+        # 새 장소에 키를 붙이고(적용할 때 같은 순서를 찾기 위한 표시), 실제 이동 시간으로 방문 순서를 정한다.
+        # 이 계산은 서버가 하며 AI는 관여하지 않는다. 쓸 수 없으면 기존 직선거리 배치 그대로다.
+        for index, card in enumerate(additions):
+            card["_key"] = f"new:{index}"
         apply_changes(trip, days, additions, remove_ids, moves)
+        route_plan = route_planner.plan_days(trip, days, request.user.id)
+        proposal["order"] = route_plan.order
         preview = [
             {
                 "day": day,
@@ -712,9 +722,14 @@ class AiProposeView(APIView):
                         "time": card.get("time", ""),
                         "time_label": card.get("time_label", ""),
                         "status": "new" if not card.get("id") else ("moved" if card.get("moved") else "same"),
+                        "eta": _eta_text(route_plan, day, card),
                     }
                     for card in days[day]
                 ],
+                # 카드 i -> i+1 이동(도보·대중교통·자동차 분, 거리 m). 정보가 없는 구간은 null이다.
+                "legs": route_plan.days[day].legs if day in route_plan.days else [],
+                "route_basis": route_plan.days[day].basis if day in route_plan.days else None,
+                "warnings": route_plan.days[day].warnings if day in route_plan.days else [],
             }
             for day in ordered_days
         ]
@@ -736,9 +751,20 @@ class AiProposeView(APIView):
                     for item in trip.itinerary_items.filter(id__in=remove_ids)
                 ],
                 "unresolved": unresolved,
+                # 방문 순서를 실제 이동 시간(google)·일부 구간만(partial)·직선거리(straight_line)로 정했는지, 아니면 해당 없음(none)
+                "route": {"basis": route_plan.basis, "note": route_plan.note},
                 "sources": _cited_sources(references, plan.source_ids),
             }
         )
+
+
+def _eta_text(route_plan, day, card):
+    """미리보기에 보여줄 예상 도착 시각(HH:MM). 실제 이동 시간으로 계산한 날의 새 장소·옮긴 장소만."""
+    plan = route_plan.days.get(day)
+    if not plan or plan.basis == "straight_line" or (card.get("id") and not card.get("moved")):
+        return ""
+    minutes = plan.etas.get(route_planner.card_key(card))
+    return route_planner.format_minutes(minutes) if minutes is not None else ""
 
 
 def _cited_sources(references, source_ids):
@@ -862,6 +888,16 @@ class ProposalSerializer(serializers.Serializer):
     hotels = HotelProposalSerializer(many=True, required=False, allow_null=True, default=None, max_length=MAX_HOTELS)
     # 바뀐 항공·숙소로 프론트가 다시 만든 경로의 자동 항공·숙소 카드
     auto_cards = CardSerializer(many=True, required=False, default=list, max_length=MAX_PROPOSAL_ITEMS)
+    # 미리보기에서 실제 이동 시간으로 정한 날짜별 방문 순서({날짜: [카드 키]}). 적용할 때 그대로 저장한다.
+    order = serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField(max_length=24), max_length=MAX_PROPOSAL_ITEMS),
+        required=False, default=dict,
+    )
+
+    def validate_order(self, value):
+        if len(value) > 60:
+            raise serializers.ValidationError("날짜가 너무 많아요.")
+        return value
 
     def validate(self, attrs):
         for hotel in attrs.get("hotels") or []:
@@ -898,7 +934,10 @@ class AiApplyView(APIView):
             if card.get("day") not in days:
                 card["day"] = None
         moves = [m for m in data["moves"] if m["day"] in days]
+        for index, card in enumerate(additions):
+            card["_key"] = f"new:{index}"
         apply_changes(trip, days, additions, data["remove_item_ids"], moves)
+        route_planner.apply_order(days, data["order"])
         trip.itinerary_items.filter(id__in=removed_ids).delete()
         save_days(trip, days, ItineraryItem.Source.AI)
         response = itinerary_response(trip)
