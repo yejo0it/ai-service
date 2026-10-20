@@ -539,3 +539,137 @@ class ServiceAreaTests(TestCase):
         modes = [call.args[1] for call in matrix.call_args_list]
         self.assertNotIn("TRANSIT", modes)  # 일본은 Google 대중교통을 부르지 않아 요소 수(비용)를 아낀다
         self.assertEqual(trip.pk, self.trip.pk)
+
+
+class StayAndArrivalStorageTests(ProposeApplyFlowTests):
+    """AI가 정한 체류 시간과 계산한 예상 도착 시각이 DB에 저장된다. 순서·시간이 바뀌면 추정치는 지운다."""
+
+    def plan_with_stay(self):
+        plan = self.plan()
+        for addition, minutes in zip(plan.additions, (120, 60, None)):
+            addition.stay_minutes = minutes
+        return plan
+
+    def propose_and_apply(self):
+        with mock.patch("trips.ai_planner.propose", return_value=self.plan_with_stay()), \
+                mock.patch("trips.places.search_place", side_effect=self.search), \
+                mock.patch.dict("os.environ", {"GOOGLE_ROUTES_API_KEY": "k"}), \
+                mock.patch("trips.route_planner._fetch_tables", side_effect=self.fake_tables):
+            proposed = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                                        {"messages": [{"role": "user", "content": "하루 일정 짜줘"}]}, format="json")
+        applied = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/apply/",
+                                   {"proposal": proposed.data["proposal"]}, format="json")
+        self.assertEqual(applied.status_code, status.HTTP_200_OK)
+        return proposed, applied
+
+    def test_apply_saves_stay_minutes_and_expected_arrival_from_preview(self):
+        proposed, applied = self.propose_and_apply()
+        items = {item.title: item for item in self.trip.itinerary_items.all()}
+        # 체류 시간: AI가 정한 값만 저장한다(정하지 않은 곳은 비워 둔다).
+        self.assertEqual({t: i.stay_minutes for t, i in items.items()},
+                         {"스카이트리": 120, "도쿄타워": 60, "아사쿠사": None})
+        # 예상 도착 시각: 미리보기에서 보여 준 값과 같다.
+        preview = {item["title"]: item["eta"] for item in proposed.data["preview"][0]["items"]}
+        saved = {t: i.expected_arrival.strftime("%H:%M") for t, i in items.items()}
+        self.assertEqual(saved, preview)
+        # 일정 조회 API에도 내려간다.
+        listed = {item["title"]: item for item in applied.data["items"]}
+        self.assertEqual(listed["스카이트리"]["stay_minutes"], 120)
+        self.assertEqual(listed["도쿄타워"]["expected_arrival"], preview["도쿄타워"])
+
+    def test_without_routes_nothing_is_estimated(self):
+        with mock.patch("trips.ai_planner.propose", return_value=self.plan_with_stay()), \
+                mock.patch("trips.places.search_place", side_effect=self.search), \
+                mock.patch.dict("os.environ", {"GOOGLE_ROUTES_API_KEY": ""}):
+            proposed = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                                        {"messages": [{"role": "user", "content": "하루 일정 짜줘"}]}, format="json")
+        self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/apply/", {"proposal": proposed.data["proposal"]}, format="json")
+        self.assertEqual(proposed.data["proposal"]["etas"], {})
+        self.assertFalse(self.trip.itinerary_items.exclude(expected_arrival=None).exists())  # 도착 시각은 만들지 않는다
+        self.assertEqual(set(self.trip.itinerary_items.values_list("stay_minutes", flat=True)), {120, 60, None})
+
+    def arrivals(self):
+        return list(self.trip.itinerary_items.values_list("expected_arrival", flat=True))
+
+    def test_manual_changes_clear_stale_arrivals(self):
+        self.propose_and_apply()
+        self.assertTrue(all(self.arrivals()))
+        items = list(self.trip.itinerary_items.order_by("order"))
+        # 순서 바꾸기
+        self.client.post(f"/api/v1/trips/{self.trip.pk}/itinerary/reorder/",
+                         {"day": "2030-01-07", "ids": [i.id for i in reversed(items)]}, format="json")
+        self.assertEqual(self.arrivals(), [None, None, None])
+
+        self.propose_and_apply_again = None
+        # 시간 수정
+        ItineraryItem.objects.filter(pk=items[0].pk).update(expected_arrival="10:00")
+        self.client.patch(f"/api/v1/itinerary-items/{items[0].pk}/", {"time": "13:00"}, format="json")
+        self.assertIsNone(ItineraryItem.objects.get(pk=items[0].pk).expected_arrival)
+        # 삭제
+        ItineraryItem.objects.filter(pk=items[1].pk).update(expected_arrival="11:00")
+        self.client.delete(f"/api/v1/itinerary-items/{items[2].pk}/")
+        self.assertIsNone(ItineraryItem.objects.get(pk=items[1].pk).expected_arrival)
+
+    def test_direct_add_clears_that_days_arrivals(self):
+        self.propose_and_apply()
+        detail = {"place_id": "p", "name": "시부야", "address": "", "latitude": 35.659, "longitude": 139.70,
+                  "phone": "", "opening_hours": []}
+        with mock.patch("trips.places.place_details", return_value=detail):
+            self.client.post(f"/api/v1/trips/{self.trip.pk}/itinerary/",
+                             {"kind": "sight", "day": "2030-01-07", "place_id": "p"}, format="json")
+        self.assertFalse(self.trip.itinerary_items.exclude(expected_arrival=None).exists())
+
+    def test_fallback_day_clears_instead_of_keeping_old_arrivals(self):
+        self.propose_and_apply()
+        self.assertTrue(all(self.arrivals()))
+        # 같은 날에 새 장소를 AI로 더 넣는데 이번에는 Routes를 쓸 수 없는 경우: 옛 추정치는 지운다.
+        extra = ai_planner.PlanResponse(
+            reply="추가", remove_item_ids=[], moves=[], form=None, confirm=None, flight=None, hotel_change=None,
+            off_topic=False,
+            additions=[ai_planner.PlanAddition(name="스카이트리", search_query="스카이트리", kind="sight", day_index=0,
+                                               time=None, reason="", stay_minutes=30)],
+        )
+        with mock.patch("trips.ai_planner.propose", return_value=extra), \
+                mock.patch("trips.places.search_place", side_effect=self.search), \
+                mock.patch.dict("os.environ", {"GOOGLE_ROUTES_API_KEY": ""}):
+            proposed = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
+                                        {"messages": [{"role": "user", "content": "하나 더"}]}, format="json")
+        self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/apply/", {"proposal": proposed.data["proposal"]}, format="json")
+        self.assertFalse(self.trip.itinerary_items.exclude(expected_arrival=None).exists())
+
+
+class NoFixedPlaceLimitTests(TestCase):
+    """하루 장소 수의 고정 상한은 없다. 날짜를 정하지 않은 장소만 시간이 남은 날로 보낸다(거절하지 않는다)."""
+
+    def setUp(self):
+        owner = User.objects.create_user(username="cap@example.com")
+        self.trip = Trip.objects.create(owner=owner, destinations=[{"city": "도쿄", "city_code": "tokyo"}],
+                                        start_date="2030-01-07", end_date="2030-01-08", itinerary_initialized=True)
+        self.days = {date(2030, 1, 7): [], date(2030, 1, 8): []}
+
+    def add(self, count, day=None, stay=60):
+        from .itinerary_planner import place_cards
+        cards = [card(f"장소{i}", (35.69 + i * 0.001, 139.70), stay_minutes=stay, day=day) for i in range(count)]
+        return place_cards(self.trip, self.days, cards)
+
+    def test_more_than_five_places_fit_in_a_day_when_time_allows(self):
+        placed = self.add(7, stay=60)  # 60 + 이동 30 = 90분씩, 7곳 = 630분 < 13시간
+        self.assertEqual(placed, [date(2030, 1, 7)] * 7)  # 예전 상한(5곳)이었다면 6번째부터 다른 날로 갔다
+
+    def test_overflow_goes_to_the_next_day_without_rejecting(self):
+        placed = self.add(10, stay=90)  # 120분씩: 6곳(720분)까지가 첫날, 나머지는 둘째 날
+        self.assertEqual(placed.count(date(2030, 1, 7)), 6)
+        self.assertEqual(placed.count(date(2030, 1, 8)), 4)
+
+    def test_flight_day_has_a_smaller_budget(self):
+        self.days[date(2030, 1, 7)].append({"kind": "flight", "title": "항공", "time": "", "time_label": "출국", "stops": []})
+        placed = self.add(4, stay=90)  # 항공편이 있는 날은 6시간: 120분씩 3곳
+        self.assertEqual(placed.count(date(2030, 1, 7)), 3)
+
+    def test_explicit_day_is_never_limited(self):
+        placed = self.add(12, day=date(2030, 1, 7), stay=90)  # 직접 추가처럼 날짜를 정하면 상한이 없다
+        self.assertEqual(placed, [date(2030, 1, 7)] * 12)
+
+    def test_everything_full_still_places(self):
+        placed = self.add(30, stay=120)
+        self.assertEqual(len(placed), 30)

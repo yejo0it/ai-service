@@ -50,14 +50,15 @@ class PackingItemSerializer(serializers.ModelSerializer):
 
 class ItineraryItemSerializer(serializers.ModelSerializer):
     time = serializers.TimeField(format="%H:%M", allow_null=True, required=False)
+    expected_arrival = serializers.TimeField(format="%H:%M", read_only=True)
 
     class Meta:
         model = ItineraryItem
         fields = (
             "id", "day", "order", "kind", "source", "title", "time", "time_label", "subtitle",
-            "stops", "place_id", "address", "phone", "opening_hours",
+            "stops", "place_id", "address", "phone", "opening_hours", "stay_minutes", "expected_arrival",
         )
-        read_only_fields = ("id", "order", "source")
+        read_only_fields = ("id", "order", "source", "stay_minutes", "expected_arrival")
 
 
 # 클라이언트가 보내는 카드(AI 제안 적용·자동 카드)는 그대로 믿지 않는다: 값의 종류·범위·개수를 제한한다.
@@ -91,6 +92,8 @@ class CardSerializer(serializers.Serializer):
     opening_hours = serializers.ListField(
         child=serializers.CharField(max_length=200), required=False, default=list, max_length=MAX_OPENING_HOURS
     )
+    # AI가 정한 예상 체류 시간(분)
+    stay_minutes = serializers.IntegerField(min_value=10, max_value=240, required=False, allow_null=True, default=None)
 
 
 def itinerary_response(trip):
@@ -119,6 +122,7 @@ def days_map(trip):
                 "stops": item.stops,
                 # 이동 시간 계산에서 영업시간 충돌을 확인하는 데 쓴다(AI에게는 보내지 않는다).
                 "opening_hours": item.opening_hours,
+                "stay_minutes": item.stay_minutes,
             }
         )
     return days
@@ -137,7 +141,20 @@ def _model_fields(card, source):
         "address": card.get("address", "")[:255],
         "phone": card.get("phone", "")[:40],
         "opening_hours": card.get("opening_hours", []),
+        "stay_minutes": card.get("stay_minutes") or None,
+        "expected_arrival": _parse_time(card.get("expected_arrival")),
     }
+
+
+def _parse_time(value):
+    return dtime.fromisoformat(value) if value else None
+
+
+def clear_expected_arrival(trip, days):
+    """일정 순서·시간이 바뀐 날의 예상 도착 시각을 지운다(더 이상 맞지 않는 추정치이므로)."""
+    days = list(days)
+    if days:
+        trip.itinerary_items.filter(day__in=days).update(expected_arrival=None)
 
 
 def save_days(trip, days, source):
@@ -148,6 +165,8 @@ def save_days(trip, days, source):
                 fields = {"day": day, "order": order}
                 if card.get("time_changed"):
                     fields["time"] = dtime.fromisoformat(card["time"]) if card.get("time") else None
+                if "expected_arrival" in card:  # 이동 시간으로 다시 계산한 날의 카드만
+                    fields["expected_arrival"] = _parse_time(card["expected_arrival"])
                 ItineraryItem.objects.filter(pk=card["id"], trip=trip).update(**fields)
                 continue
             item = ItineraryItem.objects.create(trip=trip, day=day, order=order, **_model_fields(card, source))
@@ -280,6 +299,7 @@ class ItineraryView(APIView):
         card["day"] = data["day"]
         place_cards(trip, days, [card])
         save_days(trip, days, ItineraryItem.Source.MANUAL)
+        clear_expected_arrival(trip, [data["day"]])
         return itinerary_response(trip)
 
 
@@ -361,6 +381,7 @@ class ItineraryReorderView(APIView):
             return Response({"detail": "그날의 일정과 맞지 않아요. 새로고침해 주세요."}, status=status.HTTP_409_CONFLICT)
         for order, item_id in enumerate(ids):
             ItineraryItem.objects.filter(pk=item_id, trip=trip).update(order=order)
+        clear_expected_arrival(trip, [day])
         return itinerary_response(trip)
 
 
@@ -412,6 +433,8 @@ class ItineraryItemView(APIView):
         for key, value in allowed.items():
             setattr(item, key, value)
         item.save(update_fields=[*allowed.keys(), "updated_at"])
+        clear_expected_arrival(item.trip, [item.day])
+        item.refresh_from_db()
         return Response(ItineraryItemSerializer(item).data)
 
     @transaction.atomic
@@ -424,8 +447,10 @@ class ItineraryItemView(APIView):
         item = self.get_item(request, item_id)
         trip = item.trip
         changed, other_ids = registration.sync_after_card_delete(trip, item)
+        removed_days = {item.day, *trip.itinerary_items.filter(id__in=other_ids).values_list("day", flat=True)}
         trip.itinerary_items.filter(id__in=other_ids).delete()
         item.delete()
+        clear_expected_arrival(trip, removed_days)
         if not changed:
             return Response(status=status.HTTP_204_NO_CONTENT)
         trip_data = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
@@ -655,7 +680,7 @@ class AiProposeView(APIView):
             card = place_card(detail, addition.kind, time)
             card["day"] = day
             card["reason"] = addition.reason
-            if addition.stay_minutes:
+            if addition.stay_minutes:  # AI가 정한 값만 저장한다(없으면 모르는 것으로 두고 계산에서만 기본값을 쓴다)
                 card["stay_minutes"] = max(route_planner.MIN_STAY, min(route_planner.MAX_STAY, int(addition.stay_minutes)))
             additions.append(card)
 
@@ -711,6 +736,7 @@ class AiProposeView(APIView):
         apply_changes(trip, days, additions, remove_ids, moves)
         route_plan = route_planner.plan_days(trip, days, request.user.id)
         proposal["order"] = route_plan.order
+        proposal["etas"] = route_plan.etas
         preview = [
             {
                 "day": day,
@@ -889,10 +915,20 @@ class ProposalSerializer(serializers.Serializer):
     # 바뀐 항공·숙소로 프론트가 다시 만든 경로의 자동 항공·숙소 카드
     auto_cards = CardSerializer(many=True, required=False, default=list, max_length=MAX_PROPOSAL_ITEMS)
     # 미리보기에서 실제 이동 시간으로 정한 날짜별 방문 순서({날짜: [카드 키]}). 적용할 때 그대로 저장한다.
+    # 같은 날짜·카드 키 기준의 예상 도착 시각({날짜: {카드 키: "HH:MM"}}). 순서를 반영한 날짜에만 저장한다.
+    etas = serializers.DictField(
+        child=serializers.DictField(child=serializers.RegexField(TIME_PATTERN)),
+        required=False, default=dict,
+    )
     order = serializers.DictField(
         child=serializers.ListField(child=serializers.CharField(max_length=24), max_length=MAX_PROPOSAL_ITEMS),
         required=False, default=dict,
     )
+
+    def validate_etas(self, value):
+        if len(value) > 60 or any(len(times) > MAX_PROPOSAL_ITEMS for times in value.values()):
+            raise serializers.ValidationError("예상 도착 시각이 너무 많아요.")
+        return value
 
     def validate_order(self, value):
         if len(value) > 60:
@@ -936,10 +972,21 @@ class AiApplyView(APIView):
         moves = [m for m in data["moves"] if m["day"] in days]
         for index, card in enumerate(additions):
             card["_key"] = f"new:{index}"
+        # 일정이 바뀌는 날(빠지는·옮기는 카드의 원래 날짜 포함): 예상 도착 시각을 새로 계산하지 못한 날은 지운다.
+        changed_days = set(
+            trip.itinerary_items.filter(id__in=[*removed_ids, *(m["item_id"] for m in moves)]).values_list("day", flat=True)
+        )
         apply_changes(trip, days, additions, data["remove_item_ids"], moves)
-        route_planner.apply_order(days, data["order"])
+        applied = route_planner.apply_order(days, data["order"])
+        changed_days |= {day for day, cards in days.items() for card in cards if card.get("moved") or not card.get("id")}
+        # 미리보기에서 계산한 예상 도착 시각을 카드에 붙인다(순서를 그대로 반영한 날만).
+        for day in applied:
+            etas = data["etas"].get(day.isoformat(), {})
+            for card in days[day]:
+                card["expected_arrival"] = etas.get(route_planner.card_key(card), "")
         trip.itinerary_items.filter(id__in=removed_ids).delete()
         save_days(trip, days, ItineraryItem.Source.AI)
+        clear_expected_arrival(trip, changed_days - applied)
         response = itinerary_response(trip)
         response.data["trip"] = TripSerializer(Trip.objects.get(pk=trip.pk), context={"request": request}).data
         return response
