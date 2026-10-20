@@ -49,3 +49,12 @@ export function monthWeeks(year: number, month: number): Date[][] {
     Array.from({ length: 7 }, (_, day) => addDays(start, week * 7 + day)),
   );
 }
+
+/** 분 -> "22분" · "1시간 25분" · "2시간" */
+export function formatMinutes(total: number): string {
+  const minutes = Math.max(0, Math.round(total));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}분`;
+  return rest === 0 ? `${hours}시간` : `${hours}시간 ${rest}분`;
+}

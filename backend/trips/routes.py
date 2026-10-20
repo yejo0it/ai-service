@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
+import threading
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
@@ -94,6 +95,7 @@ class Budget:
         self.user_id = user_id
         self.left = settings.ROUTES_MAX_ELEMENTS_PER_PROPOSAL
         self.used = 0
+        self._lock = threading.Lock()  # 구간을 병렬로 계산해도 한도를 정확히 센다
 
     @staticmethod
     def _day():
@@ -106,6 +108,10 @@ class Budget:
         return counters
 
     def take(self, count):
+        with self._lock:
+            self._take(count)
+
+    def _take(self, count):
         if count > self.left:
             raise BudgetExceeded("제안 한 번에 쓸 수 있는 경로 계산 한도를 넘었어요.")
         counters = self._counters()
@@ -155,14 +161,11 @@ def _waypoint(point):
     return {"waypoint": {"location": {"latLng": {"latitude": point[0], "longitude": point[1]}}}}
 
 
-def _post(body):
-    """computeRouteMatrix 호출. 응답은 요소 목록(JSON 배열)이다."""
-    if settings.TESTING:
-        raise RoutesError("테스트에서는 실제 호출하지 않아요.")
+def _send(url, body, field_mask):
     request = urllib.request.Request(
-        ROUTES_URL,
+        url,
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "X-Goog-Api-Key": api_key(), "X-Goog-FieldMask": FIELD_MASK},
+        headers={"Content-Type": "application/json", "X-Goog-Api-Key": api_key(), "X-Goog-FieldMask": field_mask},
         method="POST",
     )
     try:
@@ -172,6 +175,62 @@ def _post(body):
         raise RoutesError(f"Routes API 오류({exc.code})") from exc
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise RoutesError("Routes API를 호출하지 못했어요.") from exc
+
+
+def _post(body):
+    """computeRouteMatrix 호출. 응답은 요소 목록(JSON 배열)이다."""
+    if settings.TESTING:
+        raise RoutesError("테스트에서는 실제 호출하지 않아요.")
+    return _send(ROUTES_URL, body, FIELD_MASK)
+
+
+DIRECTIONS_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+# 대중교통 구간 표시에 필요한 필드만 받는다(요금·경로선·교통량 필드는 받지 않는다).
+DIRECTIONS_FIELDS = ",".join(
+    (
+        "routes.duration",
+        "routes.distanceMeters",
+        "routes.legs.steps.travelMode",
+        "routes.legs.steps.staticDuration",
+        "routes.legs.steps.distanceMeters",
+        "routes.legs.steps.transitDetails.stopDetails.departureStop.name",
+        "routes.legs.steps.transitDetails.stopDetails.arrivalStop.name",
+        "routes.legs.steps.transitDetails.stopDetails.departureTime",
+        "routes.legs.steps.transitDetails.stopDetails.arrivalTime",
+        "routes.legs.steps.transitDetails.transitLine.name",
+        "routes.legs.steps.transitDetails.transitLine.nameShort",
+        "routes.legs.steps.transitDetails.transitLine.color",
+        "routes.legs.steps.transitDetails.stopCount",
+    )
+)
+
+
+def _post_directions(body):
+    if settings.TESTING:
+        raise RoutesError("테스트에서는 실제 호출하지 않아요.")
+    return _send(DIRECTIONS_URL, body, DIRECTIONS_FIELDS)
+
+
+def compute_transit_route(origin, destination, day, depart_minute, country=None, budget=None):
+    """
+    origin→destination 대중교통 경로 한 건(노선·승하차 정류장·시각). 응답 JSON을 그대로 돌려준다(해석은 trips.legs).
+    출발 시각은 representative_date의 현지 날짜 + depart_minute(분)다.
+    """
+    if not enabled():
+        raise RoutesError("Routes API를 쓸 수 없어요.")
+    if budget is not None:
+        budget.take(1)
+    tz = _zone(country)
+    target = representative_date(day, country=country)
+    local = datetime.combine(target, time(depart_minute // 60 % 24, depart_minute % 60), tz)
+    body = {
+        "origin": _waypoint(origin)["waypoint"],
+        "destination": _waypoint(destination)["waypoint"],
+        "travelMode": "TRANSIT",
+        "departureTime": local.astimezone(dt_timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "languageCode": "ko",
+    }
+    return _post_directions(body)
 
 
 def _cache_key(mode, origin, destination, bucket):

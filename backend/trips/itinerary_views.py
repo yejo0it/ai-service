@@ -21,12 +21,12 @@ from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import UserRateThrottle
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from guides import search as guide_search
 
-from . import ai_planner, chat_guard, places, registration, route_planner
+from . import ai_planner, chat_guard, legs, places, registration, route_planner
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ItineraryItem, PackingItem, Trip
@@ -383,6 +383,29 @@ class ItineraryReorderView(APIView):
             ItineraryItem.objects.filter(pk=item_id, trip=trip).update(order=order)
         clear_expected_arrival(trip, [day])
         return itinerary_response(trip)
+
+
+class DayLegsView(APIView):
+    """
+    `GET /api/v1/trips/{id}/days/{YYYY-MM-DD}/legs/` — 그날 일정 카드 사이의 이동 구간(도보·대중교통·택시).
+    두 번째 카드부터 '직전 카드 → 이 카드'를 계산해 돌려준다. 지원 지역 밖이거나 이동 시간 계산을 쓸 수 없으면 빈 목록이다.
+    결과는 저장하지 않고 서버가 잠깐 캐시한다(trips.legs).
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "legs"
+
+    def get(self, request, pk, day):
+        trip = accessible_trip(request, pk)
+        try:
+            day_value = date.fromisoformat(day)
+        except ValueError:
+            return Response({"day": ["날짜 형식이 올바르지 않아요."]}, status=status.HTTP_400_BAD_REQUEST)
+        if not trip.start_date <= day_value <= trip.end_date:
+            return Response({"day": ["여행 기간 안의 날짜를 선택해 주세요."]}, status=status.HTTP_400_BAD_REQUEST)
+        items = list(trip.itinerary_items.filter(day=day_value).order_by("order", "id"))
+        return Response(legs.day_legs(items, day_value, request.user.id))
 
 
 # 장소를 다시 검색해 바꿀 수 있는 카드 (직접·AI로 추가한 장소. 여행 등록 정보에서 만든 항공·숙소 카드는 제외)

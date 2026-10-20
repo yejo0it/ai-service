@@ -13,6 +13,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -53,12 +54,17 @@ class TransitBudget:
     def __init__(self):
         self.used = 0
         self.left = settings.NAVITIME_MAX_REQUESTS_PER_PROPOSAL
+        self._lock = threading.Lock()
 
     @staticmethod
     def _month_key():
         return f"navitime:month:{timezone.now().strftime('%Y%m')}"
 
     def take(self):
+        with self._lock:
+            self._take()
+
+    def _take(self):
         if self.left <= 0:
             raise TransitBudgetExceeded("제안 한 번의 대중교통 호출 한도")
         remaining = cache.get("navitime:remaining")
