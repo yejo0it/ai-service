@@ -12,6 +12,7 @@ import {
 import { ROUTES, tripTabFromSegment, tripTabPath, type TripTab } from "../routes";
 import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
+import ExpensePage from "../expenses/ExpensePage";
 import PackingNote from "../packing/PackingNotePage";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
@@ -452,22 +453,9 @@ function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
   );
 }
 
-/** 경비 관리는 아직 만들지 않았다. 탭만 먼저 열어 둔다. */
-function ExpensesPlaceholder() {
-  return (
-    <section aria-label="경비 관리" className={`${CARD_CLASS} py-14 text-center`}>
-      <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-        <i className="fas fa-wallet text-lg" aria-hidden="true" />
-      </span>
-      <p className="mt-3 font-semibold text-slate-800">경비 관리는 준비 중이에요</p>
-      <p className="mt-1 text-sm text-slate-500">여행 경비를 기록하고 한눈에 볼 수 있도록 만들고 있어요.</p>
-    </section>
-  );
-}
-
 /**
  * `/trips/:tripId` 여행 상세.
- * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`, 준비 중) · 여행 체크리스트(`/checklist`)
+ * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`) · 여행 체크리스트(`/checklist`)
  * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
@@ -678,7 +666,7 @@ export default function TripDetailPage() {
 
       <TripTabs tripId={trip.id} selected={tab} />
 
-      {tab === "expenses" && <ExpensesPlaceholder />}
+      {tab === "expenses" && <ExpensePage key={trip.id} trip={trip} />}
       {tab === "checklist" && <PackingNote key={trip.id} trip={trip} />}
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
