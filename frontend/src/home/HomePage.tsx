@@ -14,13 +14,13 @@ import { DDayCard, RouteTimeline } from "./DashboardWidgets";
 import { homeDDayMessage } from "./ddayMessage";
 import TripCalendar from "./TripCalendar";
 import TripSummaryCard from "./TripSummaryCard";
-import { ExchangeWidget, PackingWidget, WeatherWidget } from "./TravelInfoWidgets";
+import { ExchangeWidget, PrepStatus, WeatherWidget } from "./TravelInfoWidgets";
 
 const firstOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 /**
  * `/` 홈 대시보드.
- * 왼쪽(모바일은 아래) D-Day·여행 경로 위젯, 오른쪽 대형 캘린더 + 선택 요약 카드.
+ * 위에서 아래로: 인사말 → 다가오는 여행 → 여행 준비 현황 → 날씨·환율 → 여행 캘린더(+ 선택 요약·여행 경로).
  * [새 여행 만들기]는 모달로 열고, 저장하면 만든 여행의 상세로 이동한다.
  */
 export default function HomePage() {
@@ -80,12 +80,6 @@ export default function HomePage() {
     if (tripsState.status === "ready") tripsState.replaceTrip(updated);
   };
 
-  // D-Day 카드에서 "캘린더에서 보기": 여행 시작 달로 이동해 선택한다.
-  const showTrip = (trip: Trip) => {
-    setMonth(firstOfMonth(parseISODate(trip.start_date)));
-    selectTrip(trip);
-  };
-
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -122,27 +116,29 @@ export default function HomePage() {
           </button>
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
-          {/* 캘린더를 먼저 읽도록 모바일에서는 위젯을 아래로 보낸다. */}
-          <aside className="order-2 space-y-4 lg:order-1">
-            {tripsState.status === "loading" ? (
-              <>
-                <div className="h-40 animate-pulse rounded-2xl bg-slate-200/70" />
-                <div className="h-56 animate-pulse rounded-2xl bg-slate-200/70" />
-                <div className="h-32 animate-pulse rounded-2xl bg-slate-200/70" />
-              </>
-            ) : (
-              <>
-                <DDayCard trip={upcoming} today={today} onShowTrip={showTrip} onNewTrip={openNewTrip} />
-                {focusTrip && <WeatherWidget trip={focusTrip} today={today} />}
-                {focusTrip && <ExchangeWidget trip={focusTrip} />}
-                {focusTrip && <PackingWidget trip={focusTrip} />}
-                <RouteTimeline trip={focusTrip} />
-              </>
-            )}
-          </aside>
+        <div className="space-y-4">
+          {tripsState.status === "loading" ? (
+            <>
+              <div className="h-40 animate-pulse rounded-2xl bg-slate-200/70" />
+              <div className="h-28 animate-pulse rounded-2xl bg-slate-200/70" />
+              <div className="h-56 animate-pulse rounded-2xl bg-slate-200/70" />
+            </>
+          ) : (
+            <>
+              <DDayCard trip={upcoming} today={today} onNewTrip={openNewTrip} />
+              {focusTrip && <PrepStatus trip={focusTrip} />}
+              {/* 날씨·환율 두 카드는 같은 높이로 맞춘다. */}
+              {focusTrip && (
+                <div className="grid gap-4 md:grid-cols-2 md:[&>section]:h-full">
+                  <WeatherWidget trip={focusTrip} today={today} />
+                  <ExchangeWidget trip={focusTrip} />
+                </div>
+              )}
+            </>
+          )}
 
-          <div className="order-1 space-y-4 lg:order-2">
+          {/* 캘린더는 아래로 내리고 폭을 줄인다. 오른쪽(모바일은 아래)에 여행 경로와 선택 요약을 둔다. */}
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <div className={tripsState.status === "loading" ? "animate-pulse opacity-60" : ""}>
               <TripCalendar
                 trips={trips}
@@ -155,19 +151,22 @@ export default function HomePage() {
                 onSelectDate={selectDate}
               />
             </div>
-            <TripSummaryCard
-              trip={selectedTrip}
-              date={selectedDate}
-              tripsOnDate={tripsOnDate}
-              today={today}
-              onSelectTrip={selectTrip}
-              onColorChange={changeTripColor}
-              onClose={() => {
-                setSelectedTripId(null);
-                setSelectedDate(null);
-              }}
-              onNewTrip={openNewTrip}
-            />
+            <div className="space-y-4">
+              {tripsState.status !== "loading" && <RouteTimeline trip={focusTrip} />}
+              <TripSummaryCard
+                trip={selectedTrip}
+                date={selectedDate}
+                tripsOnDate={tripsOnDate}
+                today={today}
+                onSelectTrip={selectTrip}
+                onColorChange={changeTripColor}
+                onClose={() => {
+                  setSelectedTripId(null);
+                  setSelectedDate(null);
+                }}
+                onNewTrip={openNewTrip}
+              />
+            </div>
           </div>
         </div>
       )}

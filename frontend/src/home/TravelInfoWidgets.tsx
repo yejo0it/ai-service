@@ -80,7 +80,7 @@ export function WeatherWidget({ trip, today }: WeatherWidgetProps) {
   const cityName = cities.find((dest) => dest.city_code === cityCode)?.city ?? cities[0].city;
 
   return (
-    <section aria-label="여행지 날씨" className={CARD_CLASS}>
+    <section aria-label="여행지 날씨" className={`${CARD_CLASS} flex flex-col`}>
       <WidgetHeader
         title="여행지 날씨"
         aside={<span className="text-xs text-slate-400">Open-Meteo</span>}
@@ -121,19 +121,20 @@ export function WeatherWidget({ trip, today }: WeatherWidgetProps) {
           const daysUntilForecast = diffDays(today, trip.start_date) - (weather.daily.length - 1);
           return (
             <>
-              <div className="mt-4 flex items-center gap-3">
-                <span className="text-4xl leading-none" role="img" aria-label={now.label}>
+              {/* 현재 날씨: 크게 보여주고, 남는 높이는 현재 날씨가 가져가 예보가 카드 맨 아래에 놓인다. */}
+              <div className="mt-4 flex flex-1 items-center gap-4 py-2">
+                <span className="text-6xl leading-none" role="img" aria-label={now.label}>
                   {now.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-slate-500">
+                  <p className="truncate text-lg font-medium text-slate-700">
                     {cityName} · 지금 {now.label}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="mt-1 text-base text-slate-500">
                     최고 {formatTemp(todayForecast?.max ?? null)} / 최저 {formatTemp(todayForecast?.min ?? null)}
                   </p>
                 </div>
-                <span className="text-3xl font-bold tabular-nums text-slate-900">
+                <span className="text-5xl font-bold tabular-nums text-slate-900">
                   {formatTemp(weather.current.temperature)}
                 </span>
               </div>
@@ -348,61 +349,70 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 체크리스트 진행률
+ * 여행 준비 현황
  * ------------------------------------------------------------------ */
 
-const PACKING_STEPS = 5;
+/**
+ * 여행 준비 현황 묶음. 지금은 체크리스트 카드 하나이며, 나중에 경비 사용 현황 같은 카드를
+ * 자식으로 더하면 2열로 나란히 놓인다(카드가 하나일 때는 가로로 꽉 채운다).
+ */
+export function PrepStatus({ trip }: { trip: Trip }) {
+  return (
+    <section aria-label="여행 준비 현황" className="grid gap-4 md:grid-cols-2 md:[&>:only-child]:col-span-2">
+      <PackingWidget trip={trip} />
+    </section>
+  );
+}
 
-/** 여행 체크리스트(준비물·해야 할 일) 진행률. 홈에 올 때마다 새로 불러와 여행 체크리스트에서 체크한 결과를 보여준다. */
+/** 여행 체크리스트(준비물·해야 할 일) 완료율과 남은 항목. 홈에 올 때마다 새로 불러와 체크한 결과를 보여준다. */
 export function PackingWidget({ trip }: { trip: Trip }) {
   const state = useLoad(String(trip.id), () => getPackingItems(trip.id));
   const items = state.status === "ready" ? state.data : [];
   const doneCount = items.filter((item) => item.done).length;
   const percent = items.length === 0 ? 0 : Math.round((doneCount / items.length) * 100);
-  const filledSteps = Math.floor((percent / 100) * PACKING_STEPS);
 
   return (
-    <section aria-label="체크리스트 진행률" className={CARD_CLASS}>
-      <WidgetHeader
-        title="체크리스트 진행률"
-        aside={
-          <Link
-            to={tripTabPath(trip.id, "checklist")}
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            여행 체크리스트
-          </Link>
-        }
-      />
+    <Link
+      to={tripTabPath(trip.id, "checklist")}
+      aria-label="여행 체크리스트 바로가기"
+      className={`${CARD_CLASS} block transition-colors hover:border-slate-300`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i className="fas fa-clipboard-list text-slate-500" aria-hidden="true" />
+          여행 체크리스트
+        </span>
+        <span className="flex items-center gap-1 text-xs font-medium text-indigo-600">
+          바로가기
+          <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+        </span>
+      </div>
       {state.status === "loading" ? (
-        <Skeleton className="mt-4 h-10" />
+        <Skeleton className="mt-4 h-16" />
       ) : state.status === "error" ? (
         <p className="mt-3 text-sm text-rose-600">{state.message}</p>
+      ) : items.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">아직 체크리스트가 비어 있어요. 준비물과 할 일을 추가해 보세요.</p>
       ) : (
         <>
+          <p className="mt-3 text-2xl font-extrabold tabular-nums text-slate-900">
+            {doneCount} <span className="text-slate-400">/ {items.length}</span>
+          </p>
           <div
-            className="mt-4 flex items-center gap-3"
+            className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
             role="progressbar"
-            aria-label="체크리스트 진행률"
+            aria-label="체크리스트 완료율"
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}
           >
-            <div className="flex flex-1 gap-1">
-              {Array.from({ length: PACKING_STEPS }, (_, index) => (
-                <span
-                  key={index}
-                  className={`h-2.5 flex-1 rounded-sm ${index < filledSteps ? "bg-indigo-500" : "bg-slate-100"}`}
-                />
-              ))}
-            </div>
-            <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
+            <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${percent}%` }} />
           </div>
-          <p className="mt-3 text-xs text-slate-500">
-            항목 {items.length}개 중 {doneCount}개 완료했어요.
+          <p className="mt-2 text-xs text-slate-500">
+            {items.length === doneCount ? "모두 준비했어요!" : `${items.length - doneCount}개 남았어요`}
           </p>
         </>
       )}
-    </section>
+    </Link>
   );
 }
