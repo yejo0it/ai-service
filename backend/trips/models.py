@@ -295,3 +295,69 @@ class TripInvitation(models.Model):
     @property
     def is_valid(self) -> bool:
         return self.expires_at > timezone.now()
+
+
+class TripBudget(TimeStampedModel):
+    """여행 전체 예산(원). 여행마다 하나이며, 만든 회원과 일행이 함께 보고 고친다."""
+
+    # 예산과 지출 한 건의 최대 금액(원). 지출 통화와 관계없이 예산은 원화로 관리한다.
+    MAX_AMOUNT_KRW = 99_999_999_999
+
+    trip = models.OneToOneField(Trip, related_name="budget", on_delete=models.CASCADE)
+    amount_krw = models.PositiveBigIntegerField("총예산(원)")
+
+    class Meta:
+        verbose_name = "여행 예산"
+        verbose_name_plural = "여행 예산"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id}: {self.amount_krw:,}원"
+
+
+class Expense(TimeStampedModel):
+    """
+    여행 지출 내역. 금액은 Decimal/정수로만 다룬다(부동소수점 오차 없음).
+    - amount·currency: 입력한 금액과 통화. amount_krw: 원화 환산 금액(정수 원).
+    - rate_per_krw: 지출 당시 적용한 환율(1원당 현지 통화 금액). 원화 지출은 비어 있다.
+      저장해 두므로 환율 API가 멈춰도 기존 내역은 그대로 조회된다.
+    - payer: 결제한 회원. 회원이 탈퇴해도 내역과 정산이 어긋나지 않게 이름(payer_name)을 함께 남긴다.
+    """
+
+    class Category(models.TextChoices):
+        TRANSPORT = "transport", "교통"
+        LODGING = "lodging", "숙박"
+        FOOD = "food", "식비"
+        SIGHTSEEING = "sightseeing", "관광"
+        SHOPPING = "shopping", "쇼핑"
+        ETC = "etc", "기타"
+
+    # 한 여행에 둘 수 있는 지출 수
+    MAX_PER_TRIP = 500
+    MAX_AMOUNT_KRW = TripBudget.MAX_AMOUNT_KRW
+
+    trip = models.ForeignKey(Trip, related_name="expenses", on_delete=models.CASCADE)
+    title = models.CharField("지출명", max_length=60)
+    amount = models.DecimalField("금액", max_digits=14, decimal_places=2)
+    currency = models.CharField("통화", max_length=3, default="KRW")
+    rate_per_krw = models.DecimalField("적용 환율(1원당)", max_digits=24, decimal_places=12, null=True, blank=True)
+    amount_krw = models.PositiveBigIntegerField("원화 환산 금액")
+    spent_on = models.DateField("지출일")
+    category = models.CharField("분류", max_length=12, choices=Category.choices, default=Category.ETC)
+    memo = models.CharField("메모", max_length=200, blank=True, default="")
+    payer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="paid_expenses",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    payer_name = models.CharField("결제자 이름", max_length=30, blank=True, default="")
+
+    class Meta:
+        verbose_name = "여행 지출"
+        verbose_name_plural = "여행 지출"
+        ordering = ("-spent_on", "-id")
+        indexes = [models.Index(fields=("trip", "spent_on"), name="expense_trip_spent_on_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.spent_on} {self.title} {self.amount_krw:,}원"

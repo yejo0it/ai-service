@@ -399,6 +399,47 @@ export interface PackingItem {
   is_default: boolean;
 }
 
+/* ------------------------------------------------------------------ *
+ * 여행 경비
+ * ------------------------------------------------------------------ */
+
+export type ExpenseCategory = "transport" | "lodging" | "food" | "sightseeing" | "shopping" | "etc";
+
+/** 지출 한 건. 금액은 원 단위 정수(문자열로 오는 amount는 입력 통화 기준)다. */
+export interface Expense {
+  id: number;
+  title: string;
+  /** 입력한 금액 (서버가 Decimal 문자열로 보낸다) */
+  amount: string;
+  currency: string;
+  /** 원화 환산 금액 */
+  amount_krw: number;
+  spent_on: ISODate;
+  category: ExpenseCategory;
+  memo: string;
+  payer_id: number | null;
+  payer_name: string;
+}
+
+/** 지출 목록과 예산 요약. 합계는 서버가 정수 원으로 계산한다. */
+export interface ExpensesResponse {
+  /** 총예산. 설정하지 않았으면 null */
+  budget_krw: number | null;
+  total_krw: number;
+  /** 남은 예산(초과하면 음수). 예산이 없으면 null */
+  remaining_krw: number | null;
+  by_category: Record<ExpenseCategory, number>;
+  expenses: Expense[];
+}
+
+export interface ExpensePayload {
+  title: string;
+  amount: number;
+  spent_on: ISODate;
+  category: ExpenseCategory;
+  memo: string;
+}
+
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;

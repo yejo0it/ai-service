@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { getExchangeRates, getPackingItems, getWeather, toErrorMessage } from "../api/client";
+import { getExchangeRates, getExpenses, getPackingItems, getWeather, toErrorMessage } from "../api/client";
+import { compactWon, formatWonSign, spentPercent } from "../expenses/expenseUtils";
 import { tripTabPath } from "../routes";
 import type { CityWeather, Destination, ExchangeRatesResponse, Trip } from "../types/api";
 import { WEEKDAYS_KO, diffDays, parseISODate } from "../utils/date";
@@ -353,13 +354,14 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
  * ------------------------------------------------------------------ */
 
 /**
- * 여행 준비 현황 묶음. 지금은 체크리스트 카드 하나이며, 나중에 경비 사용 현황 같은 카드를
- * 자식으로 더하면 2열로 나란히 놓인다(카드가 하나일 때는 가로로 꽉 채운다).
+ * 여행 준비 현황 묶음: 체크리스트와 여행 경비 카드가 2열로 나란히 놓인다
+ * (카드가 하나뿐이면 가로로 꽉 채운다).
  */
 export function PrepStatus({ trip }: { trip: Trip }) {
   return (
     <section aria-label="여행 준비 현황" className="grid gap-4 md:grid-cols-2 md:[&>:only-child]:col-span-2">
       <PackingWidget trip={trip} />
+      <ExpenseWidget trip={trip} />
     </section>
   );
 }
@@ -411,6 +413,64 @@ export function PackingWidget({ trip }: { trip: Trip }) {
           <p className="mt-2 text-xs text-slate-500">
             {items.length === doneCount ? "모두 준비했어요!" : `${items.length - doneCount}개 남았어요`}
           </p>
+        </>
+      )}
+    </Link>
+  );
+}
+
+/** 여행 경비: 총지출과 예산 대비 비율. 예산이 없으면 설정을 안내한다. 누르면 경비 관리 탭으로 이동한다. */
+export function ExpenseWidget({ trip }: { trip: Trip }) {
+  const state = useLoad(String(trip.id), () => getExpenses(trip.id));
+  const data = state.status === "ready" ? state.data : null;
+  const percent = data ? spentPercent(data.total_krw, data.budget_krw) : null;
+  const over = data?.remaining_krw != null && data.remaining_krw < 0;
+
+  return (
+    <Link
+      to={tripTabPath(trip.id, "expenses")}
+      aria-label="여행 경비 바로가기"
+      className={`${CARD_CLASS} block transition-colors hover:border-slate-300`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i className="fas fa-wallet text-slate-500" aria-hidden="true" />
+          여행 경비
+        </span>
+        <span className="flex items-center gap-1 text-xs font-medium text-indigo-600">
+          바로가기
+          <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+        </span>
+      </div>
+      {state.status === "loading" ? (
+        <Skeleton className="mt-4 h-16" />
+      ) : state.status === "error" ? (
+        <p className="mt-3 text-sm text-rose-600">{state.message}</p>
+      ) : data === null ? null : (
+        <>
+          <p className="mt-3 text-2xl font-extrabold tabular-nums text-slate-900">{formatWonSign(data.total_krw)}</p>
+          {data.budget_krw === null ? (
+            <p className="mt-3 text-xs text-slate-500">예산을 설정하면 남은 금액을 볼 수 있어요.</p>
+          ) : (
+            <>
+              <div
+                className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label="예산 대비 지출"
+                aria-valuenow={Math.min(percent ?? 100, 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${over ? "bg-rose-500" : "bg-indigo-500"}`}
+                  style={{ width: `${Math.min(percent ?? 100, 100)}%` }}
+                />
+              </div>
+              <p className={`mt-2 text-xs ${over ? "text-rose-600" : "text-slate-500"}`}>
+                예산 {compactWon(data.budget_krw)} 중 {percent ?? 0}%{over && " (초과)"}
+              </p>
+            </>
+          )}
         </>
       )}
     </Link>
