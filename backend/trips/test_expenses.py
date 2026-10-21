@@ -1,26 +1,41 @@
 """
-여행 경비 관리 1단계(예산·지출, 원화)
+여행 경비 관리: 1단계(예산·지출, 원화)와 2단계(다중 통화·환율)
 
 - 만든 회원과 일행이 같은 경비 내역을 보고 고친다. 그 밖의 회원에게는 여행이 없는 것(404)이다.
 - 총지출·남은 예산·분류별 합계는 서버가 정수 원으로 계산한다.
 - 결제자는 지출을 등록한 회원이고, 탈퇴해도 내역과 이름이 남는다.
+- 현지 통화 지출은 등록할 때의 환율과 원화 환산 금액을 저장하고, 환율 서비스가 멈춰도 저장된 내역은 조회된다.
 """
 
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import Profile
 
+from . import travel_info
 from .models import Expense, Trip, TripBudget, TripMember
 
 User = get_user_model()
 
 
+# 환율 서비스 응답(1원당 현지 통화 금액): 1엔 = 약 9.09원, 1달러 = 1,400원
+ER_API = {
+    "result": "success",
+    "time_last_update_utc": "Wed, 21 Oct 2026 00:02:31 +0000",
+    "rates": {"KRW": 1, "JPY": 0.11, "USD": 0.000714285714, "EUR": 0.00064},
+}
+
+
 class ExpenseTestBase(APITestCase):
     def setUp(self):
+        cache.clear()  # 환율 캐시가 다른 테스트로 새지 않게
+        patcher = mock.patch("trips.travel_info._get_json", side_effect=AssertionError("테스트에서 외부 환율 API를 부르면 안 돼요"))
+        self.get_json = patcher.start()
+        self.addCleanup(patcher.stop)
         self.owner = User.objects.create_user(username="owner@example.com", email="owner@example.com")
         self.guest = User.objects.create_user(username="guest@example.com", email="guest@example.com")
         self.stranger = User.objects.create_user(username="stranger@example.com", email="stranger@example.com")
@@ -91,8 +106,8 @@ class ExpenseCrudTests(ExpenseTestBase):
             self.assertEqual(self.add(**body).status_code, status.HTTP_400_BAD_REQUEST, body)
         self.assertEqual(Expense.objects.count(), 0)
 
-    def test_currency_and_won_amount_are_decided_by_the_server(self):
-        created = self.add(currency="JPY", amount_krw=1, rate_per_krw="0.1")
+    def test_won_amount_and_rate_are_decided_by_the_server(self):
+        created = self.add(amount_krw=1, rate_per_krw="0.1")  # 보낸 환산 금액·환율은 무시한다.
         self.assertEqual(created.status_code, status.HTTP_201_CREATED)
         self.assertEqual((created.data["currency"], created.data["amount_krw"], created.data["rate_per_krw"]), ("KRW", 12000, None))
 
@@ -202,3 +217,135 @@ class ExpenseAccessTests(ExpenseTestBase):
         self.trip.delete()
         self.assertEqual(list(Expense.objects.values_list("title", flat=True)), ["다른 여행"])
         self.assertFalse(TripBudget.objects.exists())
+
+
+class MultiCurrencyTests(ExpenseTestBase):
+    def setUp(self):
+        super().setUp()
+        self.get_json.side_effect = None
+        self.get_json.return_value = ER_API
+
+    def test_foreign_expense_stores_rate_and_won_amount(self):
+        created = self.add(title="라멘", amount=1200, currency="JPY")
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        # 1200엔 / 0.11 = 10,909.09원 -> 10,909원
+        self.assertEqual((created.data["currency"], created.data["amount"], created.data["amount_krw"]), ("JPY", "1200.00", 10909))
+        self.assertEqual(created.data["rate_per_krw"], "0.11")
+        expense = Expense.objects.get()
+        self.assertEqual((expense.currency, expense.amount_krw), ("JPY", 10909))
+
+    def test_foreign_amounts_are_summed_in_won(self):
+        self.add(amount=1200, currency="JPY")  # 10,909원
+        self.add(amount="14.50", currency="USD")  # 14.5 / 0.000714285714 = 20,300.0000... -> 20,300원
+        self.add(amount=5000, currency="KRW")
+        data = self.client.get(self.list_url).data
+        self.assertEqual(data["total_krw"], 10909 + 20300 + 5000)
+        self.assertEqual(data["by_category"]["food"], 36209)
+
+    def test_rounding_is_half_up_to_the_won(self):
+        # 1엔(0.11) -> 9.0909원 -> 9원, 5원은 45.4545 -> 45원
+        self.assertEqual(self.add(amount=1, currency="JPY").data["amount_krw"], 9)
+        self.get_json.return_value = {**ER_API, "rates": {"JPY": 0.2, "KRW": 1}}
+        cache.clear()
+        self.assertEqual(self.add(amount=1, currency="JPY").data["amount_krw"], 5)  # 정확히 5원
+        self.get_json.return_value = {**ER_API, "rates": {"JPY": 0.4, "KRW": 1}}
+        cache.clear()
+        self.assertEqual(self.add(amount=1, currency="JPY").data["amount_krw"], 3)  # 2.5원 -> 3원(0.5 올림)
+
+    def test_decimal_places_follow_the_currency(self):
+        self.assertEqual(self.add(amount="1200.5", currency="JPY").status_code, status.HTTP_400_BAD_REQUEST)  # 엔은 정수
+        self.assertEqual(self.add(amount="14.505", currency="USD").status_code, status.HTTP_400_BAD_REQUEST)  # 달러는 소수 둘째까지
+        self.assertEqual(self.add(amount="14.5", currency="USD").status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.add(amount="12000.5", currency="KRW").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unsupported_currency_is_rejected(self):
+        self.assertEqual(self.add(currency="XXX").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.add(currency="").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.add(currency="jpy").data["currency"], "JPY")  # 소문자는 대문자로
+
+    def test_too_large_converted_amount_is_rejected(self):
+        self.assertEqual(self.add(amount="99999999999", currency="USD").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Expense.objects.count(), 0)
+
+    def test_editing_amount_keeps_the_original_rate(self):
+        created = self.add(amount=1200, currency="JPY")
+        self.get_json.return_value = {**ER_API, "rates": {"JPY": 0.2, "KRW": 1}}  # 그 뒤 환율이 바뀌어도
+        cache.clear()
+        updated = self.client.patch(f"/api/v1/expenses/{created.data['id']}/", {"amount": 2200}, format="json")
+        self.assertEqual((updated.data["rate_per_krw"], updated.data["amount_krw"]), ("0.11", 20000))  # 2200 / 0.11
+        self.client.patch(f"/api/v1/expenses/{created.data['id']}/", {"title": "라멘 세트"}, format="json")
+        self.assertEqual(Expense.objects.get().amount_krw, 20000)  # 이름만 고치면 금액·환율은 그대로
+
+    def test_changing_currency_applies_a_new_rate(self):
+        created = self.add(amount=1200, currency="JPY").data["id"]
+        url = f"/api/v1/expenses/{created}/"
+        usd = self.client.patch(url, {"currency": "USD", "amount": "10"}, format="json")
+        self.assertEqual((usd.data["currency"], usd.data["amount_krw"]), ("USD", 14000))
+        won = self.client.patch(url, {"currency": "KRW", "amount": 9000}, format="json")
+        self.assertEqual((won.data["currency"], won.data["rate_per_krw"], won.data["amount_krw"]), ("KRW", None, 9000))
+
+    def test_currency_change_must_fit_the_amount(self):
+        created = self.add(amount="14.5", currency="USD").data["id"]
+        response = self.client.patch(f"/api/v1/expenses/{created}/", {"currency": "JPY"}, format="json")  # 14.5엔은 불가
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Expense.objects.get().currency, "USD")
+
+
+class RateServiceFailureTests(ExpenseTestBase):
+    def stored_foreign_expense(self):
+        self.get_json.side_effect = None
+        self.get_json.return_value = ER_API
+        created = self.add(amount=1200, currency="JPY").data["id"]
+        cache.clear()
+        self.get_json.side_effect = travel_info.TravelInfoError("정보를 불러오지 못했어요.")
+        return created
+
+    def test_stored_expenses_stay_readable_when_the_rate_service_fails(self):
+        self.stored_foreign_expense()
+        data = self.client.get(self.list_url).data
+        self.assertEqual((data["total_krw"], data["expenses"][0]["amount_krw"], data["expenses"][0]["rate_per_krw"]), (10909, 10909, "0.11"))
+
+    def test_won_expenses_and_edits_work_without_the_rate_service(self):
+        created = self.stored_foreign_expense()
+        self.assertEqual(self.add(title="택시", amount=3000).status_code, status.HTTP_201_CREATED)
+        edited = self.client.patch(f"/api/v1/expenses/{created}/", {"amount": 2400}, format="json")  # 같은 통화는 저장된 환율로
+        self.assertEqual((edited.status_code, edited.data["amount_krw"]), (status.HTTP_200_OK, 21818))
+
+    def test_new_foreign_expense_fails_clearly_without_the_rate_service(self):
+        self.stored_foreign_expense()
+        response = self.add(amount=10, currency="USD")
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn("환율", response.data["detail"])
+        self.assertEqual(Expense.objects.count(), 1)  # 아무것도 저장하지 않는다.
+
+    def test_unknown_currency_rate_is_a_service_error(self):
+        self.get_json.side_effect = None
+        self.get_json.return_value = {**ER_API, "rates": {"KRW": 1}}  # 제공처 응답에 엔이 없는 경우
+        self.assertEqual(self.add(amount=10, currency="JPY").status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class ExpenseCurrenciesTests(ExpenseTestBase):
+    def url(self):
+        return f"/api/v1/trips/{self.trip.id}/expense-currencies/"
+
+    def test_lists_currencies_with_trip_currencies_first_info(self):
+        self.get_json.side_effect = None
+        self.get_json.return_value = ER_API
+        data = self.client.get(self.url()).data
+        self.assertEqual(data["trip_currencies"], ["JPY"])  # 도쿄 여행
+        by_code = {item["currency"]: item for item in data["currencies"]}
+        self.assertEqual({"JPY", "USD", "EUR"}, set(by_code))  # 제공처에 환율이 있는 통화만
+        self.assertEqual((by_code["JPY"]["decimals"], by_code["USD"]["decimals"]), (0, 2))
+        self.assertEqual(by_code["JPY"]["per_krw"], "0.11")
+        self.assertTrue(by_code["USD"]["flag"] and by_code["USD"]["name"])
+        self.assertEqual(data["updated_at"], ER_API["time_last_update_utc"])
+
+    def test_service_error_and_access(self):
+        self.get_json.side_effect = travel_info.TravelInfoError("정보를 불러오지 못했어요.")
+        self.assertEqual(self.client.get(self.url()).status_code, status.HTTP_502_BAD_GATEWAY)
+        self.client.force_authenticate(self.stranger)
+        self.assertEqual(self.client.get(self.url()).status_code, status.HTTP_404_NOT_FOUND)
+        self.client.force_authenticate(self.guest)
+        self.get_json.side_effect = None
+        self.get_json.return_value = ER_API
+        self.assertEqual(self.client.get(self.url()).status_code, status.HTTP_200_OK)

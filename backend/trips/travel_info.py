@@ -98,6 +98,11 @@ def _krw_rates():
     return result
 
 
+def krw_rates():
+    """1원당 각 통화 금액과 기준 시각(6시간 캐시). 경비 관리도 같은 환율을 쓴다."""
+    return _krw_rates()
+
+
 def exchange_rates(city_codes):
     """
     여행 도시들의 현지 통화 환율 목록(중복 통화 제외, 도시 순서 유지).
