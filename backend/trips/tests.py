@@ -384,6 +384,15 @@ class TravelInfoTests(APITestCase):
             [(rate["currency"], rate["unit"], rate["krw"]) for rate in response.data["rates"]],
             [("JPY", 100, 889.68), ("EUR", 1, 1562.5)],
         )
+        # 환율 계산기용: 1원당 현지 통화 금액(반올림 없음)이 제공처 값 그대로 내려가고, 표시용 krw와 맞는다.
+        for rate in response.data["rates"]:
+            self.assertGreater(rate["per_krw"], 0)
+            self.assertAlmostEqual(rate["unit"] / rate["per_krw"], rate["krw"], places=2)
+        self.assertEqual({rate["currency"]: rate["per_krw"] for rate in response.data["rates"]},
+                         {c: self.ER_API["rates"][c] for c in ("JPY", "EUR")})
+        # 여행지가 여럿일 때 계산기에서 고르는 이름: 같은 통화를 쓰는 도시는 한 통화에 묶인다.
+        self.assertEqual({rate["currency"]: rate["cities"] for rate in response.data["rates"]},
+                         {"JPY": ["도쿄", "오사카"], "EUR": ["파리"]})
 
     def test_requires_login(self):
         self.client.force_authenticate(None)

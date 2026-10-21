@@ -287,8 +287,12 @@ export interface ExchangeRate {
   flag: string;
   /** 표시 단위 (엔·동 등은 100) */
   unit: number;
-  /** unit 만큼의 원화 금액 */
+  /** unit 만큼의 원화 금액 (표시용, 소수 2자리 반올림) */
   krw: number;
+  /** 1원당 현지 통화 금액(반올림 없음). 환율 계산기가 쓴다. 없으면 krw로 계산한다. */
+  per_krw?: number;
+  /** 이 통화를 쓰는 여행 도시 이름 (예: ["도쿄", "오사카"]). 환율 계산기에서 여행지를 고를 때 쓴다. */
+  cities?: string[];
 }
 
 export interface ExchangeRatesResponse {
