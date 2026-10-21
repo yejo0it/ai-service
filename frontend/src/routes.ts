@@ -8,7 +8,8 @@ export const ROUTES = {
   MY_TRIPS: "/trips",
   PACKING: "/packing",
   MYPAGE: "/mypage",
-  TRIP_DETAIL: "/trips/:tripId",
+  /** 여행 상세. 뒤에 탭(expenses·checklist)이 붙을 수 있고, 없으면 여행 일정 탭 */
+  TRIP_DETAIL: "/trips/:tripId/:tab?",
   TRIP_INVITE: "/trips/invite/:token",
   LOGIN: "/login",
   SIGNUP: "/signup",
@@ -32,6 +33,18 @@ export interface HomeLocationState {
 
 /** "/trips/12" */
 export const tripDetailPath = (tripId: number) => `/trips/${tripId}`;
+
+/** 여행 상세 탭: 여행 일정(기본) · 경비 관리 · 여행 체크리스트 */
+export type TripTab = "schedule" | "expenses" | "checklist";
+
+const TRIP_TAB_SEGMENTS: Record<TripTab, string> = { schedule: "", expenses: "/expenses", checklist: "/checklist" };
+
+/** "/trips/12/checklist" (여행 일정은 "/trips/12") */
+export const tripTabPath = (tripId: number, tab: TripTab) => `${tripDetailPath(tripId)}${TRIP_TAB_SEGMENTS[tab]}`;
+
+/** 주소의 탭 조각 -> 탭. 알 수 없는 조각이면 null */
+export const tripTabFromSegment = (segment?: string): TripTab | null =>
+  (Object.keys(TRIP_TAB_SEGMENTS) as TripTab[]).find((tab) => TRIP_TAB_SEGMENTS[tab] === (segment ? `/${segment}` : "")) ?? null;
 
 const TRIP_INVITE_PREFIX = "/trips/invite/";
 

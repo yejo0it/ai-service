@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deleteItineraryItem,
   getDayLegs,
@@ -9,9 +9,10 @@ import {
   reorderItinerary,
   toErrorMessage,
 } from "../api/client";
-import { ROUTES } from "../routes";
+import { ROUTES, tripTabFromSegment, tripTabPath, type TripTab } from "../routes";
 import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
+import PackingNote from "../packing/PackingNotePage";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
@@ -419,15 +420,62 @@ function InviteButton({ trip }: { trip: Trip }) {
   );
 }
 
+const TRIP_TABS: { tab: TripTab; label: string; icon: string }[] = [
+  { tab: "schedule", label: "여행 일정", icon: "fas fa-route" },
+  { tab: "expenses", label: "경비 관리", icon: "fas fa-wallet" },
+  { tab: "checklist", label: "여행 체크리스트", icon: "fas fa-clipboard-list" },
+];
+
+/** 여행 상세 탭. 주소로 구분하므로 새로고침·직접 접근해도 선택이 유지된다. 스크롤 없이 한 줄에 나눠 담는다. */
+function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
+  return (
+    <nav aria-label="여행 상세 탭" className="mb-6 flex border-b border-slate-200 sm:gap-1">
+      {TRIP_TABS.map(({ tab, label, icon }) => {
+        const active = tab === selected;
+        return (
+          <Link
+            key={tab}
+            to={tripTabPath(tripId, tab)}
+            aria-current={active ? "page" : undefined}
+            className={`-mb-px flex flex-1 items-center justify-center gap-2 border-b-2 px-1 py-2.5 text-center text-[13px] font-semibold sm:flex-none sm:px-3 sm:text-sm transition-colors ${
+              active
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
+            }`}
+          >
+            <i className={`${icon} hidden w-4 text-center text-xs sm:inline`} aria-hidden="true" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** 경비 관리는 아직 만들지 않았다. 탭만 먼저 열어 둔다. */
+function ExpensesPlaceholder() {
+  return (
+    <section aria-label="경비 관리" className={`${CARD_CLASS} py-14 text-center`}>
+      <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+        <i className="fas fa-wallet text-lg" aria-hidden="true" />
+      </span>
+      <p className="mt-3 font-semibold text-slate-800">경비 관리는 준비 중이에요</p>
+      <p className="mt-1 text-sm text-slate-500">여행 경비를 기록하고 한눈에 볼 수 있도록 만들고 있어요.</p>
+    </section>
+  );
+}
+
 /**
  * `/trips/:tripId` 여행 상세.
- * - 제목 오른쪽 끝에 여행 체크리스트 바로가기 · 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
+ * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`, 준비 중) · 여행 체크리스트(`/checklist`)
+ * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
  * - 지도 핀 번호는 일정 카드 순서를 따르고, 카드를 끌어 순서를 바꾸면 번호도 바뀐다.
  */
 export default function TripDetailPage() {
-  const { tripId } = useParams();
+  const { tripId, tab: tabSegment } = useParams();
+  const tab = tripTabFromSegment(tabSegment);
   const state = useLocation().state as TripDetailState | null;
   const [trip, setTrip] = useState<Trip | null>(state?.trip ?? null);
   const [items, setItems] = useState<ItineraryItem[] | null>(null);
@@ -472,7 +520,7 @@ export default function TripDetailPage() {
   const [legs, setLegs] = useState<Map<string, ItineraryLeg>>(new Map());
   const [legsLoading, setLegsLoading] = useState(false);
   useEffect(() => {
-    if (!trip || !day || dayItems.length < 2) {
+    if (tab !== "schedule" || !trip || !day || dayItems.length < 2) {
       setLegs(new Map());
       setLegsLoading(false);
       return;
@@ -489,7 +537,7 @@ export default function TripDetailPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [trip?.id, day, dayItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, trip?.id, day, dayItems]); // eslint-disable-line react-hooks/exhaustive-deps
   // 그날 좌표가 있는 위치가 없으면 여행 도시를 대신 보여준다.
   const fallbackPoints = useMemo(() => (trip && points.length === 0 ? cityPoints(trip) : []), [trip, points]);
   const mapPoints = points.length > 0 ? points : fallbackPoints;
@@ -554,6 +602,8 @@ export default function TripDetailPage() {
     setDayIndex(Math.max(0, dates.indexOf(addedDay)));
     setPanel(null);
   };
+
+  if (!tab) return <Navigate to={`/trips/${tripId}`} replace />;
 
   if (!trip) {
     return (
@@ -622,74 +672,77 @@ export default function TripDetailPage() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          <Link to={`${ROUTES.PACKING}?trip=${trip.id}`} className={`${OUTLINE_BUTTON} shrink-0 whitespace-nowrap`}>
-            <i className="fas fa-clipboard-list text-xs" aria-hidden="true" />
-            여행 체크리스트
-          </Link>
           <InviteButton trip={trip} />
         </div>
       </header>
 
+      <TripTabs tripId={trip.id} selected={tab} />
+
+      {tab === "expenses" && <ExpensesPlaceholder />}
+      {tab === "checklist" && <PackingNote key={trip.id} trip={trip} />}
+
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <section aria-label="여행 지도" className={`${CARD_CLASS} order-2 flex flex-col lg:order-1`}>
-          <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="text-base font-bold text-slate-900">{day ? `${dayLabel(dayIndex)} 이동` : "이동 경로"}</h2>
-            {points.length === 0 && fallbackPoints.length > 0 && (
-              <span className="text-xs text-slate-400">이 날 위치가 없어 여행 도시를 표시해요</span>
-            )}
-          </div>
-          <TripMap points={mapPoints} className="h-72 sm:h-96 lg:h-auto lg:min-h-[24rem] lg:flex-1" />
-        </section>
+      {tab === "schedule" && (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          <section aria-label="여행 지도" className={`${CARD_CLASS} order-2 flex flex-col lg:order-1`}>
+            <div className="mb-3 flex items-baseline justify-between gap-2">
+              <h2 className="text-base font-bold text-slate-900">{day ? `${dayLabel(dayIndex)} 이동` : "이동 경로"}</h2>
+              {points.length === 0 && fallbackPoints.length > 0 && (
+                <span className="text-xs text-slate-400">이 날 위치가 없어 여행 도시를 표시해요</span>
+              )}
+            </div>
+            <TripMap points={mapPoints} className="h-72 sm:h-96 lg:h-auto lg:min-h-[24rem] lg:flex-1" />
+          </section>
 
-        <div className="order-1 lg:order-2">
-          <TripBasics
-            trip={trip}
-            items={items}
-            onAdd={
-              items === null
-                ? undefined
-                : (kind) => {
-                    setAddKind(kind);
-                    setPanel("add");
-                  }
-            }
-          />
-        </div>
-
-        <section aria-label="여행 경로" className={`${CARD_CLASS} order-3 space-y-5 lg:col-span-2`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-base font-bold text-slate-900">여행 경로</h2>
-            <RouteMenu
-              onOpen={(next) => {
-                setAddKind("sight");
-                setPanel(next);
-              }}
+          <div className="order-1 lg:order-2">
+            <TripBasics
+              trip={trip}
+              items={items}
+              onAdd={
+                items === null
+                  ? undefined
+                  : (kind) => {
+                      setAddKind(kind);
+                      setPanel("add");
+                    }
+              }
             />
           </div>
-          <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
-          {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
-          <div className="lg:max-w-3xl">
-            {items === null ? (
-              error ? (
-                <p className="text-sm text-rose-600">{error}</p>
-              ) : (
-                <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
-              )
-            ) : (
-              <TripItinerary
-                items={dayItems}
-                numbers={numbers}
-                onReorder={onReorder}
-                onRemove={onRemove}
-                onEdit={setEditing}
-                legs={legs}
-                legsLoading={legsLoading}
+
+          <section aria-label="여행 경로" className={`${CARD_CLASS} order-3 space-y-5 lg:col-span-2`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-base font-bold text-slate-900">여행 경로</h2>
+              <RouteMenu
+                onOpen={(next) => {
+                  setAddKind("sight");
+                  setPanel(next);
+                }}
               />
-            )}
-          </div>
-        </section>
-      </div>
+            </div>
+            <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
+            {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
+            <div className="lg:max-w-3xl">
+              {items === null ? (
+                error ? (
+                  <p className="text-sm text-rose-600">{error}</p>
+                ) : (
+                  <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
+                )
+              ) : (
+                <TripItinerary
+                  items={dayItems}
+                  numbers={numbers}
+                  onReorder={onReorder}
+                  onRemove={onRemove}
+                  onEdit={setEditing}
+                  legs={legs}
+                  legsLoading={legsLoading}
+                />
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {editing && (
         <EditItemDrawer item={editing} trip={trip} dates={dates} onClose={closeEdit} onSaved={onItemSaved} />
