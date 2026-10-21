@@ -41,6 +41,7 @@ import {
 } from "../components/calendar";
 import { Field, SuggestInput } from "../components/formFields";
 import { findCityByName, searchCities, type CityOption } from "./cities";
+import { orderDestinations } from "./destinationOrder";
 import { AirlineFlightFields, AirportInput, EMPTY_AIRPORT } from "./flightFields";
 import { StayRangeField, isNightTaken, stayLimitFrom } from "./stayRange";
 
@@ -136,13 +137,27 @@ export function returnAirlineOf(data: OnboardingData): AirlineSelection {
 const airportPayload = ({ airport }: AirportDraft): Airport | null =>
   airport ? { code: airport.code, name: airport.name } : null;
 
+/**
+ * 여행지 순서를 숙소(체크인 순)·항공(입국·출국 도시)에 맞춘 결과. 저장할 때 이 순서를 쓴다.
+ * (규칙은 destinationOrder.ts 참고)
+ */
+export function planDestinationOrder(data: OnboardingData) {
+  const usesFlight = data.dateMode === "flight";
+  return orderDestinations(
+    data.destinations.filter((dest) => dest.city.trim()),
+    data.hotels,
+    usesFlight ? data.arrivalAirport.airport?.city : undefined,
+    usesFlight ? data.returnDepartureAirport.airport?.city : undefined,
+  );
+}
+
 /** 누적된 상태를 DRF payload로 변환 */
 export function buildTripPayload(data: OnboardingData): TripPayload {
   const usesFlight = data.dateMode === "flight";
   const payload: TripPayload = {
-    // 빈 줄은 제외하고 [{city, city_code}] 형태로 보낸다.
-    destinations: data.destinations
-      .map(({ city, city_code }) => ({
+    // 숙소·항공 순서에 맞춘 여행지를 [{city, city_code}] 형태로 보낸다(빈 줄은 제외).
+    destinations: planDestinationOrder(data)
+      .destinations.map(({ city, city_code }) => ({
         city: city.trim(),
         city_code: (city_code || "").trim(),
       }))
@@ -1137,7 +1152,8 @@ function syncHotelsWithDestinations(
 
 interface OnboardingWizardProps {
   /** 여행 저장이 끝나면 만들어진 여행으로 호출한다. */
-  onComplete?: (trip: Trip) => void;
+  /** notice: 여행지 순서를 바꿨을 때의 안내 문구 */
+  onComplete?: (trip: Trip, notice?: string) => void;
   /** 저장하지 않고 닫기 */
   onClose: () => void;
 }
@@ -1180,8 +1196,12 @@ export default function OnboardingWizard({ onComplete, onClose }: OnboardingWiza
     setSubmitting(true);
     setSubmitError("");
     try {
+      const order = planDestinationOrder(data);
       const trip = await createTrip(buildTripPayload(data));
-      onComplete?.(trip);
+      onComplete?.(
+        trip,
+        order.changed ? `여행지 순서를 숙소·항공 일정에 맞춰 ${order.after.join(" → ")}(으)로 정리했어요.` : undefined,
+      );
     } catch (error) {
       setSubmitError(toErrorMessage(error));
     } finally {

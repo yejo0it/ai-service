@@ -98,16 +98,26 @@ def _krw_rates():
     return result
 
 
+def krw_rates():
+    """1원당 각 통화 금액과 기준 시각(6시간 캐시). 경비 관리도 같은 환율을 쓴다."""
+    return _krw_rates()
+
+
 def exchange_rates(city_codes):
     """
     여행 도시들의 현지 통화 환율 목록(중복 통화 제외, 도시 순서 유지).
     국내 도시(원화)와 모르는 도시는 제외한다. krw는 표시 단위(unit)당 원화 금액.
     """
     currencies = []
+    city_names = {}  # 통화 -> 그 통화를 쓰는 여행 도시 이름(환율 계산기에서 여행지를 고르는 데 쓴다)
     for code in city_codes:
         currency = cities.city_currency(code)
-        if currency and currency != "KRW" and currency not in currencies:
-            currencies.append(currency)
+        if currency and currency != "KRW":
+            if currency not in currencies:
+                currencies.append(currency)
+            name = (cities.get_city(code) or {}).get("name")
+            if name and name not in city_names.setdefault(currency, []):
+                city_names[currency].append(name)
     if not currencies:
         return {"rates": [], "updated_at": ""}
 
@@ -127,6 +137,10 @@ def exchange_rates(city_codes):
                 "flag": flag,
                 "unit": unit,
                 "krw": round(unit / per_krw, 2),
+                # 1원당 현지 통화 금액(반올림 없음). 표시용 krw는 소수 2자리로 반올림돼 동·루피아처럼 값이 작은 통화는 계산이
+                # 최대 0.1% 어긋나므로, 환율 계산기는 이 값을 쓴다.
+                "per_krw": per_krw,
+                "cities": city_names.get(currency, []),
             }
         )
     return {"rates": rates, "updated_at": krw["updated_at"]}

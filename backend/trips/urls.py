@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from . import expense_views as expense
 from . import invitation_views as invitation
 from . import itinerary_views as itinerary
 from .views import (
@@ -28,6 +29,12 @@ urlpatterns = [
     path("trips/<int:pk>/itinerary/init/", itinerary.ItineraryInitView.as_view(), name="trip-itinerary-init"),
     path("trips/<int:pk>/itinerary/reorder/", itinerary.ItineraryReorderView.as_view(), name="trip-itinerary-reorder"),
     path("trips/<int:pk>/packing-note/", itinerary.PackingNoteView.as_view(), name="trip-packing-note"),
+    # 여행 경비 (router의 trips/{pk}/ 보다 먼저 둔다)
+    path("trips/<int:pk>/expenses/", expense.ExpenseListView.as_view(), name="trip-expenses"),
+    path("trips/<int:pk>/budget/", expense.BudgetView.as_view(), name="trip-budget"),
+    path("trips/<int:pk>/expense-currencies/", expense.ExpenseCurrenciesView.as_view(), name="trip-expense-currencies"),
+    path("trips/<int:pk>/settlement/", expense.SettlementView.as_view(), name="trip-settlement"),
+    path("expenses/<int:expense_id>/", expense.ExpenseView.as_view(), name="expense"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),
     # 일행 초대 (router의 trips/{pk}/ 보다 먼저 둔다)

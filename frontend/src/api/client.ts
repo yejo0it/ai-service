@@ -21,6 +21,11 @@ import type {
   CheckEmailResponse,
   CityWeather,
   ExchangeRatesResponse,
+  Expense,
+  ExpenseCurrencies,
+  ExpensePayload,
+  ExpensesResponse,
+  Settlement,
   FindIdPayload,
   FindIdResponse,
   Hotel,
@@ -233,6 +238,30 @@ export const updatePackingItem = (packingId: number, payload: { done: boolean })
   api.patch<PackingItem>(`/packing-items/${packingId}/`, payload).then((res) => res.data);
 
 export const deletePackingItem = (packingId: number) => api.delete<void>(`/packing-items/${packingId}/`);
+
+/** 여행 경비: 예산·총지출·남은 예산·분류별 합계와 지출 목록 */
+export const getExpenses = (tripId: number) =>
+  api.get<ExpensesResponse>(`/trips/${tripId}/expenses/`).then((res) => res.data);
+
+/** 지출 입력에서 고를 통화와 지금 환율. 환율 서비스 오류면 실패한다(원화 입력은 그대로 가능). */
+export const getExpenseCurrencies = (tripId: number) =>
+  api.get<ExpenseCurrencies>(`/trips/${tripId}/expense-currencies/`).then((res) => res.data);
+
+/** 결제자·분담 인원을 정한 지출 기준의 사용자별 정산과 송금 안내 */
+export const getSettlement = (tripId: number) =>
+  api.get<Settlement>(`/trips/${tripId}/settlement/`).then((res) => res.data);
+
+export const addExpense = (tripId: number, payload: ExpensePayload) =>
+  api.post<Expense>(`/trips/${tripId}/expenses/`, payload).then((res) => res.data);
+
+export const updateExpense = (expenseId: number, payload: Partial<ExpensePayload>) =>
+  api.patch<Expense>(`/expenses/${expenseId}/`, payload).then((res) => res.data);
+
+export const deleteExpense = (expenseId: number) => api.delete<void>(`/expenses/${expenseId}/`);
+
+/** 총예산 설정·수정. null이면 예산을 지운다. */
+export const setBudget = (tripId: number, amountKrw: number | null) =>
+  api.put<{ budget_krw: number | null }>(`/trips/${tripId}/budget/`, { amount_krw: amountKrw }).then((res) => res.data);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>

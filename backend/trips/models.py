@@ -295,3 +295,111 @@ class TripInvitation(models.Model):
     @property
     def is_valid(self) -> bool:
         return self.expires_at > timezone.now()
+
+
+class TripBudget(TimeStampedModel):
+    """여행 전체 예산(원). 여행마다 하나이며, 만든 회원과 일행이 함께 보고 고친다."""
+
+    # 예산과 지출 한 건의 최대 금액(원). 지출 통화와 관계없이 예산은 원화로 관리한다.
+    MAX_AMOUNT_KRW = 99_999_999_999
+
+    trip = models.OneToOneField(Trip, related_name="budget", on_delete=models.CASCADE)
+    amount_krw = models.PositiveBigIntegerField("총예산(원)")
+
+    class Meta:
+        verbose_name = "여행 예산"
+        verbose_name_plural = "여행 예산"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id}: {self.amount_krw:,}원"
+
+
+class Expense(TimeStampedModel):
+    """
+    여행 지출 내역. 금액은 Decimal/정수로만 다룬다(부동소수점 오차 없음).
+    - amount·currency: 입력한 금액과 통화. amount_krw: 원화 환산 금액(정수 원).
+    - rate_per_krw: 지출 당시 적용한 환율(1원당 현지 통화 금액). 원화 지출은 비어 있다.
+      저장해 두므로 환율 API가 멈춰도 기존 내역은 그대로 조회된다.
+    - payer: 결제한 회원. 회원이 탈퇴해도 내역과 정산이 어긋나지 않게 이름(payer_name)과 번호(payer_ref)를 함께 남긴다.
+    - shares: 비용을 나누는 인원(ExpenseShare). 비어 있으면 정산하지 않는 지출이다(분담 인원을 정하기 전의 내역).
+    """
+
+    class Category(models.TextChoices):
+        TRANSPORT = "transport", "교통"
+        LODGING = "lodging", "숙박"
+        FOOD = "food", "식비"
+        SIGHTSEEING = "sightseeing", "관광"
+        SHOPPING = "shopping", "쇼핑"
+        ETC = "etc", "기타"
+
+    class SplitMethod(models.TextChoices):
+        EQUAL = "equal", "균등 분할"
+        CUSTOM = "custom", "직접 입력"
+
+    # 한 여행에 둘 수 있는 지출 수
+    MAX_PER_TRIP = 500
+    MAX_AMOUNT_KRW = TripBudget.MAX_AMOUNT_KRW
+
+    trip = models.ForeignKey(Trip, related_name="expenses", on_delete=models.CASCADE)
+    title = models.CharField("지출명", max_length=60)
+    amount = models.DecimalField("금액", max_digits=14, decimal_places=2)
+    currency = models.CharField("통화", max_length=3, default="KRW")
+    rate_per_krw = models.DecimalField("적용 환율(1원당)", max_digits=24, decimal_places=12, null=True, blank=True)
+    amount_krw = models.PositiveBigIntegerField("원화 환산 금액")
+    spent_on = models.DateField("지출일")
+    category = models.CharField("분류", max_length=12, choices=Category.choices, default=Category.ETC)
+    memo = models.CharField("메모", max_length=200, blank=True, default="")
+    payer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="paid_expenses",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    payer_name = models.CharField("결제자 이름", max_length=30, blank=True, default="")
+    # 분담 방식: 균등 분할 또는 사람마다 금액을 직접 입력(ExpenseShare.custom_amount)
+    split_method = models.CharField("분담 방식", max_length=6, choices=SplitMethod.choices, default="equal")
+    # 결제자의 회원 번호 사본. 회원이 탈퇴해 payer가 비어도 정산에서 같은 사람으로 계속 구분한다.
+    payer_ref = models.PositiveIntegerField("결제자 번호", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "여행 지출"
+        verbose_name_plural = "여행 지출"
+        ordering = ("-spent_on", "-id")
+        indexes = [models.Index(fields=("trip", "spent_on"), name="expense_trip_spent_on_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.spent_on} {self.title} {self.amount_krw:,}원"
+
+
+class ExpenseShare(models.Model):
+    """
+    지출을 나누는 인원 한 명. 지출 금액은 이 인원끼리 균등하게 나눈다(계산은 trips.settlement).
+    균등 분할의 부담액은 저장하지 않고 읽을 때 계산하므로 지출 금액·인원이 바뀌면 정산도 바로 다시 계산된다.
+    직접 입력은 사람마다 입력한 금액(custom_amount)의 비율로 원화 부담액을 읽을 때 계산한다.
+    회원이 탈퇴해도 번호(user_ref)와 이름(user_name)이 남아 내역과 정산이 유지된다.
+    """
+
+    expense = models.ForeignKey(Expense, related_name="shares", on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="expense_shares",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    user_ref = models.PositiveIntegerField("회원 번호")
+    user_name = models.CharField("이름", max_length=30, blank=True, default="")
+    # 분담 방식이 직접 입력일 때 이 사람이 부담하는 금액(지출 통화 기준). 균등 분할이면 비어 있다.
+    custom_amount = models.DecimalField("직접 입력 금액", max_digits=14, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "지출 분담 인원"
+        verbose_name_plural = "지출 분담 인원"
+        ordering = ("user_ref",)
+        constraints = [
+            models.UniqueConstraint(fields=("expense", "user_ref"), name="expense_share_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.expense_id} - {self.user_name}"

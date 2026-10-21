@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
 import { addPackingItem, deletePackingItem, getPackingItems, toErrorMessage, updatePackingItem } from "../api/client";
-import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
-import { ROUTES, tripDetailPath, type HomeLocationState } from "../routes";
 import type { PackingCategory, PackingItem, Trip } from "../types/api";
-import { dDayLabel, nextTrip, tripShortTitle, tripStatus } from "../trips/tripUtils";
-import useTrips from "../trips/useTrips";
-import { diffDays, formatMonthDay, formatShortDot, todayISODate } from "../utils/date";
-
-const defaultTrip = (trips: Trip[]) => nextTrip(trips, todayISODate()) ?? trips[trips.length - 1] ?? null;
+import { dDayLabel, tripStatus } from "../trips/tripUtils";
+import { todayISODate } from "../utils/date";
 
 const PACKING_CATEGORIES: { key: PackingCategory; label: string; icon: string; example: string }[] = [
   { key: "todo", label: "해야 할 일", icon: "fas fa-clipboard-check", example: "전망대 입장권 예약하기" },
@@ -28,14 +22,8 @@ const ddayBadge = (trip: Trip) => {
   return tripStatus(trip, today) === "past" ? null : dDayLabel(trip, today);
 };
 
-/** "11.30 – 12.3 · 3박 4일" */
-const periodLabel = (trip: Trip) => {
-  const nights = diffDays(trip.start_date, trip.end_date);
-  const range = `${formatShortDot(trip.start_date)} – ${formatShortDot(trip.end_date)}`;
-  return nights > 0 ? `${range} · ${nights}박 ${nights + 1}일` : `${range} · 당일`;
-};
-
-function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[]; onTripChange: (id: string) => void }) {
+/** 여행 체크리스트. 여행 상세의 `/trips/:id/checklist` 탭에 그린다. */
+export default function PackingNote({ trip }: { trip: Trip }) {
   const [items, setItems] = useState<PackingItem[] | null>(null);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Partial<Record<PackingCategory, string>>>({});
@@ -122,30 +110,7 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
     <div className="grid items-start gap-8 lg:grid-cols-[300px_minmax(0,1fr)]">
       {/* 왼쪽 요약 사이드바 */}
       <aside className="flex flex-col gap-5 lg:sticky lg:top-24">
-        <h1 className="text-[28px] font-extrabold leading-10 tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
         <div className="flex flex-col gap-[18px] rounded-[18px] border border-slate-200 bg-white p-5">
-          <div className="flex flex-col gap-2">
-            <label htmlFor="packing-trip" className="sr-only">여행 선택</label>
-            <select
-              id="packing-trip"
-              value={trip.id}
-              onChange={(e) => onTripChange(e.target.value)}
-              className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            >
-              {trips.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {tripShortTitle(t)} · {formatMonthDay(t.start_date)}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="text-slate-500">{periodLabel(trip)}</span>
-              <Link to={tripDetailPath(trip.id)} className="font-medium text-indigo-600 hover:underline">여행 상세 보기</Link>
-            </div>
-          </div>
-
-          <hr className="border-slate-100" />
-
           <div>
             <div className="flex items-baseline justify-between">
               <span className="text-[44px] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
@@ -304,47 +269,6 @@ function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[];
           })
         )}
       </main>
-    </div>
-  );
-}
-
-export default function PackingNotePage() {
-  const trips = useTrips();
-  const [params, setParams] = useSearchParams();
-
-  if (trips.status === "loading") {
-    return (
-      <div className={`${PAGE_CONTAINER_CLASS} py-8`}>
-        <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />
-      </div>
-    );
-  }
-  if (trips.status === "error") {
-    return <p className={`${PAGE_CONTAINER_CLASS} py-8 text-sm text-rose-600`}>{trips.message}</p>;
-  }
-
-  const selected = trips.trips.find((t) => String(t.id) === params.get("trip")) ?? defaultTrip(trips.trips);
-
-  return (
-    <div className={`${PAGE_CONTAINER_CLASS} pb-14 pt-8`}>
-      {!selected ? (
-        <>
-          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
-            <p className="text-sm text-slate-600">아직 여행이 없어요.</p>
-            <Link to={ROUTES.HOME} state={{ newTrip: true } satisfies HomeLocationState} className="mt-3 inline-block text-sm font-semibold text-indigo-600">
-              새 여행 만들기
-            </Link>
-          </div>
-        </>
-      ) : (
-        <PackingNote
-          key={selected.id}
-          trip={selected}
-          trips={trips.trips}
-          onTripChange={(id) => setParams({ trip: id }, { replace: true })}
-        />
-      )}
     </div>
   );
 }

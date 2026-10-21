@@ -287,8 +287,12 @@ export interface ExchangeRate {
   flag: string;
   /** 표시 단위 (엔·동 등은 100) */
   unit: number;
-  /** unit 만큼의 원화 금액 */
+  /** unit 만큼의 원화 금액 (표시용, 소수 2자리 반올림) */
   krw: number;
+  /** 1원당 현지 통화 금액(반올림 없음). 환율 계산기가 쓴다. 없으면 krw로 계산한다. */
+  per_krw?: number;
+  /** 이 통화를 쓰는 여행 도시 이름 (예: ["도쿄", "오사카"]). 환율 계산기에서 여행지를 고를 때 쓴다. */
+  cities?: string[];
 }
 
 export interface ExchangeRatesResponse {
@@ -393,6 +397,73 @@ export interface PackingItem {
   text: string;
   done: boolean;
   is_default: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * 여행 경비
+ * ------------------------------------------------------------------ */
+
+export type ExpenseCategory = "transport" | "lodging" | "food" | "sightseeing" | "shopping" | "etc";
+
+/** 지출 한 건. 금액은 원 단위 정수(문자열로 오는 amount는 입력 통화 기준)다. */
+export interface Expense {
+  id: number;
+  title: string;
+  /** 입력한 금액 (서버가 Decimal 문자열로 보낸다) */
+  amount: string;
+  currency: string;
+  /** 원화 환산 금액 */
+  amount_krw: number;
+  /** 지출 당시 적용한 환율(1원당 현지 통화 금액). 원화 지출은 null */
+  rate_per_krw: string | null;
+  spent_on: ISODate;
+  category: ExpenseCategory;
+  memo: string;
+  /** 결제자 회원 번호. 탈퇴한 결제자도 같은 번호로 남는다. */
+  payer_id: number | null;
+  payer_name: string;
+  /** 비용을 나누는 인원과 각자의 부담액(균등 분할, 나머지는 1원씩). 분담 인원을 정하지 않은 지출은 빈 배열 */
+  participants: ExpenseParticipant[];
+  /** 분담 방식: 균등 분할 또는 사람마다 금액을 직접 입력 */
+  split_method: SplitMethod;
+}
+
+export type SplitMethod = "equal" | "custom";
+
+export interface ExpenseParticipant {
+  id: number;
+  name: string;
+  share_krw: number;
+  /** 직접 입력일 때 입력한 금액(지출 통화 기준, Decimal 문자열). 균등 분할이면 null */
+  amount: string | null;
+}
+
+/** 지출 목록과 예산 요약. 합계는 서버가 정수 원으로 계산한다. */
+export interface ExpensesResponse {
+  /** 총예산. 설정하지 않았으면 null */
+  budget_krw: number | null;
+  total_krw: number;
+  /** 남은 예산(초과하면 음수). 예산이 없으면 null */
+  remaining_krw: number | null;
+  by_category: Record<ExpenseCategory, number>;
+  expenses: Expense[];
+}
+
+export interface ExpensePayload {
+  title: string;
+  /** 입력 통화 기준 금액(문자열로 보내 소수 오차를 피한다) */
+  amount: string;
+  currency: string;
+  spent_on: ISODate;
+  category: ExpenseCategory;
+  memo: string;
+  /** 결제자 회원 번호. 보내지 않으면 등록한 사람(수정할 때는 그대로) */
+  payer_id?: number;
+  /** 비용을 나눌 회원 번호. 보내지 않으면 그대로(새 지출은 나누지 않는 지출) */
+  participant_ids?: number[];
+  /** 분담 방식. 직접 입력이면 participant_amounts로 사람마다 금액을 보낸다(합계는 지출 금액과 같아야 한다). */
+  split_method?: SplitMethod;
+  participant_amounts?: { id: number; amount: string }[];
 }
 
 export interface ChatTurn {
@@ -548,4 +619,51 @@ export interface ItineraryLeg {
   /** 요금 표기 (예: "¥253"). 모르면 null */
   fare_label: string | null;
   steps: LegStep[];
+}
+
+/** 지출에 쓸 수 있는 통화 한 개와 지금 환율 */
+export interface ExpenseCurrency {
+  currency: string;
+  name: string;
+  flag: string;
+  /** 소수 자릿수(엔·동은 0, 그 밖은 2) */
+  decimals: number;
+  /** 1원당 현지 통화 금액(Decimal 문자열) */
+  per_krw: string;
+}
+
+export interface ExpenseCurrencies {
+  /** 이 여행 도시들의 통화(원화 제외) */
+  trip_currencies: string[];
+  currencies: ExpenseCurrency[];
+  updated_at: string;
+}
+
+/** 사용자별 정산: 결제한 금액 · 부담액 · 순액(받을 돈은 +, 보낼 돈은 −) */
+export interface SettlementBalance {
+  id: number;
+  name: string;
+  paid_krw: number;
+  share_krw: number;
+  net_krw: number;
+  /** 지금 여행에 함께하는 사람인지(나간 일행·탈퇴한 회원은 false) */
+  active: boolean;
+}
+
+/** 누가 누구에게 얼마를 보내면 정산이 끝나는지 */
+export interface SettlementTransfer {
+  from_id: number;
+  from_name: string;
+  to_id: number;
+  to_name: string;
+  amount_krw: number;
+}
+
+export interface Settlement {
+  balances: SettlementBalance[];
+  transfers: SettlementTransfer[];
+  /** 정산에 들어간 지출 합계(분담 인원을 정한 지출) */
+  settled_krw: number;
+  /** 분담 인원을 정하지 않아 정산에서 빠진 지출 수 */
+  excluded_count: number;
 }

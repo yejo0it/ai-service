@@ -1,9 +1,20 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { getExchangeRates, getPackingItems, getWeather, toErrorMessage } from "../api/client";
-import { ROUTES } from "../routes";
+import { getExchangeRates, getExpenses, getPackingItems, getWeather, toErrorMessage } from "../api/client";
+import { compactWon, formatWonSign, spentPercent } from "../expenses/expenseUtils";
+import { tripTabPath } from "../routes";
 import type { CityWeather, Destination, ExchangeRatesResponse, Trip } from "../types/api";
 import { WEEKDAYS_KO, diffDays, parseISODate } from "../utils/date";
+import {
+  convertKrw,
+  digitsOf,
+  formatAmount,
+  formatKrwInput,
+  formatUpdatedAt,
+  parseKrw,
+  pickRate,
+  rateLabel,
+} from "./exchangeCalc";
 import { formatTemp, weatherLook } from "./weatherCodes";
 
 const CARD_CLASS = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -70,7 +81,7 @@ export function WeatherWidget({ trip, today }: WeatherWidgetProps) {
   const cityName = cities.find((dest) => dest.city_code === cityCode)?.city ?? cities[0].city;
 
   return (
-    <section aria-label="여행지 날씨" className={CARD_CLASS}>
+    <section aria-label="여행지 날씨" className={`${CARD_CLASS} flex flex-col`}>
       <WidgetHeader
         title="여행지 날씨"
         aside={<span className="text-xs text-slate-400">Open-Meteo</span>}
@@ -111,19 +122,20 @@ export function WeatherWidget({ trip, today }: WeatherWidgetProps) {
           const daysUntilForecast = diffDays(today, trip.start_date) - (weather.daily.length - 1);
           return (
             <>
-              <div className="mt-4 flex items-center gap-3">
-                <span className="text-4xl leading-none" role="img" aria-label={now.label}>
+              {/* 현재 날씨: 크게 보여주고, 남는 높이는 현재 날씨가 가져가 예보가 카드 맨 아래에 놓인다. */}
+              <div className="mt-4 flex flex-1 items-center gap-4 py-2">
+                <span className="text-6xl leading-none" role="img" aria-label={now.label}>
                   {now.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-slate-500">
+                  <p className="truncate text-lg font-medium text-slate-700">
                     {cityName} · 지금 {now.label}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="mt-1 text-base text-slate-500">
                     최고 {formatTemp(todayForecast?.max ?? null)} / 최저 {formatTemp(todayForecast?.min ?? null)}
                   </p>
                 </div>
-                <span className="text-3xl font-bold tabular-nums text-slate-900">
+                <span className="text-5xl font-bold tabular-nums text-slate-900">
                   {formatTemp(weather.current.temperature)}
                 </span>
               </div>
@@ -214,7 +226,72 @@ function Flag({ flag }: { flag: string }) {
 const formatKrw = (value: number) =>
   value.toLocaleString("ko-KR", { maximumFractionDigits: value >= 100 ? 1 : 2 });
 
-/** 여행 국가 통화 환율 (원화 기준). 국내 여행이면 표시할 통화가 없다. */
+/**
+ * 환율 계산기: 원화를 입력하면 여행 도시의 현지 통화로 바로 환산한다(버튼 없음).
+ * 위젯이 이미 불러온 환율만 쓰며 입력할 때 요청하지 않는다. 환율이 없는 통화는 결과를 만들지 않는다.
+ */
+function ExchangeCalculator({ rates }: { rates: ExchangeRatesResponse["rates"] }) {
+  const [digits, setDigits] = useState("");
+  // 여행지가 여럿(통화가 둘 이상)이면 고른 여행지의 통화만 보여준다. 기본은 첫 여행지.
+  const [selected, setSelected] = useState(rates[0]?.currency ?? "");
+  const rate = pickRate(rates, selected);
+  const krw = parseKrw(digits);
+  const amount = krw === null || !rate ? null : convertKrw(krw, rate);
+  if (!rate) return null;
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4">
+      <label htmlFor="exchange-krw" className="text-xs font-semibold text-slate-500">
+        원화 → 현지 통화 계산
+      </label>
+      {rates.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="환전할 여행지">
+          {rates.map((item) => (
+            <button
+              key={item.currency}
+              type="button"
+              onClick={() => setSelected(item.currency)}
+              aria-pressed={item.currency === rate.currency}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                item.currency === rate.currency
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300"
+              }`}
+            >
+              {rateLabel(item)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
+        <span className="shrink-0 text-sm font-semibold text-slate-400" aria-hidden="true">
+          ₩
+        </span>
+        <input
+          id="exchange-krw"
+          inputMode="numeric"
+          autoComplete="off"
+          value={formatKrwInput(digits)}
+          onChange={(event) => setDigits(digitsOf(event.target.value))}
+          placeholder="환전할 원화 금액"
+          className="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold tabular-nums text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:outline-none"
+        />
+        <span className="shrink-0 text-xs text-slate-400">원</span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5" aria-live="polite">
+        <span className="flex min-w-0 items-center gap-2 text-sm text-slate-600">
+          <Flag flag={rate.flag} />
+          <span className="font-semibold text-slate-800">{rate.currency}</span>
+        </span>
+        <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+          {amount === null ? <span className="font-normal text-slate-300">–</span> : `${formatAmount(amount, rate.currency)} ${rate.currency}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 여행 국가 통화 환율 (원화 기준)과 환율 계산기. 국내 여행이면 표시할 통화가 없다. */
 export function ExchangeWidget({ trip }: { trip: Trip }) {
   const cityCodes = trip.destinations.map((dest) => dest.city_code).filter(Boolean);
   const state = useLoad<ExchangeRatesResponse>(cityCodes.join(",") || null, () => getExchangeRates(cityCodes));
@@ -259,7 +336,13 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[11px] text-slate-400">하루 한 번 갱신되는 기준 환율이에요.</p>
+            <ExchangeCalculator rates={state.data.rates} />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              하루 한 번 갱신되는 기준 환율이에요.
+              {formatUpdatedAt(state.data.updated_at) && ` 마지막 갱신 ${formatUpdatedAt(state.data.updated_at)}`}
+              <br />
+              실제 환전 금액은 환전소·카드사 수수료와 환율 우대 등에 따라 달라질 수 있어요.
+            </p>
           </>
         ))}
     </section>
@@ -267,61 +350,129 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
 }
 
 /* ------------------------------------------------------------------ *
- * 체크리스트 진행률
+ * 여행 준비 현황
  * ------------------------------------------------------------------ */
 
-const PACKING_STEPS = 5;
+/**
+ * 여행 준비 현황 묶음: 체크리스트와 여행 경비 카드가 2열로 나란히 놓인다
+ * (카드가 하나뿐이면 가로로 꽉 채운다).
+ */
+export function PrepStatus({ trip }: { trip: Trip }) {
+  return (
+    <section aria-label="여행 준비 현황" className="grid gap-4 md:grid-cols-2 md:[&>:only-child]:col-span-2">
+      <PackingWidget trip={trip} />
+      <ExpenseWidget trip={trip} />
+    </section>
+  );
+}
 
-/** 여행 체크리스트(준비물·해야 할 일) 진행률. 홈에 올 때마다 새로 불러와 여행 체크리스트에서 체크한 결과를 보여준다. */
+/** 여행 체크리스트(준비물·해야 할 일) 완료율과 남은 항목. 홈에 올 때마다 새로 불러와 체크한 결과를 보여준다. */
 export function PackingWidget({ trip }: { trip: Trip }) {
   const state = useLoad(String(trip.id), () => getPackingItems(trip.id));
   const items = state.status === "ready" ? state.data : [];
   const doneCount = items.filter((item) => item.done).length;
   const percent = items.length === 0 ? 0 : Math.round((doneCount / items.length) * 100);
-  const filledSteps = Math.floor((percent / 100) * PACKING_STEPS);
 
   return (
-    <section aria-label="체크리스트 진행률" className={CARD_CLASS}>
-      <WidgetHeader
-        title="체크리스트 진행률"
-        aside={
-          <Link
-            to={`${ROUTES.PACKING}?trip=${trip.id}`}
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            여행 체크리스트
-          </Link>
-        }
-      />
+    <Link
+      to={tripTabPath(trip.id, "checklist")}
+      aria-label="여행 체크리스트 바로가기"
+      className={`${CARD_CLASS} block transition-colors hover:border-slate-300`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i className="fas fa-clipboard-list text-slate-500" aria-hidden="true" />
+          여행 체크리스트
+        </span>
+        <span className="flex items-center gap-1 text-xs font-medium text-indigo-600">
+          바로가기
+          <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+        </span>
+      </div>
       {state.status === "loading" ? (
-        <Skeleton className="mt-4 h-10" />
+        <Skeleton className="mt-4 h-16" />
       ) : state.status === "error" ? (
         <p className="mt-3 text-sm text-rose-600">{state.message}</p>
+      ) : items.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">아직 체크리스트가 비어 있어요. 준비물과 할 일을 추가해 보세요.</p>
       ) : (
         <>
+          <p className="mt-3 text-2xl font-extrabold tabular-nums text-slate-900">
+            {doneCount} <span className="text-slate-400">/ {items.length}</span>
+          </p>
           <div
-            className="mt-4 flex items-center gap-3"
+            className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
             role="progressbar"
-            aria-label="체크리스트 진행률"
+            aria-label="체크리스트 완료율"
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}
           >
-            <div className="flex flex-1 gap-1">
-              {Array.from({ length: PACKING_STEPS }, (_, index) => (
-                <span
-                  key={index}
-                  className={`h-2.5 flex-1 rounded-sm ${index < filledSteps ? "bg-indigo-500" : "bg-slate-100"}`}
-                />
-              ))}
-            </div>
-            <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
+            <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${percent}%` }} />
           </div>
-          <p className="mt-3 text-xs text-slate-500">
-            항목 {items.length}개 중 {doneCount}개 완료했어요.
+          <p className="mt-2 text-xs text-slate-500">
+            {items.length === doneCount ? "모두 준비했어요!" : `${items.length - doneCount}개 남았어요`}
           </p>
         </>
       )}
-    </section>
+    </Link>
+  );
+}
+
+/** 여행 경비: 총지출과 예산 대비 비율. 예산이 없으면 설정을 안내한다. 누르면 경비 관리 탭으로 이동한다. */
+export function ExpenseWidget({ trip }: { trip: Trip }) {
+  const state = useLoad(String(trip.id), () => getExpenses(trip.id));
+  const data = state.status === "ready" ? state.data : null;
+  const percent = data ? spentPercent(data.total_krw, data.budget_krw) : null;
+  const over = data?.remaining_krw != null && data.remaining_krw < 0;
+
+  return (
+    <Link
+      to={tripTabPath(trip.id, "expenses")}
+      aria-label="여행 경비 바로가기"
+      className={`${CARD_CLASS} block transition-colors hover:border-slate-300`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i className="fas fa-wallet text-slate-500" aria-hidden="true" />
+          여행 경비
+        </span>
+        <span className="flex items-center gap-1 text-xs font-medium text-indigo-600">
+          바로가기
+          <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+        </span>
+      </div>
+      {state.status === "loading" ? (
+        <Skeleton className="mt-4 h-16" />
+      ) : state.status === "error" ? (
+        <p className="mt-3 text-sm text-rose-600">{state.message}</p>
+      ) : data === null ? null : (
+        <>
+          <p className="mt-3 text-2xl font-extrabold tabular-nums text-slate-900">{formatWonSign(data.total_krw)}</p>
+          {data.budget_krw === null ? (
+            <p className="mt-3 text-xs text-slate-500">예산을 설정하면 남은 금액을 볼 수 있어요.</p>
+          ) : (
+            <>
+              <div
+                className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label="예산 대비 지출"
+                aria-valuenow={Math.min(percent ?? 100, 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${over ? "bg-rose-500" : "bg-indigo-500"}`}
+                  style={{ width: `${Math.min(percent ?? 100, 100)}%` }}
+                />
+              </div>
+              <p className={`mt-2 text-xs ${over ? "text-rose-600" : "text-slate-500"}`}>
+                예산 {compactWon(data.budget_krw)} 중 {percent ?? 0}%{over && " (초과)"}
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </Link>
   );
 }

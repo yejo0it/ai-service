@@ -1,3 +1,6 @@
+import { Link } from "react-router-dom";
+import { tripDetailPath } from "../routes";
+import type { TripDetailState } from "../trips/TripDetailPage";
 import { dDayLabel, tripStatus } from "../trips/tripUtils";
 import type { Trip } from "../types/api";
 import { diffDays, formatMonthDay, formatShortDot } from "../utils/date";
@@ -8,13 +11,12 @@ interface DDayCardProps {
   /** 진행 중이거나 가장 가까운 다가오는 여행. 없으면 빈 상태를 보여준다. */
   trip: Trip | null;
   today: string;
-  onShowTrip: (trip: Trip) => void;
   /** 새 여행 만들기 모달 열기 (여행이 없을 때) */
   onNewTrip: () => void;
 }
 
-/** D-Day 카운트다운: 가장 가까운 여행과 남은 날 */
-export function DDayCard({ trip, today, onShowTrip, onNewTrip }: DDayCardProps) {
+/** 다가오는 여행 카드: 가장 가까운 여행과 남은 날, 여행 상세로 이동 */
+export function DDayCard({ trip, today, onNewTrip }: DDayCardProps) {
   if (!trip) {
     return (
       <section aria-label="다가오는 여행" className={`${CARD_CLASS} text-center`}>
@@ -49,16 +51,16 @@ export function DDayCard({ trip, today, onShowTrip, onNewTrip }: DDayCardProps) 
         </span>
       </div>
       <p className="mt-1 text-sm text-indigo-100">
-        {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박
+        {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
       </p>
-      <button
-        type="button"
-        onClick={() => onShowTrip(trip)}
+      <Link
+        to={tripDetailPath(trip.id)}
+        state={{ trip } satisfies TripDetailState}
         className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/25"
       >
-        캘린더에서 보기
+        여행 상세 보기
         <i className="fas fa-arrow-right text-xs" aria-hidden="true" />
-      </button>
+      </Link>
     </section>
   );
 }

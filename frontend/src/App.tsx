@@ -9,7 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import HomePage from "./home/HomePage";
 import MyPage from "./mypage/MyPage";
-import PackingNotePage from "./packing/PackingNotePage";
+import PackingRedirect from "./packing/PackingRedirect";
 import { ROUTES, type HomeLocationState } from "./routes";
 import MyTripsPage from "./trips/MyTripsPage";
 import InviteAcceptPage from "./trips/InviteAcceptPage";
@@ -42,7 +42,8 @@ export default function App() {
           <Route path={ROUTES.MY_TRIPS} element={<MyTripsPage />} />
           <Route path={ROUTES.TRIP_DETAIL} element={<TripDetailPage />} />
           <Route path={ROUTES.TRIP_INVITE} element={<InviteAcceptPage />} />
-          <Route path={ROUTES.PACKING} element={<PackingNotePage />} />
+          {/* 여행 체크리스트는 여행 상세의 탭이다. 예전 주소는 그 여행의 체크리스트 탭으로 보낸다. */}
+          <Route path={ROUTES.PACKING} element={<PackingRedirect />} />
           <Route path={ROUTES.MYPAGE} element={<MyPage />} />
         </Route>
       </Route>
