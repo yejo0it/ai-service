@@ -196,12 +196,15 @@ class ItineraryItem(TimeStampedModel):
     time_label = models.CharField("시간 표기", max_length=20, blank=True, default="")
     subtitle = models.CharField("부가 설명", max_length=100, blank=True, default="")
     stops = models.JSONField("위치", default=list, blank=True)
+    # 예상 체류 시간(분). AI가 정한 값. 비어 있으면 모른다(일정 계산에서는 종류별 기본값을 쓴다).
+    stay_minutes = models.PositiveSmallIntegerField("예상 체류 시간(분)", null=True, blank=True)
+    # 예상 도착 시각. 'AI와 함께 만들기'가 이동 시간으로 계산한 값이며 추정치다. 순서·시간을 직접 바꾸면 지워진다.
+    expected_arrival = models.TimeField("예상 도착 시각", null=True, blank=True)
     # 장소 상세 (Google Places)
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     address = models.CharField("주소", max_length=255, blank=True, default="")
     phone = models.CharField("전화번호", max_length=40, blank=True, default="")
     opening_hours = models.JSONField("영업시간", default=list, blank=True)
-    memo = models.TextField("메모", blank=True, default="")
 
     class Meta:
         verbose_name = "일정"
@@ -212,29 +215,13 @@ class ItineraryItem(TimeStampedModel):
         return f"{self.day} #{self.order} {self.title}"
 
 
-class ChecklistItem(TimeStampedModel):
-    """일정 카드의 체크리스트. in_packing_note가 켜진 항목은 짐싸기 노트 '일정 연동 항목'에 나온다."""
-
-    item = models.ForeignKey(ItineraryItem, related_name="checklist", on_delete=models.CASCADE)
-    text = models.CharField("내용", max_length=200)
-    done = models.BooleanField("완료", default=False)
-    in_packing_note = models.BooleanField("짐싸기 노트 표시", default=False)
-
-    class Meta:
-        verbose_name = "체크리스트"
-        verbose_name_plural = "체크리스트"
-        ordering = ("created_at", "id")
-
-    def __str__(self) -> str:
-        return self.text
-
-
 class PackingItem(TimeStampedModel):
     """짐싸기 노트의 준비물. 기본 준비물로 시작하고 사용자가 직접 더하거나 지운다."""
 
     class Category(models.TextChoices):
         """화면에도 이 순서대로 나온다."""
 
+        TODO = "todo", "해야 할 일"
         ESSENTIALS = "essentials", "필수 준비물"
         TOILETRIES = "toiletries", "세면도구/화장품"
         CLOTHING = "clothing", "의류"

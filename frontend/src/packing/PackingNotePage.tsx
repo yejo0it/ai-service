@@ -1,33 +1,47 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { addPackingItem, deletePackingItem, getPackingItems, toErrorMessage, updatePackingItem } from "../api/client";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { ROUTES, tripDetailPath, type HomeLocationState } from "../routes";
 import type { PackingCategory, PackingItem, Trip } from "../types/api";
-import { nextTrip, tripShortTitle } from "../trips/tripUtils";
+import { dDayLabel, nextTrip, tripShortTitle, tripStatus } from "../trips/tripUtils";
 import useTrips from "../trips/useTrips";
-import { formatMonthDay, todayISODate } from "../utils/date";
+import { diffDays, formatMonthDay, formatShortDot, todayISODate } from "../utils/date";
 
-/** 기본으로 보여줄 여행: 여행 중 → 다가오는 여행 → 가장 최근 여행 */
 const defaultTrip = (trips: Trip[]) => nextTrip(trips, todayISODate()) ?? trips[trips.length - 1] ?? null;
 
-/** 준비물 분류. 화면에 이 순서대로 나온다 (backend PackingItem.Category와 같다). */
-const PACKING_CATEGORIES: { key: PackingCategory; label: string }[] = [
-  { key: "essentials", label: "필수 준비물" },
-  { key: "toiletries", label: "세면도구/화장품" },
-  { key: "clothing", label: "의류" },
-  { key: "electronics", label: "전자제품" },
-  { key: "medicine", label: "상비약" },
-  { key: "etc", label: "기타" },
+const PACKING_CATEGORIES: { key: PackingCategory; label: string; icon: string; example: string }[] = [
+  { key: "todo", label: "해야 할 일", icon: "fas fa-clipboard-check", example: "전망대 입장권 예약하기" },
+  { key: "essentials", label: "필수 준비물", icon: "fas fa-passport", example: "국제운전면허증" },
+  { key: "toiletries", label: "세면도구/화장품", icon: "fas fa-pump-soap", example: "클렌징폼" },
+  { key: "clothing", label: "의류", icon: "fas fa-tshirt", example: "패딩" },
+  { key: "electronics", label: "전자제품", icon: "fas fa-plug", example: "카메라" },
+  { key: "medicine", label: "상비약", icon: "fas fa-medkit", example: "멀미약" },
+  { key: "etc", label: "기타", icon: "fas fa-box-open", example: "수영복" },
 ];
 
-/** 준비물 체크리스트: 기본 준비물 + 직접 추가한 준비물. 체크·추가·삭제는 바로 저장한다. */
-function PackingChecklist({ trip }: { trip: Trip }) {
+type Filter = "all" | "left" | "done";
+
+/** 사이드바 D-Day 뱃지. 지난 여행이면 null. */
+const ddayBadge = (trip: Trip) => {
+  const today = todayISODate();
+  return tripStatus(trip, today) === "past" ? null : dDayLabel(trip, today);
+};
+
+/** "11.30 – 12.3 · 3박 4일" */
+const periodLabel = (trip: Trip) => {
+  const nights = diffDays(trip.start_date, trip.end_date);
+  const range = `${formatShortDot(trip.start_date)} – ${formatShortDot(trip.end_date)}`;
+  return nights > 0 ? `${range} · ${nights}박 ${nights + 1}일` : `${range} · 당일`;
+};
+
+function PackingNote({ trip, trips, onTripChange }: { trip: Trip; trips: Trip[]; onTripChange: (id: string) => void }) {
   const [items, setItems] = useState<PackingItem[] | null>(null);
   const [error, setError] = useState("");
-  const [draft, setDraft] = useState("");
-  const [category, setCategory] = useState<PackingCategory>("etc");
-  const [adding, setAdding] = useState(false);
+  const [drafts, setDrafts] = useState<Partial<Record<PackingCategory, string>>>({});
+  const [adding, setAdding] = useState<PackingCategory | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [focusCat, setFocusCat] = useState<PackingCategory | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,11 +55,11 @@ function PackingChecklist({ trip }: { trip: Trip }) {
     };
   }, [trip.id]);
 
-  const toggle = (target: PackingItem, done: boolean) => {
+  const setDone = (target: PackingItem, done: boolean) => {
     setError("");
-    setItems((current) => current?.map((item) => (item.id === target.id ? { ...item, done } : item)) ?? null);
-    updatePackingItem(target.id, { done }).catch((err: unknown) => {
-      setItems((current) => current?.map((item) => (item.id === target.id ? { ...item, done: !done } : item)) ?? null);
+    setItems((cur) => cur?.map((i) => (i.id === target.id ? { ...i, done } : i)) ?? null);
+    return updatePackingItem(target.id, { done }).catch((err: unknown) => {
+      setItems((cur) => cur?.map((i) => (i.id === target.id ? { ...i, done: !done } : i)) ?? null);
       setError(toErrorMessage(err));
     });
   };
@@ -53,142 +67,247 @@ function PackingChecklist({ trip }: { trip: Trip }) {
   const remove = (target: PackingItem) => {
     setError("");
     deletePackingItem(target.id)
-      .then(() => setItems((current) => current?.filter((item) => item.id !== target.id) ?? null))
+      .then(() => setItems((cur) => cur?.filter((i) => i.id !== target.id) ?? null))
       .catch((err: unknown) => setError(toErrorMessage(err)));
   };
 
-  const add = async (event: FormEvent) => {
-    event.preventDefault();
-    const text = draft.trim();
+  const add = async (category: PackingCategory) => {
+    const text = (drafts[category] ?? "").trim();
     if (!text || adding) return;
-    setAdding(true);
+    setAdding(category);
     setError("");
     try {
       const created = await addPackingItem(trip.id, { category, text });
-      setItems((current) => [...(current ?? []), created]);
-      setDraft("");
+      setItems((cur) => [...(cur ?? []), created]);
+      setDrafts((d) => ({ ...d, [category]: "" }));
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
-      setAdding(false);
+      setAdding(null);
     }
   };
 
-  if (error && !items) return <p className="text-sm text-rose-600">{error}</p>;
-  if (!items) return <div className="h-48 animate-pulse rounded-2xl bg-slate-100" />;
+  const onDraftKey = (category: PackingCategory) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      add(category);
+    }
+  };
 
-  const doneCount = items.filter((item) => item.done).length;
-  const percent = items.length === 0 ? 0 : Math.round((doneCount / items.length) * 100);
+  // "체크 모두 해제": 체크된 항목만 PATCH
+  const resetAll = () => items?.filter((i) => i.done).forEach((i) => setDone(i, false));
+
+  const stats = useMemo(() => {
+    const list = items ?? [];
+    const done = list.filter((i) => i.done).length;
+    return { total: list.length, done, percent: list.length ? Math.round((done / list.length) * 100) : 0 };
+  }, [items]);
+
+  if (error && !items) return <p className="text-sm text-rose-600">{error}</p>;
+  if (!items) return <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />;
+
+  const groups = PACKING_CATEGORIES.map((c) => {
+    const all = items.filter((i) => i.category === c.key);
+    const done = all.filter((i) => i.done).length;
+    return { ...c, all, done, complete: all.length > 0 && done === all.length };
+  });
+  const keep = (i: PackingItem) => filter === "all" || (filter === "left" ? !i.done : i.done);
+  const visible = groups
+    .filter((g) => !focusCat || g.key === focusCat)
+    .map((g) => ({ ...g, items: g.all.filter(keep) }))
+    .filter((g) => filter === "all" || g.items.length > 0);
+  const dday = ddayBadge(trip);
 
   return (
-    <div>
-      <div className="flex items-center gap-3">
-        <div
-          className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100"
-          role="progressbar"
-          aria-label="짐싸기 진행률"
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${percent}%` }} />
-        </div>
-        <span className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</span>
-      </div>
-      <p className="mt-1.5 text-xs text-slate-500">
-        {items.length}개 중 {doneCount}개 챙김
-      </p>
+    <div className="grid items-start gap-8 lg:grid-cols-[300px_minmax(0,1fr)]">
+      {/* 왼쪽 요약 사이드바 */}
+      <aside className="flex flex-col gap-5 lg:sticky lg:top-24">
+        <h1 className="text-[28px] font-extrabold leading-10 tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
+        <div className="flex flex-col gap-[18px] rounded-[18px] border border-slate-200 bg-white p-5">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="packing-trip" className="sr-only">여행 선택</label>
+            <select
+              id="packing-trip"
+              value={trip.id}
+              onChange={(e) => onTripChange(e.target.value)}
+              className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            >
+              {trips.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {tripShortTitle(t)} · {formatMonthDay(t.start_date)}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-slate-500">{periodLabel(trip)}</span>
+              <Link to={tripDetailPath(trip.id)} className="font-medium text-indigo-600 hover:underline">여행 상세 보기</Link>
+            </div>
+          </div>
 
-      <form onSubmit={add} className="mt-5 flex flex-wrap gap-2">
-        <label htmlFor="packing-category" className="sr-only">
-          분류
-        </label>
-        <select
-          id="packing-category"
-          value={category}
-          onChange={(event) => setCategory(event.target.value as PackingCategory)}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-        >
-          {PACKING_CATEGORIES.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="packing-new" className="sr-only">
-          준비물 추가
-        </label>
-        <input
-          id="packing-new"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          maxLength={100}
-          placeholder="챙길 준비물을 입력하세요 (예: 수영복)"
-          className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || adding}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <i className="fas fa-plus text-xs" aria-hidden="true" />
-          추가
-        </button>
-      </form>
-      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+          <hr className="border-slate-100" />
 
-      {items.length === 0 ? (
-        <p className="mt-5 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
-          준비물을 추가해 보세요.
-        </p>
-      ) : (
-        <div className="mt-6 space-y-6">
-          {PACKING_CATEGORIES.map((option) => {
-            const group = items.filter((item) => item.category === option.key);
-            if (group.length === 0) return null;
-            return (
-              <section key={option.key} aria-label={option.label}>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  {option.label}
-                  <span className="text-xs font-medium tabular-nums text-slate-400">
-                    {group.filter((item) => item.done).length}/{group.length}
+          <div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-[44px] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
+                {stats.percent}<span className="text-[22px]">%</span>
+              </span>
+              {dday && <span className="rounded-lg bg-indigo-50 px-2 py-1 text-[13px] font-bold text-indigo-600">{dday}</span>}
+            </div>
+            <div
+              className="mb-2 mt-3.5 h-2 overflow-hidden rounded bg-slate-100"
+              role="progressbar" aria-label="체크리스트 진행률" aria-valuenow={stats.percent} aria-valuemin={0} aria-valuemax={100}
+            >
+              <div className="h-full rounded bg-indigo-600 transition-all duration-300" style={{ width: `${stats.percent}%` }} />
+            </div>
+            <p className="text-[13px] text-slate-500">
+              {stats.total}개 중 {stats.done}개 완료 · 남은 {stats.total - stats.done}개
+            </p>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          <nav aria-label="분류" className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={() => setFocusCat(null)}
+              className={`flex items-center gap-2.5 rounded-[10px] px-2.5 py-[9px] text-left text-sm font-semibold ${!focusCat ? "bg-indigo-50 text-indigo-800" : "text-slate-700 hover:bg-slate-50"}`}
+            >
+              <i className="fas fa-layer-group w-4 text-center text-[13px]" aria-hidden="true" />
+              <span className="flex-1">전체</span>
+              <span className="text-xs tabular-nums">{stats.done}/{stats.total}</span>
+            </button>
+            {groups.map((g) => {
+              const active = focusCat === g.key;
+              const pct = g.all.length ? (g.done / g.all.length) * 100 : 0;
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  onClick={() => setFocusCat(active ? null : g.key)}
+                  aria-pressed={active}
+                  className={`flex flex-col gap-1.5 rounded-[10px] px-2.5 py-[9px] text-left text-sm font-medium ${active ? "bg-indigo-50 text-indigo-800" : "text-slate-700 hover:bg-slate-50"}`}
+                >
+                  <span className="flex w-full items-center gap-2.5">
+                    <i className={`${g.icon} w-4 text-center text-[13px] ${g.complete ? "text-emerald-500" : "text-indigo-500"}`} aria-hidden="true" />
+                    <span className="flex-1">{g.label}</span>
+                    {g.complete && <i className="fas fa-check-circle text-[13px] text-emerald-500" aria-label="완료" />}
+                    <span className="text-xs tabular-nums text-slate-400">{g.done}/{g.all.length}</span>
                   </span>
-                </h3>
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.map((item) => (
-                    <li key={item.id} className="flex items-center gap-2 rounded-xl bg-slate-50 pr-1.5">
-                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3.5 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={item.done}
-                          onChange={(event) => toggle(item, event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                        />
-                        <span className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                          {item.text}
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => remove(item)}
-                        aria-label={`${item.text} 삭제`}
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
-                      >
-                        <i className="fas fa-times text-xs" aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                  <span className="ml-[26px] h-[3px] w-[calc(100%-26px)] overflow-hidden rounded-sm bg-slate-200">
+                    <span className={`block h-full transition-all duration-300 ${g.complete ? "bg-emerald-500" : "bg-indigo-500"}`} style={{ width: `${pct}%` }} />
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
+
+      {/* 오른쪽 체크리스트 */}
+      <main className="flex min-w-0 flex-col gap-5">
+        <div className="flex h-10 items-center justify-between gap-3">
+          <div className="flex gap-0.5 rounded-xl bg-[#eef0f4] p-[3px]" role="tablist" aria-label="보기">
+            {([["all", "전체", stats.total], ["left", "남은 것", stats.total - stats.done], ["done", "완료한 것", stats.done]] as const).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={filter === key}
+                onClick={() => setFilter(key)}
+                className={`rounded-[9px] px-3.5 py-2 text-[13px] font-semibold ${filter === key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+              >
+                {label} <span className="font-medium tabular-nums text-slate-400">{count}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={resetAll} disabled={stats.done === 0} className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-40">
+            <i className="fas fa-undo text-xs" aria-hidden="true" />
+            체크 모두 해제
+          </button>
+        </div>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+
+        {visible.length === 0 ? (
+          <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
+            <div className="mx-auto mb-3.5 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-emerald-50 text-[22px] text-emerald-500">
+              <i className="fas fa-check" aria-hidden="true" />
+            </div>
+            <p className="text-[17px] font-bold">{filter === "left" ? "모두 완료했어요" : "아직 완료한 항목이 없어요"}</p>
+            <p className="mt-1.5 text-sm text-slate-500">
+              {filter === "left" ? `${stats.total}개 항목을 모두 완료했어요. 즐거운 여행 되세요.` : "항목을 체크하면 여기에 모여요."}
+            </p>
+          </div>
+        ) : (
+          visible.map((g) => {
+            const draft = drafts[g.key] ?? "";
+            return (
+              <section key={g.key} aria-label={g.label} className="overflow-hidden rounded-[18px] border border-slate-200 bg-white">
+                <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                  <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] bg-indigo-50 text-sm text-indigo-600">
+                    <i className={g.icon} aria-hidden="true" />
+                  </span>
+                  <h2 className="flex-1 text-base font-bold text-slate-900">{g.label}</h2>
+                  <span className="text-[13px] tabular-nums text-slate-500">{g.done}/{g.all.length}</span>
+                </header>
+                {g.items.length > 0 && (
+                  <ul className="grid gap-x-2 px-2 py-1.5 sm:grid-cols-2">
+                    {g.items.map((item) => (
+                      <li key={item.id} className="flex items-center gap-1 rounded-[10px] pr-1 hover:bg-slate-50">
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-[11px]">
+                          <input type="checkbox" checked={item.done} onChange={(e) => setDone(item, e.target.checked)} className="peer sr-only" />
+                          <span
+                            aria-hidden="true"
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] text-white transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-200 ${item.done ? "border-indigo-600 bg-indigo-600" : "border-slate-300 bg-white"}`}
+                          >
+                            {item.done && <i className="fas fa-check" />}
+                          </span>
+                          <span className={`min-w-0 flex-1 truncate text-[15px] ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+                          {!item.is_default && <span className="rounded-[5px] bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-500">직접 추가</span>}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => remove(item)}
+                          aria-label={`${item.text} 삭제`}
+                          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg text-xs text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
+                        >
+                          <i className="fas fa-times" aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex items-center gap-2.5 px-5 pb-3.5 pt-1">
+                  <i className="fas fa-plus w-5 text-center text-xs text-indigo-300" aria-hidden="true" />
+                  <label htmlFor={`packing-new-${g.key}`} className="sr-only">{g.label}에 준비물 추가</label>
+                  <input
+                    id={`packing-new-${g.key}`}
+                    value={draft}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [g.key]: e.target.value }))}
+                    onKeyDown={onDraftKey(g.key)}
+                    maxLength={100}
+                    placeholder={`${g.label}에 추가 (예: ${g.example})`}
+                    className="flex-1 border-b border-transparent bg-transparent py-2 text-sm placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none"
+                  />
+                  {draft.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => add(g.key)}
+                      disabled={adding === g.key}
+                      className="rounded-[9px] bg-indigo-600 px-3 py-[7px] text-[13px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      추가
+                    </button>
+                  )}
+                </div>
               </section>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </main>
     </div>
   );
 }
 
-/** `/packing` 짐싸기 노트. 여행을 고르면 그 여행의 준비물 체크리스트를 보여준다(`?trip=` 로 기억). */
 export default function PackingNotePage() {
   const trips = useTrips();
   const [params, setParams] = useSearchParams();
@@ -204,52 +323,27 @@ export default function PackingNotePage() {
     return <p className={`${PAGE_CONTAINER_CLASS} py-8 text-sm text-rose-600`}>{trips.message}</p>;
   }
 
-  const selected =
-    trips.trips.find((trip) => String(trip.id) === params.get("trip")) ?? defaultTrip(trips.trips);
+  const selected = trips.trips.find((t) => String(t.id) === params.get("trip")) ?? defaultTrip(trips.trips);
 
   return (
-    <div className={`${PAGE_CONTAINER_CLASS} py-6 sm:py-8`}>
-      <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">짐싸기 노트</h1>
-
+    <div className={`${PAGE_CONTAINER_CLASS} pb-14 pt-8`}>
       {!selected ? (
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm text-slate-600">아직 여행이 없어요.</p>
-          <Link
-            to={ROUTES.HOME}
-            state={{ newTrip: true } satisfies HomeLocationState}
-            className="mt-3 inline-block text-sm font-semibold text-indigo-600"
-          >
-            새 여행 만들기
-          </Link>
-        </div>
-      ) : (
         <>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <label htmlFor="packing-trip" className="sr-only">
-              여행 선택
-            </label>
-            <select
-              id="packing-trip"
-              value={selected.id}
-              onChange={(event) => setParams({ trip: event.target.value }, { replace: true })}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            >
-              {trips.trips.map((trip) => (
-                <option key={trip.id} value={trip.id}>
-                  {tripShortTitle(trip)} · {formatMonthDay(trip.start_date)}
-                </option>
-              ))}
-            </select>
-            <Link to={tripDetailPath(selected.id)} className="text-sm font-medium text-indigo-600 hover:underline">
-              여행 상세 보기
+          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-slate-900">여행 체크리스트</h1>
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
+            <p className="text-sm text-slate-600">아직 여행이 없어요.</p>
+            <Link to={ROUTES.HOME} state={{ newTrip: true } satisfies HomeLocationState} className="mt-3 inline-block text-sm font-semibold text-indigo-600">
+              새 여행 만들기
             </Link>
           </div>
-
-          <section aria-label="준비물 체크리스트" className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-slate-900">준비물 체크리스트</h2>
-            <PackingChecklist key={selected.id} trip={selected} />
-          </section>
         </>
+      ) : (
+        <PackingNote
+          key={selected.id}
+          trip={selected}
+          trips={trips.trips}
+          onTripChange={(id) => setParams({ trip: id }, { replace: true })}
+        />
       )}
     </div>
   );

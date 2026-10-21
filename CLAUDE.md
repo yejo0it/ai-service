@@ -85,7 +85,7 @@ PinRoute(핀루트)는 여행지·항공권·숙소를 등록하고 캘린더로
 ### 구조
 
 - `backend/accounts`: 회원·로그인·소셜 로그인·마이페이지(닉네임, 사진, 이메일, 비밀번호, 탈퇴)
-- `backend/trips`: 여행·일정·숙소·짐싸기 노트·일행 초대·AI 일정 제안
+- `backend/trips`: 여행·일정·숙소·여행 체크리스트·일행 초대·AI 일정 제안
 - `backend/guides`: 여행 정보 검색(RAG) 문서 수집·검색
 - `backend/config`: Django 설정
 - `frontend/src`: `auth`, `home`, `trips`, `packing`, `mypage`, `onboarding`, `components/layout`(공통 레이아웃·페이지 너비), `api/client.ts`, `types/api.ts`

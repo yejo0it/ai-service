@@ -9,9 +9,9 @@ import type {
   AiRegistrationDraft,
   Airline,
   ChatTurn,
-  ChecklistItem,
   ItineraryCardInput,
   ItineraryItem,
+  ItineraryLeg,
   ItineraryResponse,
   PackingItem,
   PlaceKind,
@@ -51,14 +51,51 @@ const api = axios.create({
   timeout: 10000,
 });
 
-// 로그인한 경우 모든 요청에 API 토큰을 붙인다.
+/**
+ * 사용자 활동 표시. 클릭·키 입력·터치 직후 일정 시간 안에 나가는 요청에만 `X-User-Activity: 1`을 붙인다.
+ * 서버는 이 헤더가 있는 요청만 '비활동 7일' 시간을 갱신하므로, 사용자가 만지지 않은 자동 새로고침·백그라운드 호출로는
+ * 로그인이 계속 연장되지 않는다. 페이지가 새로고침돼도 이어지도록 sessionStorage에 마지막 조작 시각을 둔다.
+ * (로그인 후 30일이 지나면 활동과 관계없이 만료되는 것은 서버가 판단한다.)
+ */
+const ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+const ACTIVITY_STORAGE_KEY = "pinroute.lastInteraction";
+
+const readLastInteraction = (): number => {
+  try {
+    return Number(sessionStorage.getItem(ACTIVITY_STORAGE_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+
+let lastInteractionAt = readLastInteraction();
+
+if (typeof window !== "undefined") {
+  const markInteraction = () => {
+    const now = Date.now();
+    // 연속 입력마다 저장하지 않는다.
+    if (now - lastInteractionAt < 1000) return;
+    lastInteractionAt = now;
+    try {
+      sessionStorage.setItem(ACTIVITY_STORAGE_KEY, String(now));
+    } catch {
+      /* 저장할 수 없어도 메모리 값으로 동작한다. */
+    }
+  };
+  (["pointerdown", "keydown", "touchstart"] as const).forEach((type) =>
+    window.addEventListener(type, markInteraction, { capture: true, passive: true }),
+  );
+}
+
+// 로그인한 경우 모든 요청에 API 토큰을 붙이고, 사용자가 방금 조작했다면 활동 표시를 더한다.
 api.interceptors.request.use((config) => {
   const token = getSession()?.token;
   if (token) config.headers.Authorization = `Token ${token}`;
+  if (token && Date.now() - lastInteractionAt < ACTIVITY_WINDOW_MS) config.headers["X-User-Activity"] = "1";
   return config;
 });
 
-// 토큰이 만료·삭제되어 401이 오면 저장된 세션을 비운다.
+// 토큰이 만료(비활동 7일·로그인 후 30일)·삭제되어 401이 오면 저장된 세션을 비운다. 그러면 로그인 화면으로 이동한다.
 api.interceptors.response.use(undefined, (error: unknown) => {
   if (isAxiosError(error) && error.response?.status === 401 && getSession()) clearSession();
   return Promise.reject(error);
@@ -137,6 +174,13 @@ export const initItinerary = (tripId: number, items: ItineraryCardInput[]) =>
 export const addItineraryPlace = (tripId: number, payload: AddPlacePayload | AddFlightPayload | AddHotelStayPayload) =>
   api.post<ItineraryResponse & { trip?: Trip }>(`/trips/${tripId}/itinerary/`, payload).then((res) => res.data);
 
+/**
+ * 그날 일정 카드 사이의 이동 구간(도보·대중교통·택시). 두 번째 카드부터 '직전 카드 -> 이 카드'.
+ * 지원 지역 밖이거나 이동 시간 계산을 쓸 수 없으면 빈 목록이다. 서버가 Google Routes·NAVITIME에서 가져와 잠깐 캐시한다.
+ */
+export const getDayLegs = (tripId: number, day: string) =>
+  api.get<ItineraryLeg[]>(`/trips/${tripId}/days/${day}/legs/`).then((res) => res.data);
+
 export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
   api.post<ItineraryResponse>(`/trips/${tripId}/itinerary/reorder/`, { day, ids }).then((res) => res.data);
 
@@ -146,7 +190,7 @@ export const reorderItinerary = (tripId: number, day: string, ids: number[]) =>
  */
 export const updateItineraryItem = (
   itemId: number,
-  payload: { memo?: string; time?: string | null; place_id?: string; session_token?: string },
+  payload: { time?: string | null; place_id?: string; session_token?: string },
 ) =>
   api.patch<ItineraryItem>(`/itinerary-items/${itemId}/`, payload).then((res) => res.data);
 
@@ -159,14 +203,6 @@ export const deleteItineraryItem = (itemId: number) =>
   api
     .delete<{ trip: Trip; removed_ids: number[] } | "">(`/itinerary-items/${itemId}/`)
     .then((res) => (res.data && typeof res.data === "object" ? res.data : null));
-
-export const addChecklistItem = (itemId: number, text: string) =>
-  api.post<ChecklistItem>(`/itinerary-items/${itemId}/checklist/`, { text }).then((res) => res.data);
-
-export const updateChecklistItem = (checkId: number, payload: Partial<Omit<ChecklistItem, "id">>) =>
-  api.patch<ChecklistItem>(`/checklist-items/${checkId}/`, payload).then((res) => res.data);
-
-export const deleteChecklistItem = (checkId: number) => api.delete<void>(`/checklist-items/${checkId}/`);
 
 /** 일행 목록·최대 인원·지금 쓸 수 있는 초대 링크 */
 export const getTripMembers = (tripId: number) =>

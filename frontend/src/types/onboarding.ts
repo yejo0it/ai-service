@@ -66,7 +66,6 @@ export interface OnboardingData {
   startDate: string;
   endDate: string;
   // Step 3
-  skipHotel: boolean;
   hotels: HotelDraft[];
 }
 

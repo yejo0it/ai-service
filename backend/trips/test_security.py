@@ -112,7 +112,6 @@ class AiInputSecurityTests(APITestCase):
             self.card(stops=[{"kind": "place", "caption": "", "label": "x", "lat": 999, "lng": 0}]),
             self.card(phone="javascript:alert(1)"),
             self.card(kind="admin"),
-            self.card(checklist=["할 일"] * 21),
             self.card(stops=[{"kind": "place", "caption": "", "label": "x"}] * 11),
         ]
         for bad in bad_cards:
@@ -124,12 +123,10 @@ class AiInputSecurityTests(APITestCase):
 
     def test_model_output_is_limited_before_use(self):
         addition = ai_planner.PlanAddition(name="a", search_query="a", kind="sight", day_index=None, time=None,
-                                           reason="", checklist=["x" * 500] * 30)
+                                           reason="", stay_minutes=None)
         limited = ai_planner.limit_plan(plan(reply="가" * 5000, additions=[addition] * 100))
         self.assertEqual(len(limited.reply), ai_planner.MAX_REPLY_CHARS)
         self.assertEqual(len(limited.additions), ai_planner.MAX_ADDITIONS)
-        self.assertEqual(len(limited.additions[0].checklist), ai_planner.MAX_CHECKLIST)
-        self.assertEqual(len(limited.additions[0].checklist[0]), 200)
 
     def test_prompt_contains_no_server_secrets(self):
         """모델에 보내는 내용에는 여행 데이터만 있고, API 키·DB 비밀번호는 없다."""

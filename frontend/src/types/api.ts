@@ -314,14 +314,6 @@ export interface ItineraryStop {
   lng?: number | null;
 }
 
-export interface ChecklistItem {
-  id: number;
-  text: string;
-  done: boolean;
-  /** 짐싸기 노트 '일정 연동 항목'에 표시 */
-  in_packing_note: boolean;
-}
-
 export interface ItineraryItem {
   id: number;
   day: ISODate;
@@ -340,8 +332,10 @@ export interface ItineraryItem {
   phone: string;
   /** 요일별 영업시간 문장 */
   opening_hours: string[];
-  memo: string;
-  checklist: ChecklistItem[];
+  /** AI가 정한 예상 체류 시간(분). 없으면 null */
+  stay_minutes?: number | null;
+  /** 이동 시간으로 계산한 예상 도착 시각(HH:MM, 추정치). 순서·시간을 바꾸면 사라진다 */
+  expected_arrival?: string | null;
 }
 
 export interface ItineraryResponse {
@@ -390,9 +384,9 @@ export interface AddPlacePayload {
   session_token: string;
 }
 
-export type PackingCategory = "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
+export type PackingCategory = "todo" | "essentials" | "toiletries" | "clothing" | "electronics" | "medicine" | "etc";
 
-/** 짐싸기 노트 준비물. is_default는 처음 넣어 준 기본 준비물 */
+/** 여행 체크리스트 항목(준비물·해야 할 일). is_default는 처음 넣어 준 기본 준비물 */
 export interface PackingItem {
   id: number;
   category: PackingCategory;
@@ -433,6 +427,10 @@ export interface AiProposal {
   hotels: AiHotelProposal[] | null;
   /** 바뀐 항공·숙소로 다시 만든 경로의 자동 항공·숙소 카드 (적용할 때 프론트가 채운다) */
   auto_cards?: ItineraryCardInput[];
+  /** 미리보기에서 실제 이동 시간으로 정한 날짜별 방문 순서. 적용할 때 그대로 돌려보낸다(서버가 저장). */
+  order?: Record<string, string[]>;
+  /** 순서를 정한 날짜별 예상 도착 시각({날짜: {카드 키: "HH:MM"}}). 적용할 때 그대로 돌려보내면 서버가 저장한다. */
+  etas?: Record<string, Record<string, string>>;
 }
 
 /** 같은 대화에서 아직 적용하지 않은 항공·숙소 제안 */
@@ -441,9 +439,33 @@ export interface AiRegistrationDraft {
   hotels: AiHotelProposal[] | null;
 }
 
+/** 두 장소 사이 이동 (Google 길찾기 결과). 정보를 찾지 못한 구간은 null이며, 시간을 추정해 채우지 않는다. */
+export interface AiRouteLeg {
+  mode: "walk" | "transit";
+  minutes: number;
+  meters: number;
+  /** 대중교통 환승 횟수 (0이면 환승 없음) */
+  transfers?: number;
+}
+
 export interface AiPreviewDay {
   day: ISODate;
-  items: { id: number | null; title: string; kind: ItineraryKind; time: string; time_label: string; status: "new" | "moved" | "same" }[];
+  items: {
+    id: number | null;
+    title: string;
+    kind: ItineraryKind;
+    time: string;
+    time_label: string;
+    status: "new" | "moved" | "same";
+    /** 예상 도착 시각(HH:MM). 실제 이동 시간으로 계산한 날의 새·이동 장소만 */
+    eta?: string;
+  }[];
+  /** items[i] -> items[i + 1] 이동. 실제 이동 시간으로 순서를 정하지 않은 날은 모두 null */
+  legs?: (AiRouteLeg | null)[];
+  /** 이 날의 순서를 정한 근거: google(실제 이동 시간) · partial(일부 구간만) · straight_line(직선거리) */
+  route_basis?: "google" | "partial" | "straight_line" | null;
+  /** 영업시간·시간 충돌 경고 */
+  warnings?: string[];
 }
 
 /** AI 답변의 근거 문서 */
@@ -465,6 +487,8 @@ export interface AiProposeResponse {
   removed: { id: number; title: string }[];
   /** 실제 장소를 찾지 못한 이름 */
   unresolved: string[];
+  /** 방문 순서를 정한 근거. none이면 새로 넣거나 옮긴 장소가 없어 해당 없음 */
+  route?: { basis: "google" | "partial" | "straight_line" | "none"; note: string };
   /** 서비스 범위 밖 요청이라 거절했는지 (변경 제안 없음) */
   refused?: boolean;
   /** 가리고 AI에 보낸 민감정보 종류 (예: 카드번호, 비밀번호) */
@@ -479,4 +503,49 @@ export interface AiProposeResponse {
     hotels: AiHotelProposal[] | null;
     removed_hotels: { id: number; title: string }[];
   };
+}
+
+/** 일정 카드 사이 이동 구간의 한 단계 (Google Routes·NAVITIME 결과) */
+export type LegStep =
+  | { type: "walk"; minutes: number; meters: number; start_time: string; description: string }
+  | { type: "drive"; minutes: number; meters: number; start_time: string; description: string }
+  | {
+      type: "transit";
+      minutes: number;
+      start_time: string;
+      line_name: string;
+      line_color: string;
+      from_stop: string;
+      to_stop: string;
+      /** 통과 정거장 수. 모르면 0 */
+      stop_count: number;
+      /** 아래는 NAVITIME(일본) 구간에만 있다. 한국어 이름과 원어를 함께 준다(한국어를 확보하지 못하면 둘 다 원어). */
+      line_name_ja?: string;
+      /** 열차 종별(예: "쾌속", "신쾌속", "특급"). 보통(각역 정차)이거나 모르면 빈 문자열 */
+      train_type?: string;
+      train_type_ja?: string;
+      operator?: string;
+      operator_ja?: string;
+      from_stop_ja?: string;
+      to_stop_ja?: string;
+      /** 역 번호 (예: "JY20") */
+      from_number?: string;
+      to_number?: string;
+      /** 행선지 (예: "시나가와행") */
+      direction?: string;
+      direction_ja?: string;
+      /** 이 탑승을 마친 뒤 다음 열차로 갈아타는 데 걸리는 시간(분) */
+      transfer_minutes?: number | null;
+    };
+
+/** 직전 일정 -> 이 일정 이동 구간. 정보가 없는 구간은 status가 not_found이고 단계가 비어 있다(시간을 추정하지 않는다). */
+export interface ItineraryLeg {
+  from_item_id: number;
+  to_item_id: number;
+  status: "ok" | "not_found";
+  mode: "transit" | "walk" | "drive";
+  total_minutes: number;
+  /** 요금 표기 (예: "¥253"). 모르면 null */
+  fare_label: string | null;
+  steps: LegStep[];
 }

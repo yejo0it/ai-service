@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 def avatar_upload_to(instance, filename):
@@ -32,6 +33,20 @@ class Profile(models.Model):
 
     def __str__(self) -> str:
         return self.user.username
+
+
+class AuthSession(models.Model):
+    """
+    로그인 토큰의 마지막 사용자 활동 시각(비활동 만료 기준). 토큰이 지워지면 함께 지워진다.
+    절대 만료 기준(로그인 시각)은 토큰의 created를 쓴다. 정책은 accounts.authentication 참고.
+    """
+
+    token = models.OneToOneField("authtoken.Token", related_name="session", on_delete=models.CASCADE)
+    last_active_at = models.DateTimeField("마지막 활동 시각", default=timezone.now)
+
+    class Meta:
+        verbose_name = "로그인 세션"
+        verbose_name_plural = "로그인 세션"
 
 
 class SocialAccount(models.Model):

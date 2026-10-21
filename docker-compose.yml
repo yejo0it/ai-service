@@ -45,6 +45,18 @@ services:
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
       # 여행 상세 'AI와 함께 만들기'(Claude). 비어 있으면 AI API가 503을 돌려준다.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 일정 제안의 실제 이동 시간 계산(Google Routes API). 비어 있으면 직선거리 기준으로 동작한다.
+      GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
+      # 대중교통 이동 시간(NAVITIME Route, RapidAPI). 비어 있으면 대중교통 시간은 표시하지 않는다.
+      NAVITIME_RAPIDAPI_KEY: ${NAVITIME_RAPIDAPI_KEY:-}
+      ROUTES_ENABLED: ${ROUTES_ENABLED:-1}
+      ROUTES_COUNTRIES: ${ROUTES_COUNTRIES:-JP,KR,TW,HK,MO,MN}
+      ROUTES_CITIES: ${ROUTES_CITIES:-}
+      # 일본 역 이름 한국어 표기 데이터 사용 여부(0이면 원어)
+      STATION_NAMES_ENABLED: ${STATION_NAMES_ENABLED:-1}
+      ROUTES_MAX_ELEMENTS_PER_PROPOSAL: ${ROUTES_MAX_ELEMENTS_PER_PROPOSAL:-300}
+      ROUTES_USER_DAILY_ELEMENTS: ${ROUTES_USER_DAILY_ELEMENTS:-600}
+      ROUTES_DAILY_ELEMENTS: ${ROUTES_DAILY_ELEMENTS:-3000}
       # 이메일 변경 인증 메일(SMTP). EMAIL_HOST가 비어 있으면 개발에서는 백엔드 로그로 출력한다.
       EMAIL_HOST: ${EMAIL_HOST:-}
       EMAIL_PORT: ${EMAIL_PORT:-587}
@@ -54,6 +66,9 @@ services:
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-PinRoute <no-reply@pinroute.local>}
       # 인증 메일 속 링크가 가리키는 프론트 주소
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8002}
+      # 로그인 만료 정책(일). 비활동: 마지막 사용자 활동 후 N일 / 절대: 로그인 후 N일
+      AUTH_INACTIVITY_DAYS: ${AUTH_INACTIVITY_DAYS:-7}
+      AUTH_ABSOLUTE_DAYS: ${AUTH_ABSOLUTE_DAYS:-30}
     ports:
       - "8003:8000"
     volumes:

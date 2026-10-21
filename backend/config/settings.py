@@ -1,6 +1,8 @@
 import os
+import sys
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
 
@@ -115,20 +117,60 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     # 프론트는 로그인·가입 응답의 토큰을 `Authorization: Token <key>`로 보낸다.
+    # 토큰은 비활동 7일·로그인 후 30일에 만료된다(accounts.authentication, 아래 AUTH_* 설정).
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        "accounts.authentication.ExpiringTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     # 인증 API(accounts.views.AuthAPIView)·이메일 변경의 요청 제한(ScopedRateThrottle),
     # AI와 함께 만들기(모델 호출)의 사용자당 요청 제한: 1분 10회, 최근 24시간 100회
-    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day", "legs": "120/hour"},
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
 }
 
+# 로그인 만료 정책(서버 시계 기준). 비활동: 마지막 사용자 활동 후 N일, 절대: 로그인 후 N일(활동해도 연장 안 됨).
+AUTH_INACTIVITY_DAYS = int(os.environ.get("AUTH_INACTIVITY_DAYS", "7"))
+AUTH_ABSOLUTE_DAYS = int(os.environ.get("AUTH_ABSOLUTE_DAYS", "30"))
+# 사용자 활동 시각을 DB에 쓰는 최소 간격(초). 활동이 잦아도 이 간격마다 한 번만 쓴다.
+AUTH_ACTIVITY_WRITE_SECONDS = int(os.environ.get("AUTH_ACTIVITY_WRITE_SECONDS", "60"))
+
+# AI 일정 제안의 실제 이동 시간 계산(Google Routes API, trips.routes). 키는 환경변수 GOOGLE_ROUTES_API_KEY.
+# 비용은 요소(출발지×도착지 쌍) 수로 제한한다: 제안 한 번 / 사용자별 하루 / 전체 하루.
+# 테스트 실행 중에는 실제 Google·NAVITIME 호출을 막는다(키가 환경에 있어도 요금이 나가지 않도록). 테스트는 호출 함수를 모킹한다.
+TESTING = "test" in sys.argv
+ROUTES_ENABLED = os.environ.get("ROUTES_ENABLED", "1") == "1"
+# 지원 지역: 나라 코드(ISO) 목록 + 따로 더할 도시 id 목록. 기본은 동아시아(일본·한국·대만·홍콩·마카오·몽골)이고 점차 넓힌다.
+# 일본은 NAVITIME, 그 밖의 나라는 Google 대중교통 결과를 쓴다(중국 본토는 Google이 대중교통 경로를 주지 않아 기본에서 뺐다).
+ROUTES_COUNTRIES = [c.strip().upper() for c in os.environ.get("ROUTES_COUNTRIES", "JP,KR,TW,HK,MO,MN").split(",") if c.strip()]
+ROUTES_CITIES = [c.strip() for c in os.environ.get("ROUTES_CITIES", "").split(",") if c.strip()]
+ROUTES_CITY_RADIUS_KM = int(os.environ.get("ROUTES_CITY_RADIUS_KM", "80"))
+ROUTES_TIMEZONE = os.environ.get("ROUTES_TIMEZONE", "Asia/Tokyo")
+ROUTES_MAX_FUTURE_DAYS = int(os.environ.get("ROUTES_MAX_FUTURE_DAYS", "14"))
+ROUTES_MAX_ELEMENTS_PER_PROPOSAL = int(os.environ.get("ROUTES_MAX_ELEMENTS_PER_PROPOSAL", "300"))
+ROUTES_USER_DAILY_ELEMENTS = int(os.environ.get("ROUTES_USER_DAILY_ELEMENTS", "600"))
+ROUTES_DAILY_ELEMENTS = int(os.environ.get("ROUTES_DAILY_ELEMENTS", "3000"))
+# 일본 대중교통 이동 시간(NAVITIME Route, RapidAPI, trips.transit). 키는 환경변수 NAVITIME_RAPIDAPI_KEY.
+# 무료 요금제는 월 500건 하드 리밋이라, 제안 한 번의 호출 수와 월 호출 수를 제한하고 남은 횟수가 적으면 호출을 멈춘다.
+NAVITIME_ENABLED = os.environ.get("NAVITIME_ENABLED", "1") == "1"
+NAVITIME_MAX_REQUESTS_PER_PROPOSAL = int(os.environ.get("NAVITIME_MAX_REQUESTS_PER_PROPOSAL", "30"))
+NAVITIME_MONTHLY_REQUESTS = int(os.environ.get("NAVITIME_MONTHLY_REQUESTS", "450"))
+NAVITIME_RESERVE = int(os.environ.get("NAVITIME_RESERVE", "20"))
+NAVITIME_TIMEOUT_SECONDS = int(os.environ.get("NAVITIME_TIMEOUT_SECONDS", "8"))
+# 한국어 역 이름 데이터(data/station_names_ja_ko.json, Wikidata) 사용 여부. 기본은 켬(0으로 끌 수 있다).
+STATION_NAMES_ENABLED = os.environ.get("STATION_NAMES_ENABLED", "1") == "1"
+# 한국어로 바꾸지 못한 역·노선 이름 수집(trips.untranslated). 사전을 보완할 때 `python manage.py untranslated_names`로 본다.
+UNTRANSLATED_LOG_ENABLED = os.environ.get("UNTRANSLATED_LOG_ENABLED", "1") == "1"
+UNTRANSLATED_LOG_PATH = os.environ.get("UNTRANSLATED_LOG_PATH", str(BASE_DIR / "logs" / "untranslated_names.jsonl"))
+# Google 데이터는 DB에 저장하지 않고 이 시간 동안만 서버 메모리 캐시에 둔다(초).
+ROUTES_CACHE_TTL_SECONDS = int(os.environ.get("ROUTES_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
+ROUTES_TIMEOUT_SECONDS = int(os.environ.get("ROUTES_TIMEOUT_SECONDS", "8"))
+
 # 브라우저 Origin 기준. Docker compose에서는 http://localhost:8002 가 주입된다.
+# 프런트가 사용자 조작 직후의 요청에 붙이는 헤더(accounts.authentication.ACTIVITY_HEADER)를 허용한다.
+CORS_ALLOW_HEADERS = (*default_headers, "x-user-activity")
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:8002,http://127.0.0.1:8002",

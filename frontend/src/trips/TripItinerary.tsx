@@ -15,7 +15,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ItineraryItem, ItineraryKind } from "../types/api";
+import { useState, type ReactNode } from "react";
+import type { ItineraryItem, ItineraryKind, ItineraryLeg } from "../types/api";
+import RouteLeg, { RouteLegSkeleton } from "./RouteLeg";
 import { PIN_STYLE } from "./TripMap";
 import { pinKind, stopKey } from "./tripDays";
 
@@ -36,6 +38,8 @@ interface ItineraryCardProps {
   numbers: Map<string, number>;
   onRemove: (id: number) => void;
   onEdit: (item: ItineraryItem) => void;
+  /** 직전 일정 -> 이 일정 이동 구간 (두 번째 카드부터). 없으면 그리지 않는다. */
+  leg?: ReactNode;
 }
 
 /** 수정할 수 있는 카드 (등록 정보에서 만든 항공·숙소 카드는 등록 정보·AI로 관리한다) */
@@ -45,7 +49,7 @@ export const canEditItem = (item: ItineraryItem) => item.source !== "auto";
 export const canResearchPlace = (item: ItineraryItem) => canEditItem(item) && item.kind !== "flight";
 
 /** 일정 카드: 타임라인 점, 드래그 손잡이, 이름 + 지도 번호, 주소, 전화·영업시간, 수정(연필)·삭제(x) */
-function ItineraryCard({ item, first, last, numbers, onRemove, onEdit }: ItineraryCardProps) {
+function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: ItineraryCardProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
   const style = KIND_STYLE[item.kind];
@@ -59,17 +63,27 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit }: Itinera
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`relative flex gap-3 ${isDragging ? "z-10" : ""}`}
+      className={`relative grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3 ${isDragging ? "z-10" : ""}`}
     >
+      {/* 이동 구간: 카드 위 한 줄(위쪽 행). 타임라인 점선이 구간 옆으로 이어지고, 점은 카드 높이에 맞춘다. */}
+      {leg && (
+        <>
+          <div className="flex justify-center" aria-hidden="true">
+            <span className="w-0 self-stretch border-l-2 border-dashed border-slate-200" />
+          </div>
+          <div className="min-w-0">{leg}</div>
+        </>
+      )}
+
       {/* 타임라인: 첫 일정은 채운 점, 나머지는 빈 점. 점 사이를 점선으로 잇는다. */}
-      <div className="flex w-3 shrink-0 flex-col items-center pt-6" aria-hidden="true">
+      <div className="flex flex-col items-center pt-6" aria-hidden="true">
         <span
           className={`h-3 w-3 rounded-full border-2 ${first ? "border-indigo-500 bg-indigo-500" : "border-slate-300 bg-white"}`}
         />
         {!last && <span className="w-0 flex-1 border-l-2 border-dashed border-slate-200" />}
       </div>
 
-      <div className={`min-w-0 flex-1 ${last ? "" : "pb-3"}`}>
+      <div className={`min-w-0 ${last ? "" : "pb-3"}`}>
         <div
           className={`rounded-2xl border bg-white p-3.5 transition-shadow ${
             isDragging ? "border-indigo-200 shadow-lg" : "border-slate-100 shadow-sm"
@@ -181,10 +195,22 @@ interface TripItineraryProps {
   onReorder: (items: ItineraryItem[]) => void;
   onRemove: (id: number) => void;
   onEdit: (item: ItineraryItem) => void;
+  /** 이동 구간: `${직전 카드 id}-${이 카드 id}` -> 구간. 없으면 구간을 그리지 않는다. */
+  legs?: Map<string, ItineraryLeg>;
+  legsLoading?: boolean;
 }
 
 /** 그날의 일정 카드 목록. 손잡이를 끌어(또는 키보드로) 순서를 바꾸고, x로 뺀다. 모두 저장된다. */
-export default function TripItinerary({ items, numbers, onReorder, onRemove, onEdit }: TripItineraryProps) {
+export default function TripItinerary({ items, numbers, onReorder, onRemove, onEdit, legs, legsLoading }: TripItineraryProps) {
+  // 펼친 이동 구간(기본은 모두 접힘)
+  const [openLegs, setOpenLegs] = useState<Set<string>>(new Set());
+  const toggleLeg = (key: string) =>
+    setOpenLegs((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+
   const sensors = useSensors(
     // 살짝 움직인 뒤부터 드래그로 본다(버튼 클릭과 구분).
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -212,17 +238,29 @@ export default function TripItinerary({ items, numbers, onReorder, onRemove, onE
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ol aria-label="일정">
-            {items.map((item, index) => (
-              <ItineraryCard
-                key={item.id}
-                item={item}
-                first={index === 0}
-                last={index === items.length - 1}
-                numbers={numbers}
-                onRemove={onRemove}
-                onEdit={onEdit}
-              />
-            ))}
+            {items.map((item, index) => {
+              // 첫 카드와 항공편 카드 앞에는 구간이 없다(항공편 다음 카드는 도착 공항에서 출발하는 구간)
+              const previous = items[index - 1];
+              const legKey = previous ? `${previous.id}-${item.id}` : "";
+              const leg = previous && item.kind !== "flight" ? legs?.get(legKey) : undefined;
+              const legNode = leg ? (
+                <RouteLeg leg={leg} legKey={legKey} open={openLegs.has(legKey)} onToggle={toggleLeg} />
+              ) : legsLoading && previous && item.kind !== "flight" ? (
+                <RouteLegSkeleton />
+              ) : null;
+              return (
+                <ItineraryCard
+                  key={item.id}
+                  item={item}
+                  first={index === 0}
+                  last={index === items.length - 1}
+                  numbers={numbers}
+                  onRemove={onRemove}
+                  onEdit={onEdit}
+                  leg={legNode}
+                />
+              );
+            })}
           </ol>
         </SortableContext>
       </DndContext>

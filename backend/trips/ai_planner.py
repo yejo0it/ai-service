@@ -33,7 +33,6 @@ MAX_TOKENS = 16000
 # 모델 응답 상한 (서비스가 쓰기 전에 자른다)
 MAX_REPLY_CHARS = 2000
 MAX_ADDITIONS = 60
-MAX_CHECKLIST = 10
 
 
 class PlanAddition(BaseModel):
@@ -45,7 +44,9 @@ class PlanAddition(BaseModel):
     )
     time: Optional[str] = Field(description="'HH:MM'. 사용자가 시간을 말했거나 식사 시간처럼 분명할 때만, 아니면 null")
     reason: str = Field(description="이 장소를 고른 이유 한 문장")
-    checklist: list[str] = Field(description="사전 예약·티켓 예매·준비물처럼 미리 챙길 것 (없으면 빈 목록)")
+    stay_minutes: Optional[int] = Field(
+        description="이 장소에서 보낼 예상 체류 시간(분, 10~240). 관광지·식당·카페는 보통 값을 정하고, 모르면 null"
+    )
 
 
 class PlanMove(BaseModel):
@@ -130,12 +131,16 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
 
 - 장소는 실제로 존재하는 구체적인 장소만 고르세요 (지점이 여럿이면 지점명까지). search_query는 Google 지도에서
   그 장소 하나가 검색되도록 장소 이름과 도시를 함께 적으세요.
-- 방문 순서와 동선은 서비스가 거리 기준으로 정합니다. 순서를 정하려 하지 말고, 장소·날짜·시간만 정하세요.
+- 방문 순서와 이동은 서비스가 Google 길찾기 정보(실제 이동 시간·교통수단)로 계산합니다. 순서를 정하거나, 이동 시간·교통편·
+  환승을 추측하거나 reply에 적지 마세요(서비스가 계산한 값만 화면에 보여줍니다). 장소·날짜·시간·체류 시간만 정하세요.
+  - 각 장소에는 stay_minutes(예상 체류 시간)를 정하세요. 관광지는 보통 60~120분, 식당 60분 안팎, 카페 30~45분입니다.
+  - 식사 장소는 점심(12:00 전후)·저녁(18:00~19:00)처럼 분명한 시간대면 time을 정하고, 하루 일정에 식사와 휴식이 자연스럽게
+    들어가도록 하루에 너무 많은 장소를 넣지 마세요. 운영시간이 짧거나 휴무가 잦은 곳은 서비스가 영업시간을 확인합니다.
   - 사용자가 날짜를 말하면 그 day_index를, 시간을 말하면 time을 정하세요. 말하지 않았으면 null로 두세요.
-  - 전체 계획을 짜 달라고 하면 하루에 3~4곳(출국·귀국일은 1~2곳)을 고르고, 같은 날에는 서로 가까운 동네의
-    장소를 묶어 day_index를 정하세요. 숙소가 있으면 그 주변을 우선하세요.
+  - 전체 계획을 짜 달라고 하면 장소 수를 고정하지 말고 하루 시간(약 9시~22시)에 체류 시간·이동·식사·휴식이 무리 없이
+    들어가도록 고르세요. 보통 하루 4~6곳이 적당하고, 출국·귀국일은 항공 시각을 고려해 적게 넣으세요. 사용자가 더 많이
+    원하면 그만큼 넣되, 같은 날에는 서로 가까운 동네의 장소를 묶어 day_index를 정하세요. 숙소가 있으면 그 주변을 우선하세요.
 - 현재 일정에 이미 있는 장소는 다시 추가하지 마세요. 빼거나 옮길 때는 현재 일정에 있는 id만 쓰세요.
-- 사전 예약·티켓 예매가 필요한 곳이면 checklist에 "웹으로 티켓 사전 예매"처럼 짧게 적으세요.
 - reply는 친근한 한국어로 2~4문장. 무엇을 추가·이동·삭제하자고 제안하는지 설명하세요.
 - 여행에 관한 질문이지만 일정을 바꿀 필요가 없으면(예: 날씨, 환전, 준비물) reply로만 답하고 나머지는 빈 값으로
   두세요.
@@ -288,6 +293,4 @@ def limit_plan(plan):
     """
     plan.reply = plan.reply[:MAX_REPLY_CHARS]
     plan.additions = plan.additions[:MAX_ADDITIONS]
-    for addition in plan.additions:
-        addition.checklist = [text[:200] for text in addition.checklist[:MAX_CHECKLIST]]
     return plan

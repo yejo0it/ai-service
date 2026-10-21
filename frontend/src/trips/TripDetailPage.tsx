@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deleteItineraryItem,
+  getDayLegs,
   getItinerary,
   getTrip,
   initItinerary,
@@ -9,7 +10,7 @@ import {
   toErrorMessage,
 } from "../api/client";
 import { ROUTES } from "../routes";
-import type { Airport, ItineraryItem, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
@@ -418,7 +419,7 @@ function InviteButton({ trip }: { trip: Trip }) {
 
 /**
  * `/trips/:tripId` 여행 상세.
- * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
+ * - 제목 오른쪽 끝에 여행 체크리스트 바로가기 · 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
  * - 지도 핀 번호는 일정 카드 순서를 따르고, 카드를 끌어 순서를 바꾸면 번호도 바뀐다.
@@ -463,6 +464,30 @@ export default function TripDetailPage() {
   const day = dates[dayIndex] ?? dates[0];
   const dayItems = useMemo(() => (items ?? []).filter((item) => item.day === day), [items, day]);
   const { points, numbers } = useMemo(() => numberStops(dayItems), [dayItems]);
+
+  // 그날 일정 사이의 이동 구간(도보·대중교통·택시). 순서·일정이 바뀌면 잠깐 기다렸다가 다시 불러온다
+  // (서버가 같은 구간은 캐시하므로 외부 API를 다시 부르지 않는다).
+  const [legs, setLegs] = useState<Map<string, ItineraryLeg>>(new Map());
+  const [legsLoading, setLegsLoading] = useState(false);
+  useEffect(() => {
+    if (!trip || !day || dayItems.length < 2) {
+      setLegs(new Map());
+      setLegsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLegsLoading(true);
+    const timer = window.setTimeout(() => {
+      getDayLegs(trip.id, day)
+        .then((list) => !cancelled && setLegs(new Map(list.map((leg) => [`${leg.from_item_id}-${leg.to_item_id}`, leg]))))
+        .catch(() => !cancelled && setLegs(new Map())) // 구간은 부가 정보라 실패해도 일정은 그대로 보여준다.
+        .finally(() => !cancelled && setLegsLoading(false));
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [trip?.id, day, dayItems]); // eslint-disable-line react-hooks/exhaustive-deps
   // 그날 좌표가 있는 위치가 없으면 여행 도시를 대신 보여준다.
   const fallbackPoints = useMemo(() => (trip && points.length === 0 ? cityPoints(trip) : []), [trip, points]);
   const mapPoints = points.length > 0 ? points : fallbackPoints;
@@ -593,7 +618,13 @@ export default function TripDetailPage() {
             {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
           </p>
         </div>
-        <InviteButton trip={trip} />
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <Link to={`${ROUTES.PACKING}?trip=${trip.id}`} className={`${OUTLINE_BUTTON} shrink-0 whitespace-nowrap`}>
+            <i className="fas fa-clipboard-list text-xs" aria-hidden="true" />
+            여행 체크리스트
+          </Link>
+          <InviteButton trip={trip} />
+        </div>
       </header>
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
@@ -649,6 +680,8 @@ export default function TripDetailPage() {
                 onReorder={onReorder}
                 onRemove={onRemove}
                 onEdit={setEditing}
+                legs={legs}
+                legsLoading={legsLoading}
               />
             )}
           </div>
