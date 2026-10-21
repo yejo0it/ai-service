@@ -25,6 +25,7 @@ import type {
   ExpenseCurrencies,
   ExpensePayload,
   ExpensesResponse,
+  Settlement,
   FindIdPayload,
   FindIdResponse,
   Hotel,
@@ -245,6 +246,10 @@ export const getExpenses = (tripId: number) =>
 /** 지출 입력에서 고를 통화와 지금 환율. 환율 서비스 오류면 실패한다(원화 입력은 그대로 가능). */
 export const getExpenseCurrencies = (tripId: number) =>
   api.get<ExpenseCurrencies>(`/trips/${tripId}/expense-currencies/`).then((res) => res.data);
+
+/** 결제자·분담 인원을 정한 지출 기준의 사용자별 정산과 송금 안내 */
+export const getSettlement = (tripId: number) =>
+  api.get<Settlement>(`/trips/${tripId}/settlement/`).then((res) => res.data);
 
 export const addExpense = (tripId: number, payload: ExpensePayload) =>
   api.post<Expense>(`/trips/${tripId}/expenses/`, payload).then((res) => res.data);

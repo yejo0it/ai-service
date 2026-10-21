@@ -204,10 +204,11 @@ class ExpenseAccessTests(ExpenseTestBase):
     def test_withdrawn_payer_keeps_the_record(self):
         self.client.force_authenticate(self.guest)
         self.add(title="간식")
+        guest_id = self.guest.id
         self.guest.delete()
         self.client.force_authenticate(self.owner)
         (expense,) = self.client.get(self.list_url).data["expenses"]
-        self.assertEqual((expense["title"], expense["payer_id"], expense["payer_name"]), ("간식", None, "일행"))
+        self.assertEqual((expense["title"], expense["payer_id"], expense["payer_name"]), ("간식", guest_id, "일행"))  # 번호와 이름이 남는다
 
     def test_deleting_trip_removes_its_expenses_and_budget_only(self):
         other = Trip.objects.create(owner=self.owner, start_date="2026-12-01", end_date="2026-12-02")

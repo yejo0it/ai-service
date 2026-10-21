@@ -56,3 +56,17 @@ export function formatAmountText(text: string): string {
 /** 입력한 통화 금액 표기: "1,200 JPY", "14.50 USD" */
 export const formatOriginal = (expense: Pick<Expense, "amount" | "currency">) =>
   `${formatAmount(Number(expense.amount), expense.currency)} ${expense.currency}`;
+
+/** 금액 문자열 -> 최소 단위 정수(소수 자릿수만큼 곱한다). 계산 오차를 피하려고 정수로 비교한다. */
+export const toMinor = (text: string, decimals: number): number => Math.round(Number(text || 0) * 10 ** decimals);
+
+/** 최소 단위 정수 -> 금액 문자열 ("1200", "14.5") */
+export const fromMinor = (minor: number, decimals: number): string =>
+  decimals === 0 ? String(minor) : (minor / 10 ** decimals).toFixed(decimals).replace(/\.?0+$/, "");
+
+/** 총액(최소 단위)을 n명에게 균등하게. 나누어떨어지지 않는 나머지는 앞사람부터 최소 단위 1씩 더 받는다. */
+export function equalMinor(totalMinor: number, count: number): number[] {
+  const base = Math.floor(totalMinor / count);
+  const extra = totalMinor - base * count;
+  return Array.from({ length: count }, (_, index) => base + (index < extra ? 1 : 0));
+}
