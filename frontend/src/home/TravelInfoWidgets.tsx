@@ -4,6 +4,16 @@ import { getExchangeRates, getPackingItems, getWeather, toErrorMessage } from ".
 import { ROUTES } from "../routes";
 import type { CityWeather, Destination, ExchangeRatesResponse, Trip } from "../types/api";
 import { WEEKDAYS_KO, diffDays, parseISODate } from "../utils/date";
+import {
+  convertKrw,
+  digitsOf,
+  formatAmount,
+  formatKrwInput,
+  formatUpdatedAt,
+  parseKrw,
+  pickRate,
+  rateLabel,
+} from "./exchangeCalc";
 import { formatTemp, weatherLook } from "./weatherCodes";
 
 const CARD_CLASS = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -214,7 +224,72 @@ function Flag({ flag }: { flag: string }) {
 const formatKrw = (value: number) =>
   value.toLocaleString("ko-KR", { maximumFractionDigits: value >= 100 ? 1 : 2 });
 
-/** 여행 국가 통화 환율 (원화 기준). 국내 여행이면 표시할 통화가 없다. */
+/**
+ * 환율 계산기: 원화를 입력하면 여행 도시의 현지 통화로 바로 환산한다(버튼 없음).
+ * 위젯이 이미 불러온 환율만 쓰며 입력할 때 요청하지 않는다. 환율이 없는 통화는 결과를 만들지 않는다.
+ */
+function ExchangeCalculator({ rates }: { rates: ExchangeRatesResponse["rates"] }) {
+  const [digits, setDigits] = useState("");
+  // 여행지가 여럿(통화가 둘 이상)이면 고른 여행지의 통화만 보여준다. 기본은 첫 여행지.
+  const [selected, setSelected] = useState(rates[0]?.currency ?? "");
+  const rate = pickRate(rates, selected);
+  const krw = parseKrw(digits);
+  const amount = krw === null || !rate ? null : convertKrw(krw, rate);
+  if (!rate) return null;
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4">
+      <label htmlFor="exchange-krw" className="text-xs font-semibold text-slate-500">
+        원화 → 현지 통화 계산
+      </label>
+      {rates.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="환전할 여행지">
+          {rates.map((item) => (
+            <button
+              key={item.currency}
+              type="button"
+              onClick={() => setSelected(item.currency)}
+              aria-pressed={item.currency === rate.currency}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                item.currency === rate.currency
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300"
+              }`}
+            >
+              {rateLabel(item)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
+        <span className="shrink-0 text-sm font-semibold text-slate-400" aria-hidden="true">
+          ₩
+        </span>
+        <input
+          id="exchange-krw"
+          inputMode="numeric"
+          autoComplete="off"
+          value={formatKrwInput(digits)}
+          onChange={(event) => setDigits(digitsOf(event.target.value))}
+          placeholder="환전할 원화 금액"
+          className="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold tabular-nums text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:outline-none"
+        />
+        <span className="shrink-0 text-xs text-slate-400">원</span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5" aria-live="polite">
+        <span className="flex min-w-0 items-center gap-2 text-sm text-slate-600">
+          <Flag flag={rate.flag} />
+          <span className="font-semibold text-slate-800">{rate.currency}</span>
+        </span>
+        <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+          {amount === null ? <span className="font-normal text-slate-300">–</span> : `${formatAmount(amount, rate.currency)} ${rate.currency}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 여행 국가 통화 환율 (원화 기준)과 환율 계산기. 국내 여행이면 표시할 통화가 없다. */
 export function ExchangeWidget({ trip }: { trip: Trip }) {
   const cityCodes = trip.destinations.map((dest) => dest.city_code).filter(Boolean);
   const state = useLoad<ExchangeRatesResponse>(cityCodes.join(",") || null, () => getExchangeRates(cityCodes));
@@ -259,7 +334,13 @@ export function ExchangeWidget({ trip }: { trip: Trip }) {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[11px] text-slate-400">하루 한 번 갱신되는 기준 환율이에요.</p>
+            <ExchangeCalculator rates={state.data.rates} />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              하루 한 번 갱신되는 기준 환율이에요.
+              {formatUpdatedAt(state.data.updated_at) && ` 마지막 갱신 ${formatUpdatedAt(state.data.updated_at)}`}
+              <br />
+              실제 환전 금액은 환전소·카드사 수수료와 환율 우대 등에 따라 달라질 수 있어요.
+            </p>
           </>
         ))}
     </section>
