@@ -28,6 +28,8 @@ export interface TripDetailState {
   trip: Trip;
   /** 새 여행 만들기를 막 마쳤는지 (완료 안내 표시) */
   created?: boolean;
+  /** 새 여행 만들기에서 여행지 순서를 숙소·항공에 맞춰 바꿨을 때의 안내 */
+  notice?: string;
 }
 
 const CARD_CLASS = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -592,6 +594,7 @@ export default function TripDetailPage() {
       {state?.created && (
         <div role="status" className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
           <p className="text-sm font-semibold text-emerald-800">여행이 만들어졌어요. 첫째 날부터 경로를 채워 보세요.</p>
+          {state.notice && <p className="mt-1 text-xs text-emerald-700">{state.notice}</p>}
           {firstDayStops.length > 0 && (
             <ol className="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-emerald-900" aria-label="첫째 날 이동">
               {firstDayStops.map((label, index) => (

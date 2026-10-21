@@ -175,8 +175,8 @@ export default function HomePage() {
       {newTripOpen && (
         <OnboardingWizard
           onClose={() => setNewTripOpen(false)}
-          onComplete={(trip) => {
-            const state: TripDetailState = { trip, created: true };
+          onComplete={(trip, notice) => {
+            const state: TripDetailState = { trip, created: true, notice };
             navigate(tripDetailPath(trip.id), { state });
           }}
         />
