@@ -20,7 +20,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "홈", icon: "fas fa-home", to: ROUTES.HOME, end: true },
   { label: "내 여행", icon: "fas fa-suitcase", to: ROUTES.MY_TRIPS },
-  { label: "여행 체크리스트", icon: "fas fa-clipboard-list", to: ROUTES.PACKING },
 ];
 
 /** 화면에 부를 이름: 이름 → 이메일 아이디 → "여행자" */

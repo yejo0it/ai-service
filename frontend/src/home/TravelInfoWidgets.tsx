@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getExchangeRates, getPackingItems, getWeather, toErrorMessage } from "../api/client";
-import { ROUTES } from "../routes";
+import { tripTabPath } from "../routes";
 import type { CityWeather, Destination, ExchangeRatesResponse, Trip } from "../types/api";
 import { WEEKDAYS_KO, diffDays, parseISODate } from "../utils/date";
 import {
@@ -367,7 +367,7 @@ export function PackingWidget({ trip }: { trip: Trip }) {
         title="체크리스트 진행률"
         aside={
           <Link
-            to={`${ROUTES.PACKING}?trip=${trip.id}`}
+            to={tripTabPath(trip.id, "checklist")}
             className="text-xs font-medium text-indigo-600 hover:underline"
           >
             여행 체크리스트
