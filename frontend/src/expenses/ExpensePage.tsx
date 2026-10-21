@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { deleteExpense, getExpenses, setBudget, toErrorMessage } from "../api/client";
+import { deleteExpense, getExpenses, getSettlement, setBudget, toErrorMessage } from "../api/client";
 import { digitsOf, formatKrwInput } from "../home/exchangeCalc";
-import type { Expense, ExpenseCategory, ExpensesResponse, Trip } from "../types/api";
+import type { Expense, ExpenseCategory, ExpensesResponse, Settlement, Trip } from "../types/api";
 import { formatMonthDay } from "../utils/date";
 import ExpenseDrawer from "./ExpenseDrawer";
 import { EXPENSE_CATEGORIES, categoryOf, formatOriginal, formatWon, rateLabel, spentPercent } from "./expenseUtils";
@@ -156,6 +156,93 @@ function BudgetSummary({ trip, data, onChanged }: { trip: Trip; data: ExpensesRe
   );
 }
 
+/** 정산: 누가 누구에게 얼마를 보내면 끝나는지와 사용자별 결제·부담 금액. 분담 인원을 정한 지출 기준이다. */
+function SettlementCard({ settlement }: { settlement: Settlement }) {
+  // 혼자 하는 여행이면 정산할 일이 없어 보이지 않는다.
+  if (settlement.balances.length < 2) return null;
+  const { balances, transfers, excluded_count: excluded } = settlement;
+
+  return (
+    <section aria-label="정산" className={CARD_CLASS}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-base font-bold text-slate-900">정산</h2>
+        <span className="text-xs text-slate-400">분담 인원을 정한 지출 {formatWon(settlement.settled_krw)} 기준</span>
+      </div>
+
+      {transfers.length === 0 ? (
+        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-500">
+          {settlement.settled_krw === 0 ? "분담 인원을 정한 지출이 아직 없어요." : "서로 주고받을 금액이 없어요. 정산이 끝났어요!"}
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-2" aria-label="송금 안내">
+          {transfers.map((transfer) => (
+            <li
+              key={`${transfer.from_id}-${transfer.to_id}`}
+              className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2.5"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
+                <span className="truncate font-semibold">{transfer.from_name}</span>
+                <i className="fas fa-arrow-right shrink-0 text-[10px] text-indigo-400" aria-hidden="true" />
+                <span className="truncate font-semibold">{transfer.to_name}</span>
+              </span>
+              <span className="shrink-0 text-sm font-bold tabular-nums text-indigo-700">
+                {formatWon(transfer.amount_krw)} 송금
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[20rem] text-sm">
+          <thead>
+            <tr className="text-xs text-slate-400">
+              <th scope="col" className="pb-2 text-left font-medium">
+                이름
+              </th>
+              <th scope="col" className="pb-2 text-right font-medium">
+                결제한 금액
+              </th>
+              <th scope="col" className="pb-2 text-right font-medium">
+                부담액
+              </th>
+              <th scope="col" className="pb-2 text-right font-medium">
+                정산
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {balances.map((balance) => (
+              <tr key={balance.id}>
+                <th scope="row" className="py-2 text-left font-medium text-slate-800">
+                  {balance.name}
+                  {!balance.active && <span className="ml-1 text-xs font-normal text-slate-400">(나간 일행)</span>}
+                </th>
+                <td className="py-2 text-right tabular-nums text-slate-600">{formatWon(balance.paid_krw)}</td>
+                <td className="py-2 text-right tabular-nums text-slate-600">{formatWon(balance.share_krw)}</td>
+                <td
+                  className={`py-2 text-right font-semibold tabular-nums ${
+                    balance.net_krw > 0 ? "text-emerald-600" : balance.net_krw < 0 ? "text-rose-600" : "text-slate-400"
+                  }`}
+                >
+                  {balance.net_krw > 0 ? "+" : balance.net_krw < 0 ? "−" : ""}
+                  {formatWon(Math.abs(balance.net_krw))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-slate-400">+ 받을 금액, − 보낼 금액이에요. 나누어떨어지지 않는 금액은 1원씩 더 부담해요.</p>
+      {excluded > 0 && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          분담 인원을 정하지 않은 지출 {excluded}건은 정산에서 빠져 있어요. 지출을 수정해 인원을 정하면 포함돼요.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ExpenseRow({
   expense,
   onEdit,
@@ -194,7 +281,10 @@ function ExpenseRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-900">{expense.title}</p>
           <p className="mt-0.5 truncate text-xs text-slate-500">
-            {category.label} · {expense.payer_name} 결제{expense.memo && ` · ${expense.memo}`}
+            {category.label} · {expense.payer_name} 결제
+            {expense.participants.length > 0 &&
+              ` · ${expense.participants.length}명 분담${expense.split_method === "custom" ? "(직접 입력)" : ""}`}
+            {expense.memo && ` · ${expense.memo}`}
           </p>
         </div>
         <span className="shrink-0 text-right">
@@ -255,9 +345,10 @@ function ExpenseRow({
   );
 }
 
-/** 여행 상세 `경비 관리` 탭: 예산 요약 · 분류별 합계 · 날짜별 지출 내역. */
+/** 여행 상세 `경비 관리` 탭: 예산 요약 · 정산 · 분류별 합계 · 날짜별 지출 내역. */
 export default function ExpensePage({ trip }: { trip: Trip }) {
   const [data, setData] = useState<ExpensesResponse | null>(null);
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [error, setError] = useState("");
   const [category, setCategory] = useState<ExpenseCategory | null>(null);
   const [date, setDate] = useState("");
@@ -269,6 +360,10 @@ export default function ExpensePage({ trip }: { trip: Trip }) {
     getExpenses(trip.id)
       .then((next) => !cancelled && (setData(next), setError("")))
       .catch((err: unknown) => !cancelled && setError(toErrorMessage(err)));
+    // 정산은 부가 정보라 실패해도 지출 내역은 그대로 보여 준다.
+    getSettlement(trip.id)
+      .then((next) => !cancelled && setSettlement(next))
+      .catch(() => !cancelled && setSettlement(null));
     return () => {
       cancelled = true;
     };
@@ -318,6 +413,7 @@ export default function ExpensePage({ trip }: { trip: Trip }) {
   return (
     <div className="space-y-4">
       <BudgetSummary trip={trip} data={data} onChanged={load} />
+      {settlement && <SettlementCard settlement={settlement} />}
 
       <section aria-label="지출 내역" className={CARD_CLASS}>
         <div className="flex flex-wrap items-center justify-between gap-3">

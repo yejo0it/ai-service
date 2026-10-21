@@ -419,8 +419,23 @@ export interface Expense {
   spent_on: ISODate;
   category: ExpenseCategory;
   memo: string;
+  /** 결제자 회원 번호. 탈퇴한 결제자도 같은 번호로 남는다. */
   payer_id: number | null;
   payer_name: string;
+  /** 비용을 나누는 인원과 각자의 부담액(균등 분할, 나머지는 1원씩). 분담 인원을 정하지 않은 지출은 빈 배열 */
+  participants: ExpenseParticipant[];
+  /** 분담 방식: 균등 분할 또는 사람마다 금액을 직접 입력 */
+  split_method: SplitMethod;
+}
+
+export type SplitMethod = "equal" | "custom";
+
+export interface ExpenseParticipant {
+  id: number;
+  name: string;
+  share_krw: number;
+  /** 직접 입력일 때 입력한 금액(지출 통화 기준, Decimal 문자열). 균등 분할이면 null */
+  amount: string | null;
 }
 
 /** 지출 목록과 예산 요약. 합계는 서버가 정수 원으로 계산한다. */
@@ -442,6 +457,13 @@ export interface ExpensePayload {
   spent_on: ISODate;
   category: ExpenseCategory;
   memo: string;
+  /** 결제자 회원 번호. 보내지 않으면 등록한 사람(수정할 때는 그대로) */
+  payer_id?: number;
+  /** 비용을 나눌 회원 번호. 보내지 않으면 그대로(새 지출은 나누지 않는 지출) */
+  participant_ids?: number[];
+  /** 분담 방식. 직접 입력이면 participant_amounts로 사람마다 금액을 보낸다(합계는 지출 금액과 같아야 한다). */
+  split_method?: SplitMethod;
+  participant_amounts?: { id: number; amount: string }[];
 }
 
 export interface ChatTurn {
@@ -615,4 +637,33 @@ export interface ExpenseCurrencies {
   trip_currencies: string[];
   currencies: ExpenseCurrency[];
   updated_at: string;
+}
+
+/** 사용자별 정산: 결제한 금액 · 부담액 · 순액(받을 돈은 +, 보낼 돈은 −) */
+export interface SettlementBalance {
+  id: number;
+  name: string;
+  paid_krw: number;
+  share_krw: number;
+  net_krw: number;
+  /** 지금 여행에 함께하는 사람인지(나간 일행·탈퇴한 회원은 false) */
+  active: boolean;
+}
+
+/** 누가 누구에게 얼마를 보내면 정산이 끝나는지 */
+export interface SettlementTransfer {
+  from_id: number;
+  from_name: string;
+  to_id: number;
+  to_name: string;
+  amount_krw: number;
+}
+
+export interface Settlement {
+  balances: SettlementBalance[];
+  transfers: SettlementTransfer[];
+  /** 정산에 들어간 지출 합계(분담 인원을 정한 지출) */
+  settled_krw: number;
+  /** 분담 인원을 정하지 않아 정산에서 빠진 지출 수 */
+  excluded_count: number;
 }

@@ -33,6 +33,7 @@ urlpatterns = [
     path("trips/<int:pk>/expenses/", expense.ExpenseListView.as_view(), name="trip-expenses"),
     path("trips/<int:pk>/budget/", expense.BudgetView.as_view(), name="trip-budget"),
     path("trips/<int:pk>/expense-currencies/", expense.ExpenseCurrenciesView.as_view(), name="trip-expense-currencies"),
+    path("trips/<int:pk>/settlement/", expense.SettlementView.as_view(), name="trip-settlement"),
     path("expenses/<int:expense_id>/", expense.ExpenseView.as_view(), name="expense"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),
