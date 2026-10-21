@@ -22,6 +22,7 @@ import type {
   CityWeather,
   ExchangeRatesResponse,
   Expense,
+  ExpenseCurrencies,
   ExpensePayload,
   ExpensesResponse,
   FindIdPayload,
@@ -240,6 +241,10 @@ export const deletePackingItem = (packingId: number) => api.delete<void>(`/packi
 /** 여행 경비: 예산·총지출·남은 예산·분류별 합계와 지출 목록 */
 export const getExpenses = (tripId: number) =>
   api.get<ExpensesResponse>(`/trips/${tripId}/expenses/`).then((res) => res.data);
+
+/** 지출 입력에서 고를 통화와 지금 환율. 환율 서비스 오류면 실패한다(원화 입력은 그대로 가능). */
+export const getExpenseCurrencies = (tripId: number) =>
+  api.get<ExpenseCurrencies>(`/trips/${tripId}/expense-currencies/`).then((res) => res.data);
 
 export const addExpense = (tripId: number, payload: ExpensePayload) =>
   api.post<Expense>(`/trips/${tripId}/expenses/`, payload).then((res) => res.data);

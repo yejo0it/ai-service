@@ -32,6 +32,7 @@ urlpatterns = [
     # 여행 경비 (router의 trips/{pk}/ 보다 먼저 둔다)
     path("trips/<int:pk>/expenses/", expense.ExpenseListView.as_view(), name="trip-expenses"),
     path("trips/<int:pk>/budget/", expense.BudgetView.as_view(), name="trip-budget"),
+    path("trips/<int:pk>/expense-currencies/", expense.ExpenseCurrenciesView.as_view(), name="trip-expense-currencies"),
     path("expenses/<int:expense_id>/", expense.ExpenseView.as_view(), name="expense"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),

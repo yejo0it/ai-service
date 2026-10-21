@@ -414,6 +414,8 @@ export interface Expense {
   currency: string;
   /** 원화 환산 금액 */
   amount_krw: number;
+  /** 지출 당시 적용한 환율(1원당 현지 통화 금액). 원화 지출은 null */
+  rate_per_krw: string | null;
   spent_on: ISODate;
   category: ExpenseCategory;
   memo: string;
@@ -434,7 +436,9 @@ export interface ExpensesResponse {
 
 export interface ExpensePayload {
   title: string;
-  amount: number;
+  /** 입력 통화 기준 금액(문자열로 보내 소수 오차를 피한다) */
+  amount: string;
+  currency: string;
   spent_on: ISODate;
   category: ExpenseCategory;
   memo: string;
@@ -593,4 +597,22 @@ export interface ItineraryLeg {
   /** 요금 표기 (예: "¥253"). 모르면 null */
   fare_label: string | null;
   steps: LegStep[];
+}
+
+/** 지출에 쓸 수 있는 통화 한 개와 지금 환율 */
+export interface ExpenseCurrency {
+  currency: string;
+  name: string;
+  flag: string;
+  /** 소수 자릿수(엔·동은 0, 그 밖은 2) */
+  decimals: number;
+  /** 1원당 현지 통화 금액(Decimal 문자열) */
+  per_krw: string;
+}
+
+export interface ExpenseCurrencies {
+  /** 이 여행 도시들의 통화(원화 제외) */
+  trip_currencies: string[];
+  currencies: ExpenseCurrency[];
+  updated_at: string;
 }

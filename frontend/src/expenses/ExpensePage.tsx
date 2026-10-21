@@ -4,7 +4,7 @@ import { digitsOf, formatKrwInput } from "../home/exchangeCalc";
 import type { Expense, ExpenseCategory, ExpensesResponse, Trip } from "../types/api";
 import { formatMonthDay } from "../utils/date";
 import ExpenseDrawer from "./ExpenseDrawer";
-import { EXPENSE_CATEGORIES, categoryOf, formatWon, spentPercent } from "./expenseUtils";
+import { EXPENSE_CATEGORIES, categoryOf, formatOriginal, formatWon, rateLabel, spentPercent } from "./expenseUtils";
 
 const CARD_CLASS = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 const PRIMARY_BUTTON =
@@ -197,7 +197,17 @@ function ExpenseRow({
             {category.label} · {expense.payer_name} 결제{expense.memo && ` · ${expense.memo}`}
           </p>
         </div>
-        <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{formatWon(expense.amount_krw)}</span>
+        <span className="shrink-0 text-right">
+          <span className="block text-sm font-bold tabular-nums text-slate-900">{formatWon(expense.amount_krw)}</span>
+          {expense.currency !== "KRW" && (
+            <span
+              className="block text-xs tabular-nums text-slate-400"
+              title={`지출 당시 환율 ${rateLabel(expense.currency, expense.rate_per_krw)}`}
+            >
+              {formatOriginal(expense)}
+            </span>
+          )}
+        </span>
         {confirming ? (
           <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="삭제 확인">
             <button
