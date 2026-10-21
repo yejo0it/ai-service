@@ -22,7 +22,7 @@ interface TripListItemProps {
   onDeleted: (tripId: number) => void;
 }
 
-/** 여행 한 줄: 누르면 상세로 이동, 오른쪽 휴지통은 한 번 더 확인한 뒤 삭제한다. */
+/** 여행 카드: 카드 전체를 누르면 상세로 이동, 왼쪽 아래 휴지통은 한 번 더 확인한 뒤 삭제한다. */
 function TripListItem({ trip, today, onDeleted }: TripListItemProps) {
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
@@ -42,63 +42,68 @@ function TripListItem({ trip, today, onDeleted }: TripListItemProps) {
   };
 
   return (
-    <li>
-      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 pr-3 shadow-sm transition-colors hover:border-slate-300">
+    <li className="flex">
+      <div className="relative flex min-w-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-slate-300">
+        {/* 버튼을 카드 전체로 넓혀(after) 어디를 눌러도 상세로 간다. 삭제 버튼은 그 위(z-10)에 둔다. */}
         <button
           type="button"
           onClick={() => navigate(tripDetailPath(trip.id), { state: { trip } satisfies TripDetailState })}
-          className="flex min-w-0 flex-1 items-center gap-4 rounded-xl p-2 text-left"
+          className="min-w-0 text-left after:absolute after:inset-0 after:rounded-2xl"
         >
-          <span className={`h-10 w-1.5 shrink-0 rounded-full ${tripColor(trip).dot}`} aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold text-slate-900">{trip.destination_label}</span>
-            <span className="mt-0.5 block text-sm text-slate-500">
-              {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박
-            </span>
-          </span>
-          {!confirming && (
+          <span className="flex items-center justify-between gap-3">
+            <span className={`h-1.5 w-10 shrink-0 rounded-full ${tripColor(trip).dot}`} aria-hidden="true" />
             <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
               {dDayLabel(trip, today)}
             </span>
-          )}
+          </span>
+          <span className="mt-4 block truncate text-lg font-semibold text-slate-900">{trip.destination_label}</span>
+          <span className="mt-1 block text-sm text-slate-500">
+            {formatMonthDay(trip.start_date)} ~ {formatMonthDay(trip.end_date)} · {trip.nights}박 {trip.nights + 1}일
+          </span>
         </button>
 
-        {confirming ? (
-          <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="삭제 확인">
-            <span className="hidden text-xs text-slate-500 sm:inline">삭제할까요?</span>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              disabled={deleting}
-              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              취소
-            </button>
-            <button
-              type="button"
-              onClick={remove}
-              disabled={deleting}
-              className="rounded-lg bg-rose-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
-            >
-              {deleting ? "삭제 중" : "삭제"}
-            </button>
-          </div>
-        ) : (
-          // 여행 삭제는 만든 회원만 한다 (초대받은 일행은 상세의 일행 초대하기에서 나갈 수 있다)
-          trip.is_owner && (
+        <div className="mt-3 flex min-h-9 items-center justify-between gap-2">
+          {confirming ? (
+            <div className="relative z-10 flex items-center gap-1.5" role="group" aria-label="삭제 확인">
+              <span className="text-xs text-slate-500">삭제할까요?</span>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={deleting}
+                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={remove}
+                disabled={deleting}
+                className="rounded-lg bg-rose-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
+              >
+                {deleting ? "삭제 중" : "삭제"}
+              </button>
+            </div>
+          ) : trip.is_owner ? (
+            // 여행 삭제는 만든 회원만 한다 (초대받은 일행은 상세의 일행 초대하기에서 나갈 수 있다)
             <button
               type="button"
               onClick={() => setConfirming(true)}
               aria-label={`${trip.destination_label} 여행 삭제`}
               title="삭제"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
+              className="relative z-10 -ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
             >
               <i className="far fa-trash-alt" aria-hidden="true" />
             </button>
-          )
-        )}
+          ) : (
+            <span />
+          )}
+          <span className="ml-auto flex items-center gap-1 text-sm text-slate-500" aria-hidden="true">
+            상세 보기
+            <i className="fas fa-arrow-right text-xs" />
+          </span>
+        </div>
+        {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       </div>
-      {error && <p className="mt-1 px-2 text-xs text-rose-600">{error}</p>}
     </li>
   );
 }
@@ -118,9 +123,9 @@ export default function MyTripsPage() {
       </div>
 
       {tripsState.status === "loading" && (
-        <div className="space-y-3">
-          {[0, 1, 2].map((key) => (
-            <div key={key} className="h-20 animate-pulse rounded-2xl bg-slate-200/70" />
+        <div className="grid gap-3 md:grid-cols-2 md:gap-4">
+          {[0, 1, 2, 3].map((key) => (
+            <div key={key} className="h-36 animate-pulse rounded-2xl bg-slate-200/70" />
           ))}
         </div>
       )}
@@ -156,7 +161,7 @@ export default function MyTripsPage() {
               <h2 className="mb-3 text-sm font-semibold text-slate-500">
                 {title} <span className="text-slate-400">{trips.length}</span>
               </h2>
-              <ul className="space-y-3">
+              <ul className="grid gap-3 md:grid-cols-2 md:gap-4">
                 {ordered.map((trip) => (
                   <TripListItem key={trip.id} trip={trip} today={today} onDeleted={tripsState.removeTrip} />
                 ))}
