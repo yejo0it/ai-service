@@ -15,9 +15,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import type { ItineraryItem, ItineraryKind, ItineraryLeg } from "../types/api";
 import RouteLeg, { RouteLegSkeleton } from "./RouteLeg";
+import { PlaceCredit, PlaceThumb, hasCreditRow, hasPlacePhoto, usePlacePhoto } from "./PlacePhoto";
 import { PIN_STYLE } from "./TripMap";
 import { pinKind, stopKey } from "./tripDays";
 
@@ -53,6 +54,17 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
   const style = KIND_STYLE[item.kind];
+  // 장소 사진: 카드가 화면에 보일 때 한 번 받는다. 없거나 실패하면 아래 종류 아이콘 그대로.
+  const photo = usePlacePhoto(item.place_id, hasPlacePhoto(item));
+  const photoRef = photo.ref;
+  // 드래그 정렬 요소와 사진 지연 로딩 관찰 요소가 같은 <li>를 가리키도록 ref를 합친다.
+  const setRefs = useCallback(
+    (node: HTMLLIElement | null) => {
+      setNodeRef(node);
+      photoRef.current = node;
+    },
+    [setNodeRef, photoRef],
+  );
   // 지도 핀 번호 (항공편은 출발지 쪽 공항을 빼므로 현지 공항 번호만 남는다)
   const pins = item.stops.flatMap((stop, index) => {
     const number = numbers.get(stopKey(item.id, index));
@@ -61,7 +73,7 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
 
   return (
     <li
-      ref={setNodeRef}
+      ref={setRefs}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`relative grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3 ${isDragging ? "z-10" : ""}`}
     >
@@ -85,11 +97,12 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
 
       <div className={`min-w-0 ${last ? "" : "pb-3"}`}>
         <div
-          className={`rounded-2xl border bg-white p-3.5 transition-shadow ${
-            isDragging ? "border-indigo-200 shadow-lg" : "border-slate-100 shadow-sm"
-          }`}
+          className={`relative rounded-2xl border bg-white p-4 transition-shadow ${
+            // 사진 출처를 오른쪽 아래에 두는 카드는 그 자리를 비워 둔다.
+            hasCreditRow(photo.state) ? "pb-7" : ""
+          } ${isDragging ? "border-indigo-200 shadow-lg" : "border-slate-100 shadow-sm"}`}
         >
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <button
               ref={setActivatorNodeRef}
               type="button"
@@ -102,14 +115,23 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
               <i className="fas fa-grip-vertical text-xs" aria-hidden="true" />
             </button>
 
-            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.tile}`} aria-hidden="true">
-              <i className={style.icon} />
-            </span>
+            <PlaceThumb
+              state={photo.state}
+              title={item.title}
+              fallback={
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.tile}`}
+                  aria-hidden="true"
+                >
+                  <i className={style.icon} />
+                </span>
+              }
+            />
 
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
+                  <p className="truncate text-base font-semibold text-slate-900">{item.title}</p>
                   {pins.map((pin) => (
                     <span
                       key={pin.number}
@@ -147,17 +169,18 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
               </div>
               {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
 
-              <dl className="mt-1.5 space-y-1 text-xs">
+              {/* 넓은 카드에서는 항목 이름 옆에 값을 이어 읽도록 왼쪽에 모은다. */}
+              <dl className="mt-2 space-y-1.5 text-xs">
                 {item.stops.map((stop, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <dt className="shrink-0 text-slate-400">{stop.caption}</dt>
-                    <dd className="min-w-0 flex-1 truncate text-right font-medium text-slate-700">{stop.label}</dd>
+                  <div key={index} className="flex items-baseline gap-3">
+                    <dt className="w-12 shrink-0 text-slate-400">{stop.caption}</dt>
+                    <dd className="min-w-0 flex-1 truncate font-medium text-slate-700">{stop.label}</dd>
                   </div>
                 ))}
               </dl>
 
               {(item.phone || item.opening_hours.length > 0) && (
-                <div className="mt-2 space-y-1 text-xs text-slate-500">
+                <div className="mt-2.5 space-y-1.5 text-xs text-slate-500 sm:flex sm:flex-wrap sm:items-start sm:gap-x-8 sm:space-y-0 sm:gap-y-1.5">
                   {item.phone && (
                     <p>
                       <i className="fas fa-phone mr-1.5 text-slate-300" aria-hidden="true" />
@@ -183,6 +206,7 @@ function ItineraryCard({ item, first, last, numbers, onRemove, onEdit, leg }: It
               )}
             </div>
           </div>
+          <PlaceCredit state={photo.state} />
         </div>
       </div>
     </li>

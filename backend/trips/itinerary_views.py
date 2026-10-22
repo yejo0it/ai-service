@@ -31,7 +31,7 @@ from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ItineraryItem, PackingItem, Trip
 from .packing import DEFAULT_PACKING_ITEMS
-from .serializers import TripSerializer
+from .serializers import FLIGHT_LOCKED_MESSAGE, TripSerializer
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -469,6 +469,13 @@ class ItineraryItemView(APIView):
         """
         item = self.get_item(request, item_id)
         trip = item.trip
+        if (
+            item.source == ItineraryItem.Source.AUTO
+            and item.kind == ItineraryItem.Kind.FLIGHT
+            and trip.flight_segments.exists()
+        ):
+            # 예약 정보로 등록한 항공편 카드는 지우지 않는다(등록 정보와 어긋나지 않게).
+            return Response({"detail": "예약 정보로 등록한 항공편은 경로에서 지울 수 없어요."}, status=status.HTTP_400_BAD_REQUEST)
         changed, other_ids = registration.sync_after_card_delete(trip, item)
         removed_days = {item.day, *trip.itinerary_items.filter(id__in=other_ids).values_list("day", flat=True)}
         trip.itinerary_items.filter(id__in=other_ids).delete()
@@ -648,6 +655,12 @@ def _check_ai_limits(request, view):
     return None
 
 
+FLIGHT_LOCKED_REPLY = (
+    "이 여행의 항공편은 예약 확인서로 등록해서 AI로는 바꿀 수 없어요. "
+    "숙소나 일정은 계속 도와드릴게요."
+)
+
+
 class AiProposeView(APIView):
     """대화 -> 일정 변경 제안. 장소를 실제 장소로 확정하고, 적용했을 때의 일정을 미리 계산해 돌려준다."""
 
@@ -725,7 +738,11 @@ class AiProposeView(APIView):
         }
         reply, choices = plan.reply, []
         flight_change, hotel_change = plan.flight, plan.hotel_change
-        if plan.confirm and registration.is_registered(trip, plan.confirm, draft):
+        # 예약 정보로 등록한 항공편(비행 구간)은 AI로 바꾸지 않는다. 숙소·일정 제안은 그대로 한다.
+        flight_locked = trip.flight_segments.exists()
+        if flight_locked and (flight_change or plan.confirm == "flight" or plan.form == "flight"):
+            reply, flight_change = FLIGHT_LOCKED_REPLY, None
+        elif plan.confirm and registration.is_registered(trip, plan.confirm, draft):
             # 이미 등록된 항공·숙소: 어떻게 바꿀지 먼저 묻는다(이번 답변에서는 바꾸지 않는다).
             reply, choices = registration.confirm_text(plan.confirm), registration.CONFIRM_CHOICES[plan.confirm]
             flight_change = None if plan.confirm == "flight" else flight_change
@@ -739,7 +756,7 @@ class AiProposeView(APIView):
         if flight_change:
             proposal["flight_changed"] = True
             proposal["flight_info"] = registration.build_flight_info(trip, flight_change, draft.get("flight_info"))
-        elif draft.get("flight_info"):
+        elif draft.get("flight_info") and not flight_locked:
             proposal["flight_changed"] = True
             proposal["flight_info"] = draft["flight_info"]
         hotels = None
@@ -976,6 +993,9 @@ class AiApplyView(APIView):
         serializer = ProposalSerializer(data=request.data.get("proposal", {}))
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        if data["flight_changed"] and trip.flight_segments.exists():
+            return Response({"detail": FLIGHT_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
 
         registration_changed = data["flight_changed"] or data["hotels"] is not None
         if data["flight_changed"]:

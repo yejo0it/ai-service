@@ -3,6 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from . import expense_views as expense
 from . import invitation_views as invitation
+from . import place_photo_views as place_photo
+from .reservations import views as reservation
+from . import summary_views as summary
 from . import itinerary_views as itinerary
 from .views import (
     AirlineViewSet,
@@ -21,6 +24,15 @@ router.register("airlines", AirlineViewSet, basename="airline")
 
 urlpatterns = [
     path("places/hotels/", HotelSearchView.as_view(), name="hotel-search"),
+    path("places/photo/", place_photo.PlacePhotoView.as_view(), name="place-photo"),
+    # 예약 확인서 분석(1단계: 추출·검증만 하고 저장하지 않는다)
+    path("reservations/analyze/", reservation.AnalyzeView.as_view(), name="reservation-analyze"),
+    path("reservations/validate/", reservation.ValidateView.as_view(), name="reservation-validate"),
+    path("reservations/config/", reservation.ReservationConfigView.as_view(), name="reservation-config"),
+    path("trips/from-reservations/", reservation.TripFromReservationView.as_view(), name="trip-from-reservations"),
+    path("trips/<int:pk>/reservations/preview/", reservation.TripReservationPreviewView.as_view(), name="trip-reservation-preview"),
+    path("trips/<int:pk>/reservations/apply/", reservation.TripReservationApplyView.as_view(), name="trip-reservation-apply"),
+    path("trips/<int:pk>/flight-segments/<int:order>/", reservation.FlightSegmentView.as_view(), name="trip-flight-segment"),
     path("places/hotels/<str:place_id>/", HotelDetailView.as_view(), name="hotel-detail"),
     path("travel-info/weather/", WeatherView.as_view(), name="travel-weather"),
     path("travel-info/exchange-rates/", ExchangeRateView.as_view(), name="travel-exchange-rates"),
@@ -34,6 +46,11 @@ urlpatterns = [
     path("trips/<int:pk>/budget/", expense.BudgetView.as_view(), name="trip-budget"),
     path("trips/<int:pk>/expense-currencies/", expense.ExpenseCurrenciesView.as_view(), name="trip-expense-currencies"),
     path("trips/<int:pk>/settlement/", expense.SettlementView.as_view(), name="trip-settlement"),
+    # 여행 요약(메모·사진)
+    path("trips/<int:pk>/summary/", summary.SummaryView.as_view(), name="trip-summary"),
+    path("trips/<int:pk>/photos/", summary.PhotoListView.as_view(), name="trip-photos"),
+    path("trips/<int:pk>/photos/<int:photo_id>/", summary.PhotoView.as_view(), name="trip-photo"),
+    path("trip-photos/<int:photo_id>/file/", summary.PhotoFileView.as_view(), name="trip-photo-file"),
     path("expenses/<int:expense_id>/", expense.ExpenseView.as_view(), name="expense"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),

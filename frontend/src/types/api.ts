@@ -69,6 +69,9 @@ export interface HotelPayload {
   check_in: ISODate;
   /** 체크아웃 미정이면 null */
   check_out: ISODate | null;
+  /** 예약 확인서에 적힌 체크인·체크아웃 시각("HH:MM", 현지). 없으면 null */
+  check_in_time?: string | null;
+  check_out_time?: string | null;
 }
 
 export interface Hotel extends HotelPayload {
@@ -90,6 +93,8 @@ export type TripColorKey = "indigo" | "red" | "orange" | "yellow" | "green" | "b
 
 export interface Trip extends Omit<TripPayload, "hotels"> {
   id: number;
+  /** 예약 정보로 만든 여행의 비행 구간(직접 등록한 여행은 빈 목록). flight_info는 이 구간들의 요약이다. */
+  flight_segments?: FlightSegmentInfo[];
   /** 사용자가 고른 캘린더 색. 비어 있으면 자동 색상 */
   color: TripColorKey | "";
   /** "도쿄 → 오사카" 형태의 동선 표기 */
@@ -357,6 +362,8 @@ export interface ItineraryCardInput {
   subtitle: string;
   stops: ItineraryStop[];
   phone?: string;
+  /** Google 장소 번호(있으면 경로 카드에 장소 사진을 보여 준다) */
+  place_id?: string;
 }
 
 /** 공항(항공편) 직접 추가: 단일 노선 한 편 */
@@ -666,4 +673,188 @@ export interface Settlement {
   settled_krw: number;
   /** 분담 인원을 정하지 않아 정산에서 빠진 지출 수 */
   excluded_count: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * 여행 요약 (한 줄 메모 · 사진)
+ * ------------------------------------------------------------------ */
+
+/** 여행 요약 사진. url은 API 주소 기준 경로이며 로그인한 여행 참여자만 받을 수 있다(공개 주소 없음). */
+export interface TripPhoto {
+  id: number;
+  order: number;
+  width: number;
+  height: number;
+  size_bytes: number;
+  url: string;
+}
+
+export interface TripSummary {
+  memo: string;
+  photos: TripPhoto[];
+  max_photos: number;
+  /** 여행 시작일부터 쓸 수 있다 */
+  writable: boolean;
+}
+
+/** 여행 경로 장소 대표 사진. status가 ok일 때만 photo_uri가 있다(none: 사진 없음, limit: 월 상한, error: 오류). */
+export interface PlacePhotoInfo {
+  status: "ok" | "none" | "limit" | "error";
+  /** Google 이미지 주소(API 키가 없는 주소) */
+  photo_uri: string | null;
+  /** 사진 작성자(표시 필수). 링크가 없으면 uri는 빈 문자열 */
+  attributions: { name: string; uri: string }[];
+  /** Google Maps의 사진 원본 링크 */
+  maps_uri: string;
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 예약 확인서 분석 (항공권·숙소)
+ * ------------------------------------------------------------------ */
+
+export type ReservationKind = "flight" | "hotel";
+
+/** 비행 구간 하나(경유·다구간은 구간마다). 값이 null이면 문서에서 확인하지 못한 값이다. 시각은 해당 공항의 현지 시각. */
+export interface FlightSegmentData {
+  airline_name: string | null;
+  flight_number: string | null;
+  departure_airport_code: string | null;
+  departure_airport_name: string | null;
+  arrival_airport_code: string | null;
+  arrival_airport_name: string | null;
+  departure_date: string | null;
+  departure_time: string | null;
+  arrival_date: string | null;
+  arrival_time: string | null;
+  /** 왕복에서 가는 편(outbound)·오는 편(return). 알 수 없으면 null */
+  direction: "outbound" | "return" | null;
+  notes: string[];
+}
+
+export interface FlightItineraryData {
+  status: string | null;
+  segments: FlightSegmentData[];
+}
+
+export interface FlightBooking {
+  itineraries: FlightItineraryData[];
+}
+
+export interface HotelStayData {
+  name: string | null;
+  address: string | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
+  check_in_time: string | null;
+  check_out_time: string | null;
+  status: string | null;
+  notes: string[];
+}
+
+export interface HotelBooking {
+  stays: HotelStayData[];
+}
+
+export interface ReservationIssue {
+  /** 입력 칸 경로 (예: itineraries.0.segments.1.departure_date) */
+  path: string;
+  message: string;
+}
+
+/** 분석·검증 결과: 검증된 예약 정보 객체(document)와 오류(막음)·경고(알림). valid면 errors가 없다. */
+export interface ReservationResult<D = FlightBooking | HotelBooking> {
+  kind: ReservationKind;
+  document: D;
+  valid: boolean;
+  errors: ReservationIssue[];
+  warnings: ReservationIssue[];
+  /** 분석 방식(pdf_text · pdf_visual · image). 검증만 한 경우는 없다. */
+  method?: string;
+  pages?: number;
+}
+
+/** 예약 정보로 만든 여행의 비행 구간 하나. 시각은 각 공항의 현지 시각("HH:MM"). */
+export interface FlightSegmentInfo {
+  order: number;
+  direction: "outbound" | "return";
+  airline_name: string;
+  flight_number: string;
+  departure_airport_code: string;
+  departure_airport_name: string;
+  arrival_airport_code: string;
+  arrival_airport_name: string;
+  departure_date: ISODate;
+  departure_time: string;
+  arrival_date: ISODate | null;
+  arrival_time: string | null;
+  status: string;
+}
+
+/** 숙소 위치(사용자가 기존 숙소 검색으로 고른 값) */
+export interface HotelPlacePick {
+  place_id: string;
+  latitude: number | null;
+  longitude: number | null;
+  address: string;
+  phone: string;
+}
+
+/** 예약 정보로 여행 만들기 요청. flight·hotels는 1단계에서 검증한 예약 정보 객체다. */
+export interface TripFromReservationPayload {
+  /** 같은 요청이 두 번 가도 여행을 하나만 만들기 위한 번호(화면에서 한 번 만든다) */
+  request_id: string;
+  flight: FlightBooking;
+  hotels: HotelBooking | null;
+  start_date: ISODate;
+  end_date: ISODate;
+  destinations: Destination[];
+  /** hotels.stays와 같은 순서. 위치를 고르지 않은 숙소는 null */
+  hotel_places: (HotelPlacePick | null)[];
+  /** hotels.stays와 같은 순서의 여행지(city_code). 모르면 빈 문자열 */
+  hotel_cities: string[];
+}
+
+/** 기존 여행에 예약 정보를 넣었을 때 바뀌는 내용(미리보기, 저장하지 않음) */
+export interface ReservationPreview {
+  flight: {
+    /** add: 기존 구간에 추가, replace: 전체 교체 */
+    mode: "add" | "replace";
+    /** 직접 등록한 항공 정보를 예약 구간으로 바꾸는지 */
+    legacy_replaced: boolean;
+    new: (FlightSegmentData & { direction: "outbound" | "return"; status: string })[];
+    /** 이미 등록된 구간이라 건너뛸 것 */
+    duplicates: FlightSegmentData[];
+    final_count: number;
+  } | null;
+  hotels: {
+    index: number;
+    /** new: 추가, duplicate: 이미 있음, skip: 겹쳐서 건너뜀, replace: 겹치는 기존 숙소를 교체 */
+    status: "new" | "duplicate" | "skip" | "replace";
+    stay: HotelStayData;
+    overlaps: { id: number; name: string; check_in: ISODate; check_out: ISODate | null }[];
+  }[];
+  dates: { start: ISODate; end: ISODate; extend: boolean; current_start: ISODate; current_end: ISODate };
+  /** 교체한 항공·숙소와 함께 빠지는 자동 카드 */
+  replaced_cards: { id: number; title: string; day: ISODate; time: string }[];
+  /** 시간이 겹치는 기존 일정(사용자가 지우기로 고를 수 있다) */
+  conflicts: { id: number; title: string; day: ISODate; time: string; reason: string }[];
+  itinerary_initialized: boolean;
+}
+
+export interface ReservationAttachPayload {
+  flight?: FlightBooking | null;
+  flight_mode?: "add" | "replace";
+  hotels?: HotelBooking | null;
+  hotel_decisions?: ("skip" | "replace")[];
+  hotel_places?: (HotelPlacePick | null)[];
+  hotel_cities?: string[];
+}
+
+export interface ReservationApplyPayload extends ReservationAttachPayload {
+  extend_dates: boolean;
+  /** false: 예약 정보만 저장 */
+  reflect: boolean;
+  cards: ItineraryCardInput[];
+  remove_item_ids: number[];
 }

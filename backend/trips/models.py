@@ -1,7 +1,13 @@
+import uuid
+
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
+
+from .storage import private_storage
 
 
 class TimeStampedModel(models.Model):
@@ -86,6 +92,8 @@ class Trip(TimeStampedModel):
     itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
     # 짐싸기 노트를 처음 열 때 기본 준비물을 한 번 넣었는지 (지운 기본 항목이 다시 생기지 않도록)
     packing_initialized = models.BooleanField("짐싸기 노트 초기화 여부", default=False)
+    # 예약 정보로 만들 때 화면이 보낸 요청 번호. 같은 요청이 두 번 와도 여행을 하나만 만든다(직접 등록은 비어 있다).
+    creation_key = models.CharField("생성 요청 번호", max_length=64, null=True, blank=True, unique=True)
 
     objects = TripQuerySet.as_manager()
 
@@ -131,7 +139,8 @@ class Hotel(TimeStampedModel):
 
     trip = models.ForeignKey(Trip, related_name="hotels", on_delete=models.CASCADE)
     name = models.CharField("숙소명", max_length=150)
-    address = models.CharField("주소", max_length=255)
+    # 예약 확인서에 주소가 없을 수 있어 비워 둘 수 있다.
+    address = models.CharField("주소", max_length=255, blank=True, default="")
     # Google Places에서 고른 숙소. 직접 입력한 숙소는 비어 있다.
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     latitude = models.FloatField("위도", null=True, blank=True)
@@ -143,6 +152,9 @@ class Hotel(TimeStampedModel):
     check_in = models.DateField("체크인")
     # 체크아웃 미정(막날 공항 이동 등)인 경우를 위해 Nullable.
     check_out = models.DateField("체크아웃", null=True, blank=True)
+    # 예약 확인서에 적힌 체크인·체크아웃 시각(현지). 확정된 시각이라 경로 카드에 그대로 보여 주고 바꾸지 않는다.
+    check_in_time = models.TimeField("체크인 시각", null=True, blank=True)
+    check_out_time = models.TimeField("체크아웃 시각", null=True, blank=True)
 
     class Meta:
         verbose_name = "숙소"
@@ -163,6 +175,43 @@ class Hotel(TimeStampedModel):
         if self.check_out is None:
             return None
         return (self.check_out - self.check_in).days
+
+
+class FlightSegment(TimeStampedModel):
+    """
+    예약 정보로 만든 여행의 비행 구간(왕복·편도·경유·다구간을 구간마다 하나씩). 시각은 각 공항의 현지 시각이다.
+    Trip.flight_info는 기존 화면·AI 기능을 위해 이 구간들의 요약(첫 가는 편·마지막 오는 편)으로 함께 저장한다.
+    구간이 있는 여행의 항공편은 예약 정보로 관리하므로 AI·경로 카드로 바꾸지 않는다.
+    직접 등록한 여행에는 구간이 없다(flight_info만 있다).
+    """
+
+    class Direction(models.TextChoices):
+        OUTBOUND = "outbound", "가는 편"
+        RETURN = "return", "오는 편"
+
+    trip = models.ForeignKey(Trip, related_name="flight_segments", on_delete=models.CASCADE)
+    order = models.PositiveSmallIntegerField("순서")
+    direction = models.CharField("방향", max_length=8, choices=Direction.choices, default=Direction.OUTBOUND)
+    airline_name = models.CharField("항공사", max_length=60, blank=True, default="")
+    flight_number = models.CharField("항공편명", max_length=12)
+    departure_airport_code = models.CharField("출발 공항 코드", max_length=3)
+    departure_airport_name = models.CharField("출발 공항 이름", max_length=80, blank=True, default="")
+    arrival_airport_code = models.CharField("도착 공항 코드", max_length=3)
+    arrival_airport_name = models.CharField("도착 공항 이름", max_length=80, blank=True, default="")
+    departure_date = models.DateField("출발 날짜(현지)")
+    departure_time = models.TimeField("출발 시각(현지)")
+    arrival_date = models.DateField("도착 날짜(현지)", null=True, blank=True)
+    arrival_time = models.TimeField("도착 시각(현지)", null=True, blank=True)
+    status = models.CharField("예약 상태", max_length=40, blank=True, default="")
+
+    class Meta:
+        verbose_name = "비행 구간"
+        verbose_name_plural = "비행 구간"
+        ordering = ("order", "id")
+        constraints = [models.UniqueConstraint(fields=("trip", "order"), name="flight_segment_order_unique")]
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} #{self.order} {self.flight_number}"
 
 
 class ItineraryItem(TimeStampedModel):
@@ -403,3 +452,70 @@ class ExpenseShare(models.Model):
 
     def __str__(self) -> str:
         return f"{self.expense_id} - {self.user_name}"
+
+
+def trip_photo_upload_to(instance, filename):
+    """여행마다 폴더를 나누고, 파일 이름은 추측할 수 없는 값으로 새로 만든다(원래 이름은 쓰지 않는다)."""
+    return f"trips/{instance.trip_id}/{uuid.uuid4().hex}.jpg"
+
+
+class TripSummary(TimeStampedModel):
+    """여행 요약의 한 줄 메모. 여행마다 하나이며, 여행 시작일부터 만든 회원과 일행이 함께 쓴다."""
+
+    MEMO_MAX = 300
+
+    trip = models.OneToOneField(Trip, related_name="summary", on_delete=models.CASCADE)
+    memo = models.CharField("한 줄 메모", max_length=MEMO_MAX, blank=True, default="")
+
+    class Meta:
+        verbose_name = "여행 요약"
+        verbose_name_plural = "여행 요약"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id}: {self.memo[:20]}"
+
+
+class TripPhoto(TimeStampedModel):
+    """
+    여행 요약 사진. 여행당 최대 3장이고 order 순서대로 보여 준다.
+    이미지는 DB에 넣지 않고 공개하지 않는 저장소(trips.storage)에 파일로 두며, DB에는 경로와 메타데이터만 둔다.
+    """
+
+    MAX_PER_TRIP = 3
+
+    trip = models.ForeignKey(Trip, related_name="photos", on_delete=models.CASCADE)
+    image = models.ImageField("사진", upload_to=trip_photo_upload_to, storage=private_storage)
+    order = models.PositiveSmallIntegerField("순서", default=0)
+    width = models.PositiveIntegerField("너비")
+    height = models.PositiveIntegerField("높이")
+    size_bytes = models.PositiveIntegerField("파일 크기")
+
+    class Meta:
+        verbose_name = "여행 사진"
+        verbose_name_plural = "여행 사진"
+        ordering = ("order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} #{self.order}"
+
+
+@receiver(post_delete, sender=TripPhoto)
+def delete_trip_photo_file(sender, instance, **kwargs):
+    """사진 행이 지워지면(여행을 지울 때 포함) 파일도 지운다. 지워진 내용이 커밋된 뒤에 지운다."""
+    name, storage = instance.image.name, instance.image.storage
+    if name:
+        transaction.on_commit(lambda: storage.delete(name))
+
+
+class PlacePhotoUsage(models.Model):
+    """장소 사진 과금 호출(Google Place Photos) 월별 사용량. 월 상한(PLACE_PHOTO_MONTHLY_LIMIT)을 넘기 전에 막는 데 쓴다."""
+
+    month = models.CharField("월(태평양 시간 기준)", max_length=7, unique=True)
+    count = models.PositiveIntegerField("과금 호출 수", default=0)
+
+    class Meta:
+        verbose_name = "장소 사진 사용량"
+        verbose_name_plural = "장소 사진 사용량"
+
+    def __str__(self) -> str:
+        return f"{self.month}: {self.count}"

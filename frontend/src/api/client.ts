@@ -15,6 +15,11 @@ import type {
   ItineraryResponse,
   PackingItem,
   PlaceKind,
+  FlightBooking,
+  HotelBooking,
+  ReservationKind,
+  ReservationResult,
+  PlacePhotoInfo,
   ApiErrorData,
   AuthSession,
   AuthUser,
@@ -48,6 +53,12 @@ import type {
   TripInvitation,
   TripMembers,
   TripPayload,
+  TripFromReservationPayload,
+  ReservationApplyPayload,
+  ReservationAttachPayload,
+  ReservationPreview,
+  TripPhoto,
+  TripSummary,
 } from "../types/api";
 
 const api = axios.create({
@@ -262,6 +273,76 @@ export const deleteExpense = (expenseId: number) => api.delete<void>(`/expenses/
 /** 총예산 설정·수정. null이면 예산을 지운다. */
 export const setBudget = (tripId: number, amountKrw: number | null) =>
   api.put<{ budget_krw: number | null }>(`/trips/${tripId}/budget/`, { amount_krw: amountKrw }).then((res) => res.data);
+
+/** 여행 요약: 한 줄 메모와 사진 목록 */
+export const getTripSummary = (tripId: number) =>
+  api.get<TripSummary>(`/trips/${tripId}/summary/`).then((res) => res.data);
+
+/** 한 줄 메모 저장(비우면 지운다) */
+export const saveTripMemo = (tripId: number, memo: string) =>
+  api.put<TripSummary>(`/trips/${tripId}/summary/`, { memo }).then((res) => res.data);
+
+const photoForm = (file: File) => {
+  const form = new FormData();
+  form.append("image", file);
+  return form;
+};
+const MULTIPART = { headers: { "Content-Type": "multipart/form-data" } };
+
+export const uploadTripPhoto = (tripId: number, file: File) =>
+  api.post<TripPhoto>(`/trips/${tripId}/photos/`, photoForm(file), MULTIPART).then((res) => res.data);
+
+/** 사진 교체: 같은 자리·순서를 유지한다. */
+export const replaceTripPhoto = (tripId: number, photoId: number, file: File) =>
+  api.put<TripPhoto>(`/trips/${tripId}/photos/${photoId}/`, photoForm(file), MULTIPART).then((res) => res.data);
+
+export const deleteTripPhoto = (tripId: number, photoId: number) =>
+  api.delete<void>(`/trips/${tripId}/photos/${photoId}/`);
+
+/** 사진 파일. 공개 주소가 없어 로그인 토큰으로 받아 미리보기용 Blob으로 쓴다. */
+export const getTripPhotoBlob = (url: string) => api.get<Blob>(url, { responseType: "blob" }).then((res) => res.data);
+
+/** 여행 경로 장소의 Google 대표 사진 주소와 작성자. 사진이 없거나 상한·오류여도 성공으로 응답한다(photo_uri가 null). */
+export const getPlacePhoto = (placeId: string) =>
+  api.get<PlacePhotoInfo>("/places/photo/", { params: { place_id: placeId } }).then((res) => res.data);
+
+/** 예약 확인서(PDF·이미지) 분석. 저장하지 않고 추출·검증한 예약 정보만 돌려준다. signal로 취소할 수 있다. */
+export const analyzeReservation = (kind: ReservationKind, file: File, signal?: AbortSignal) => {
+  const form = new FormData();
+  form.append("type", kind);
+  form.append("file", file);
+  return api
+    .post<ReservationResult>("/reservations/analyze/", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      signal,
+      timeout: 120_000, // 문서 분석은 수십 초 걸릴 수 있다.
+    })
+    .then((res) => res.data);
+};
+
+/** 예약 확인서 기능을 쓸 수 있는지(꺼져 있으면 '예약 정보로 만들기'를 보이지 않는다) */
+export const getReservationConfig = () =>
+  api.get<{ enabled: boolean }>("/reservations/config/").then((res) => res.data);
+
+/** 확인한 예약 정보로 여행 만들기(여행·비행 구간·숙소를 한 번에 저장). 같은 request_id면 처음 만든 여행을 돌려준다. */
+export const createTripFromReservations = (payload: TripFromReservationPayload) =>
+  api.post<Trip>("/trips/from-reservations/", payload).then((res) => res.data);
+
+/** 기존 여행에 예약 정보를 넣으면 무엇이 바뀌는지(저장하지 않음) */
+export const previewTripReservation = (tripId: number, payload: ReservationAttachPayload) =>
+  api.post<ReservationPreview>(`/trips/${tripId}/reservations/preview/`, payload).then((res) => res.data);
+
+/** 예약 정보를 저장하고 승인한 변경만 경로에 반영한다. 바뀐 여행과 일정을 돌려준다. */
+export const applyTripReservation = (tripId: number, payload: ReservationApplyPayload) =>
+  api.post<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/reservations/apply/`, payload).then((res) => res.data);
+
+/** 예약 항공 구간 하나와 그 경로 카드를 지운다. */
+export const deleteFlightSegment = (tripId: number, order: number) =>
+  api.delete<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/flight-segments/${order}/`).then((res) => res.data);
+
+/** 사용자가 고친 예약 정보를 같은 규칙으로 검증한다(AI를 부르지 않는다). */
+export const validateReservation = (kind: ReservationKind, document: FlightBooking | HotelBooking) =>
+  api.post<ReservationResult>("/reservations/validate/", { type: kind, document }).then((res) => res.data);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>

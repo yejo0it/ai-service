@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  deleteFlightSegment,
   deleteItineraryItem,
+  getReservationConfig,
   getDayLegs,
   getItinerary,
   getTrip,
@@ -10,12 +12,14 @@ import {
   toErrorMessage,
 } from "../api/client";
 import { ROUTES, tripTabFromSegment, tripTabPath, type TripTab } from "../routes";
-import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, ReservationKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
 import ExpensePage from "../expenses/ExpensePage";
 import PackingNote from "../packing/PackingNotePage";
+import SummaryPage from "../summary/SummaryPage";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
+import AddReservationDrawer from "../reservations/AddReservationDrawer";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
 import EditItemDrawer from "./EditItemDrawer";
@@ -160,6 +164,20 @@ interface TripBasicsProps {
   items: ItineraryItem[] | null;
   /** 요약 카드에서 숙소·공항 직접 추가 열기 */
   onAdd?: (kind: PlaceKind) => void;
+  /** 예약 확인서로 항공·숙소 추가(editFlight: 저장된 예약 항공편 고치기). 기능이 꺼져 있으면 없다. */
+  onReservation?: (kind: ReservationKind, editFlight?: boolean) => void;
+  /** 예약 항공 구간 하나 지우기(경로의 그 항공 카드도 함께) */
+  onDeleteSegment?: (order: number) => Promise<void>;
+}
+
+/** 예약 확인서로 추가하는 작은 버튼 */
+function ReservationButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline">
+      <i className="fas fa-file-upload text-[10px]" aria-hidden="true" />
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -167,8 +185,12 @@ interface TripBasicsProps {
  * 여행을 만들 때 등록한 항공·숙소에 더해, 여행 경로에서 추가한 공항·숙소도 함께 보여준다.
  * 항공·숙소는 선택 입력이라 비어 있으면 안내와 바로 추가 버튼을 보여준다.
  */
-function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
-  const flight = trip.flight_info;
+function TripBasics({ trip, items, onAdd, onReservation, onDeleteSegment }: TripBasicsProps) {
+  const [confirmSegment, setConfirmSegment] = useState<number | null>(null);
+  const [segmentError, setSegmentError] = useState("");
+  // 예약 정보로 만든 여행은 비행 구간(경유·다구간)을 구간마다 보여 주고, flight_info 요약은 쓰지 않는다.
+  const segments = trip.flight_segments ?? [];
+  const flight = segments.length > 0 ? null : trip.flight_info;
   // 경로에서 가는 편·오는 편 카드를 지우면 그 편의 정보가 비워진다. 남은 편만 보여준다.
   const hasOutbound = Boolean(
     flight &&
@@ -194,8 +216,53 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   return (
     <div className={`${CARD_CLASS} space-y-4`}>
       <Section title="항공">
-        {hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
+        {segments.length > 0 || hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
           <div className="space-y-2">
+            {segments.map((segment) => (
+              <div key={segment.order}>
+                <FlightLeg
+                  label={segment.direction === "outbound" ? "가는 편" : "오는 편"}
+                  airline={segment.airline_name}
+                  flightNumber={segment.flight_number}
+                  from={{ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }}
+                  to={{ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }}
+                  when={`${formatMonthDay(segment.departure_date)} ${segment.departure_time}`}
+                  whenLabel="출발"
+                />
+                {onDeleteSegment &&
+                  (confirmSegment === segment.order ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="구간 삭제 확인">
+                      <span className="text-slate-600">이 항공편과 경로의 항공 카드를 지울까요?</span>
+                      <button type="button" onClick={() => setConfirmSegment(null)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-600">
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSegmentError("");
+                          onDeleteSegment(segment.order)
+                            .then(() => setConfirmSegment(null))
+                            .catch((err: unknown) => setSegmentError(toErrorMessage(err)));
+                        }}
+                        className="rounded-lg bg-rose-500 px-2 py-1 font-semibold text-white"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSegment(segment.order)}
+                      className="mt-1 text-xs text-slate-400 hover:text-rose-500"
+                      aria-label={`${segment.flight_number} 구간 삭제`}
+                    >
+                      이 구간 삭제
+                    </button>
+                  ))}
+              </div>
+            ))}
+            {segmentError && <p className="text-xs text-rose-600">{segmentError}</p>}
+            {segments.length > 0 && <p className="text-xs text-slate-400">예약 확인서로 등록한 항공편이에요(현지 시각).</p>}
             {flight && hasOutbound && (
               <FlightLeg
                 label="가는 편"
@@ -249,6 +316,12 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
             등록된 항공권이 없어요. 날짜만 등록한 여행이에요.
           </EmptyWithAction>
         )}
+        {onReservation && (
+          <div className="mt-2 flex flex-wrap gap-3">
+            <ReservationButton label="예약 확인서로 항공권 추가" onClick={() => onReservation("flight")} />
+            {segments.length > 0 && <ReservationButton label="예약 항공편 수정" onClick={() => onReservation("flight", true)} />}
+          </div>
+        )}
       </Section>
 
       <Section title="여행지">
@@ -291,6 +364,11 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
           <EmptyWithAction action="숙소 추가" onClick={addHotel}>
             등록된 숙소가 없어요.
           </EmptyWithAction>
+        )}
+        {onReservation && (
+          <div className="mt-2">
+            <ReservationButton label="예약 확인서로 숙소 추가" onClick={() => onReservation("hotel")} />
+          </div>
         )}
       </Section>
     </div>
@@ -425,13 +503,15 @@ const TRIP_TABS: { tab: TripTab; label: string; icon: string }[] = [
   { tab: "schedule", label: "여행 일정", icon: "fas fa-route" },
   { tab: "expenses", label: "경비 관리", icon: "fas fa-wallet" },
   { tab: "checklist", label: "여행 체크리스트", icon: "fas fa-clipboard-list" },
+  // 여행 시작일부터 보인다. 여행 중·종료 후 모두 맨 마지막 탭이다.
+  { tab: "summary", label: "여행 요약", icon: "fas fa-camera-retro" },
 ];
 
 /** 여행 상세 탭. 주소로 구분하므로 새로고침·직접 접근해도 선택이 유지된다. 스크롤 없이 한 줄에 나눠 담는다. */
-function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
+function TripTabs({ tripId, selected, started }: { tripId: number; selected: TripTab; started: boolean }) {
   return (
     <nav aria-label="여행 상세 탭" className="mb-6 flex border-b border-slate-200 sm:gap-1">
-      {TRIP_TABS.map(({ tab, label, icon }) => {
+      {TRIP_TABS.filter(({ tab }) => started || tab !== "summary").map(({ tab, label, icon }) => {
         const active = tab === selected;
         return (
           <Link
@@ -455,7 +535,7 @@ function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
 
 /**
  * `/trips/:tripId` 여행 상세.
- * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`) · 여행 체크리스트(`/checklist`)
+ * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`) · 여행 체크리스트(`/checklist`) · 여행 요약(`/summary`, 시작일부터)
  * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
@@ -467,6 +547,19 @@ export default function TripDetailPage() {
   const state = useLocation().state as TripDetailState | null;
   const [trip, setTrip] = useState<Trip | null>(state?.trip ?? null);
   const [items, setItems] = useState<ItineraryItem[] | null>(null);
+  // 예약 확인서로 항공·숙소 추가(기능이 켜져 있을 때만)
+  const [reservationEnabled, setReservationEnabled] = useState(false);
+  const [reservation, setReservation] = useState<{ kind: ReservationKind; editFlight: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getReservationConfig()
+      .then((config) => !cancelled && setReservationEnabled(config.enabled))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const closeReservation = useCallback(() => setReservation(null), []);
   const [error, setError] = useState("");
   const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
@@ -614,6 +707,8 @@ export default function TripDetailPage() {
   }
 
   const today = todayISODate();
+  const started = trip.start_date <= today; // 여행 시작일부터 여행 요약 탭이 보인다.
+  if (tab === "summary" && !started) return <Navigate to={`/trips/${tripId}`} replace />;
   // 방금 만든 여행: 첫째 날의 출발 공항 → 도착 공항 → 첫 숙소를 맨 위에 한 줄로 보여준다.
   // 공항은 공항명, 숙소는 숙소명으로 보여준다.
   const firstDayStops = (items ?? [])
@@ -664,10 +759,11 @@ export default function TripDetailPage() {
         </div>
       </header>
 
-      <TripTabs tripId={trip.id} selected={tab} />
+      <TripTabs tripId={trip.id} selected={tab} started={started} />
 
       {tab === "expenses" && <ExpensePage key={trip.id} trip={trip} />}
       {tab === "checklist" && <PackingNote key={trip.id} trip={trip} />}
+      {tab === "summary" && <SummaryPage key={trip.id} trip={trip} />}
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
       {tab === "schedule" && (
@@ -694,6 +790,14 @@ export default function TripDetailPage() {
                       setPanel("add");
                     }
               }
+              onReservation={
+                reservationEnabled && items !== null ? (kind, editFlight = false) => setReservation({ kind, editFlight }) : undefined
+              }
+              onDeleteSegment={async (order) => {
+                const result = await deleteFlightSegment(trip.id, order);
+                setTrip(result.trip);
+                setItems(result.items);
+              }}
             />
           </div>
 
@@ -709,7 +813,8 @@ export default function TripDetailPage() {
             </div>
             <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
             {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
-            <div className="lg:max-w-3xl">
+            {/* 일정 카드(핀 포함)는 최대 1000px 폭으로 여행 경로 섹션 가운데에 둔다. */}
+            <div className="mx-auto w-full max-w-[1000px]">
               {items === null ? (
                 error ? (
                   <p className="text-sm text-rose-600">{error}</p>
@@ -732,6 +837,19 @@ export default function TripDetailPage() {
         </div>
       )}
 
+      {reservation && (
+        <AddReservationDrawer
+          trip={trip}
+          kind={reservation.kind}
+          editFlight={reservation.editFlight}
+          onClose={closeReservation}
+          onSaved={(updatedTrip, updatedItems) => {
+            setTrip(updatedTrip);
+            setItems(updatedItems);
+            setReservation(null);
+          }}
+        />
+      )}
       {editing && (
         <EditItemDrawer item={editing} trip={trip} dates={dates} onClose={closeEdit} onSaved={onItemSaved} />
       )}

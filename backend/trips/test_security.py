@@ -6,6 +6,7 @@ AI 입력 보안 검증 (Issue #24)
 - 모델에 보내는 내용에 API 키·DB 접속 정보 같은 서버 설정이 들어가지 않는다.
 """
 
+import ast
 import os
 import re
 from pathlib import Path
@@ -15,6 +16,7 @@ from unittest import mock
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -34,22 +36,187 @@ def plan(**changes):
     return ai_planner.PlanResponse(**fields)
 
 
+PDF_CHECK_FILE = "trips/reservations/files.py"
+PDF_CHECK_FUNCTION = "_inspect_pdf"
+
+# 원래 정책: 원시 SQL·OS 명령·동적 코드 실행 금지
+DANGEROUS = re.compile(
+    r"\.raw\(|cursor\(\)|\.extra\(|RawSQL|subprocess|os\.system|os\.popen|\beval\(|\bexec\(|pickle\.loads|shell=True"
+)
+DANGEROUS_EXCEPT_SUBPROCESS = re.compile(
+    r"\.raw\(|cursor\(\)|\.extra\(|RawSQL|os\.system|os\.popen|\beval\(|\bexec\(|pickle\.loads|shell=True"
+)
+
+
+def subprocess_lines(text):
+    """예외로 허용하는 줄: PDF 검사 함수(_inspect_pdf)의 본문과 모듈 맨 위의 `import subprocess` 한 줄뿐이다."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()  # 구문을 읽을 수 없으면 예외를 하나도 적용하지 않는다(모든 줄을 엄격하게 검사).
+    allowed = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import) and [alias.name for alias in node.names] == ["subprocess"] and not node.names[0].asname:
+            allowed.add(node.lineno)
+        if isinstance(node, ast.FunctionDef) and node.name == PDF_CHECK_FUNCTION:
+            allowed.update(range(node.lineno, node.end_lineno + 1))
+    return allowed
+
+
+def dangerous_lines(relative, text):
+    """금지 패턴이 있는 줄. 예외는 PDF 검사 파일의 허용된 줄에서 `subprocess` 단어에만 적용되고, 다른 위험한 호출은 항상 잡는다."""
+    allowed = subprocess_lines(text) if relative == PDF_CHECK_FILE else set()
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        pattern = DANGEROUS_EXCEPT_SUBPROCESS if number in allowed else DANGEROUS
+        if pattern.search(line):
+            found.append(f"{relative}:{number}: {line.strip()}")
+    return found
+
+
+def pdf_worker_call_problems(text):
+    """
+    PDF 검사 파일의 subprocess 사용이 정해진 모양인지 구문 트리로 확인한다. 문제 목록(비어 있어야 통과):
+    - subprocess는 `import subprocess` 한 줄과 `_inspect_pdf` 안의 `subprocess.run` 호출 하나(와 TimeoutExpired 처리)로만 쓴다.
+    - 명령은 `[sys.executable, "-I", str(PDF_WORKER)]`뿐(셸 없음, 인자·경로에 변수 없음), 제한 시간이 있고 check=False.
+    - 표준 출력은 상한이 걸린 익명 파일(`output`)로 받고 표준 오류는 `subprocess.DEVNULL`로 버린다(출력이 부모 메모리에 쌓이지 않는다).
+    - 환경변수는 문자 상수만 담은 사전이고, PDF_WORKER는 같은 폴더의 pdf_worker.py로 고정되어 있다.
+    """
+    tree = ast.parse(text)
+    problems = []
+
+    imports = [
+        node for node in ast.walk(tree)
+        if (isinstance(node, ast.Import) and any(alias.name.split(".")[0] == "subprocess" for alias in node.names))
+        or (isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "subprocess")
+    ]
+    if len(imports) != 1 or not isinstance(imports[0], ast.Import) or [a.name for a in imports[0].names] != ["subprocess"] \
+            or imports[0].names[0].asname:
+        problems.append("subprocess는 `import subprocess` 한 줄로만 가져와야 해요.")
+
+    function = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == PDF_CHECK_FUNCTION), None)
+    if function is None:
+        return problems + [f"{PDF_CHECK_FUNCTION} 함수가 없어요."]
+    inside = {id(node) for node in ast.walk(function)}
+    if any(isinstance(n, ast.Name) and n.id == "subprocess" and id(n) not in inside for n in ast.walk(tree)
+           if not isinstance(n, ast.Import)):
+        problems.append("subprocess를 PDF 검사 함수 밖에서 쓰고 있어요.")
+
+    calls = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and isinstance(n.func.value, ast.Name) and n.func.value.id == "subprocess"
+    ]
+    if len(calls) != 1 or calls[0].func.attr != "run":
+        problems.append("subprocess 호출은 `subprocess.run` 한 번이어야 해요.")
+    else:
+        call = calls[0]
+        if len(call.args) != 1 or ast.unparse(call.args[0]) != "[sys.executable, '-I', str(PDF_WORKER)]":
+            problems.append("실행 명령은 [sys.executable, '-I', str(PDF_WORKER)]로 고정되어야 해요.")
+        keywords = {kw.arg: kw.value for kw in call.keywords}
+        if None in keywords or set(keywords) != {"input", "stdout", "stderr", "timeout", "env", "check"}:
+            problems.append("subprocess.run 인자는 input·stdout·stderr·timeout·env·check만 써야 해요(셸 금지).")
+        else:
+            if ast.unparse(keywords["stdout"]) != "output":
+                problems.append("표준 출력은 상한이 걸린 출력 파일(output)로 받아야 해요(PIPE 금지).")
+            if ast.unparse(keywords["stderr"]) != "subprocess.DEVNULL":
+                problems.append("표준 오류는 subprocess.DEVNULL로 버려야 해요.")
+            if ast.unparse(keywords["check"]) != "False":
+                problems.append("check=False여야 해요.")
+            if ast.unparse(keywords["timeout"]) != "PDF_WORKER_TIMEOUT":
+                problems.append("제한 시간은 PDF_WORKER_TIMEOUT이어야 해요.")
+            env = keywords["env"]
+            if not isinstance(env, ast.Dict) or not all(
+                isinstance(part, ast.Constant) for part in (*env.keys, *env.values) if part is not None
+            ) or None in env.keys:
+                problems.append("env는 문자 상수만 담은 사전이어야 해요.")
+
+    worker = [
+        n for n in tree.body
+        if isinstance(n, ast.Assign) and [getattr(t, "id", None) for t in n.targets] == ["PDF_WORKER"]
+    ]
+    if len(worker) != 1 or ast.unparse(worker[0].value) != "Path(__file__).with_name('pdf_worker.py')":
+        problems.append("PDF_WORKER는 Path(__file__).with_name('pdf_worker.py')로 고정되어야 해요.")
+    return problems
+
+
 class SourceSafetyTests(APITestCase):
     """백엔드 코드에 원시 SQL·OS 명령·동적 코드 실행이 없다 (ORM과 정해진 API 호출만 쓴다)."""
-
-    DANGEROUS = re.compile(
-        r"\.raw\(|cursor\(\)|\.extra\(|RawSQL|subprocess|os\.system|os\.popen|\beval\(|\bexec\(|pickle\.loads|shell=True"
-    )
 
     def test_no_raw_sql_or_command_execution(self):
         found = []
         for path in Path(settings.BASE_DIR).rglob("*.py"):
             if "migrations" in path.parts or path.name.startswith("test"):
                 continue
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                if self.DANGEROUS.search(line):
-                    found.append(f"{path.relative_to(settings.BASE_DIR)}:{number}: {line.strip()}")
+            relative = path.relative_to(settings.BASE_DIR).as_posix()
+            found += dangerous_lines(relative, path.read_text(encoding="utf-8"))
         self.assertEqual(found, [])
+
+    def test_pdf_check_is_the_only_subprocess_and_runs_a_fixed_script(self):
+        """허용한 단 하나의 호출이 셸 없이 고정된 검사 스크립트만, 정해진 방식으로 실행한다."""
+        text = (Path(settings.BASE_DIR) / PDF_CHECK_FILE).read_text(encoding="utf-8")
+        self.assertEqual(pdf_worker_call_problems(text), [])
+
+
+class SubprocessExceptionIsNarrowTests(SimpleTestCase):
+    """예외가 PDF 검사 호출 한 곳에만 적용되고, 그 밖의 subprocess·위험한 실행은 여전히 잡힌다."""
+
+    GOOD = (Path(settings.BASE_DIR) / PDF_CHECK_FILE).read_text(encoding="utf-8")
+
+    def flagged(self, text, relative=PDF_CHECK_FILE):
+        return dangerous_lines(relative, text)
+
+    def test_the_real_file_passes_both_checks(self):
+        self.assertEqual(self.flagged(self.GOOD), [])
+        self.assertEqual(pdf_worker_call_problems(self.GOOD), [])
+
+    def test_other_files_cannot_use_subprocess(self):
+        snippet = "import subprocess\n\ndef run():\n    subprocess.run(['ls'])\n"
+        for relative in ("trips/views.py", "trips/reservations/extract.py", "trips/reservations/pdf_worker.py", "accounts/x.py"):
+            found = self.flagged(snippet, relative)
+            self.assertEqual(len(found), 2, relative)  # import와 호출
+        # 이름만 비슷한 다른 경로도 예외가 아니다.
+        self.assertTrue(self.flagged(snippet, "trips/reservations/files.py.bak"))
+        self.assertTrue(self.flagged(snippet, "other/trips/reservations/files.py"))
+
+    def test_other_functions_in_the_same_file_cannot_use_subprocess(self):
+        sneaky = self.GOOD + "\n\ndef other(data):\n    return subprocess.run(['sh', '-c', data])\n"
+        found = self.flagged(sneaky)
+        self.assertEqual(len(found), 1)
+        self.assertIn("subprocess.run(['sh'", found[0])
+        self.assertTrue(pdf_worker_call_problems(sneaky))  # 호출이 두 곳이 되고 검사 함수 밖에서도 쓰인다.
+
+    def test_dangerous_calls_inside_the_allowed_function_are_still_flagged(self):
+        for extra in ("shell=True", "os.system(data)", "os.popen(data)", "eval(data)", "exec(data)"):
+            text = self.GOOD.replace("    try:\n        with _output_file()", f"    {extra}\n    try:\n        with _output_file()", 1)
+            self.assertNotEqual(text, self.GOOD)
+            self.assertTrue(self.flagged(text), extra)
+
+    def test_changing_the_command_or_adding_a_shell_fails_the_call_check(self):
+        changes = {
+            "셸": ("check=False,", "check=False,\n            shell=True,"),
+            "명령 변경": ('[sys.executable, "-I", str(PDF_WORKER)]', '["sh", "-c", str(PDF_WORKER)]'),
+            "격리 모드 제거": ('[sys.executable, "-I", str(PDF_WORKER)]', "[sys.executable, str(PDF_WORKER)]"),
+            "변수로 스크립트 지정": ('[sys.executable, "-I", str(PDF_WORKER)]', '[sys.executable, "-I", str(data)]'),
+            "인자 추가": ('str(PDF_WORKER)],', 'str(PDF_WORKER), "--x"],'),
+            "제한 시간 제거": ("            timeout=PDF_WORKER_TIMEOUT,\n", ""),
+            "환경변수 통째 전달": ('env={"PATH": "/usr/local/bin:/usr/bin:/bin"},', "env=os.environ,"),
+            "환경변수에 변수 사용": ('env={"PATH": "/usr/local/bin:/usr/bin:/bin"},', 'env={"PATH": data},'),
+            "Popen으로 변경": ("subprocess.run(", "subprocess.Popen("),
+            "표준 출력을 파이프로": ("stdout=output,", "stdout=subprocess.PIPE,"),
+            "표준 오류를 출력에 합침": ("stderr=subprocess.DEVNULL,", "stderr=subprocess.STDOUT,"),
+            "capture_output 사용": ("stdout=output,", "capture_output=True,"),
+            "스크립트 경로 변경": ('Path(__file__).with_name("pdf_worker.py")', 'Path(__file__).with_name("other.py")'),
+            "스크립트 경로를 입력으로": ('Path(__file__).with_name("pdf_worker.py")', 'Path(os.environ["WORKER"])'),
+        }
+        for name, (old, new) in changes.items():
+            self.assertIn(old, self.GOOD, name)
+            self.assertTrue(pdf_worker_call_problems(self.GOOD.replace(old, new, 1)), name)
+
+    def test_from_import_and_aliases_are_detected(self):
+        for line in ("from subprocess import run", "import subprocess as sp", "import os, subprocess"):
+            text = self.GOOD + f"\n{line}\n"
+            self.assertTrue(self.flagged(text) or pdf_worker_call_problems(text), line)
 
 
 class AiInputSecurityTests(APITestCase):

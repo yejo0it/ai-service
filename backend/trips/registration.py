@@ -347,6 +347,7 @@ def hotel_cards(trip, hotel):
             "stops": [{"kind": "hotel", "caption": label, "label": hotel.address or hotel.name,
                        "lat": hotel.latitude, "lng": hotel.longitude}],
             "phone": hotel.phone,
+            "place_id": hotel.place_id,  # 장소 사진을 보여 주는 데 쓴다.
         })
     return cards
 
