@@ -79,6 +79,7 @@ def pdf_worker_call_problems(text):
     PDF 검사 파일의 subprocess 사용이 정해진 모양인지 구문 트리로 확인한다. 문제 목록(비어 있어야 통과):
     - subprocess는 `import subprocess` 한 줄과 `_inspect_pdf` 안의 `subprocess.run` 호출 하나(와 TimeoutExpired 처리)로만 쓴다.
     - 명령은 `[sys.executable, "-I", str(PDF_WORKER)]`뿐(셸 없음, 인자·경로에 변수 없음), 제한 시간이 있고 check=False.
+    - 표준 출력은 상한이 걸린 익명 파일(`output`)로 받고 표준 오류는 `subprocess.DEVNULL`로 버린다(출력이 부모 메모리에 쌓이지 않는다).
     - 환경변수는 문자 상수만 담은 사전이고, PDF_WORKER는 같은 폴더의 pdf_worker.py로 고정되어 있다.
     """
     tree = ast.parse(text)
@@ -113,9 +114,13 @@ def pdf_worker_call_problems(text):
         if len(call.args) != 1 or ast.unparse(call.args[0]) != "[sys.executable, '-I', str(PDF_WORKER)]":
             problems.append("실행 명령은 [sys.executable, '-I', str(PDF_WORKER)]로 고정되어야 해요.")
         keywords = {kw.arg: kw.value for kw in call.keywords}
-        if None in keywords or set(keywords) != {"input", "capture_output", "timeout", "env", "check"}:
-            problems.append("subprocess.run 인자는 input·capture_output·timeout·env·check만 써야 해요(셸 금지).")
+        if None in keywords or set(keywords) != {"input", "stdout", "stderr", "timeout", "env", "check"}:
+            problems.append("subprocess.run 인자는 input·stdout·stderr·timeout·env·check만 써야 해요(셸 금지).")
         else:
+            if ast.unparse(keywords["stdout"]) != "output":
+                problems.append("표준 출력은 상한이 걸린 출력 파일(output)로 받아야 해요(PIPE 금지).")
+            if ast.unparse(keywords["stderr"]) != "subprocess.DEVNULL":
+                problems.append("표준 오류는 subprocess.DEVNULL로 버려야 해요.")
             if ast.unparse(keywords["check"]) != "False":
                 problems.append("check=False여야 해요.")
             if ast.unparse(keywords["timeout"]) != "PDF_WORKER_TIMEOUT":
@@ -183,7 +188,7 @@ class SubprocessExceptionIsNarrowTests(SimpleTestCase):
 
     def test_dangerous_calls_inside_the_allowed_function_are_still_flagged(self):
         for extra in ("shell=True", "os.system(data)", "os.popen(data)", "eval(data)", "exec(data)"):
-            text = self.GOOD.replace("    try:\n        completed", f"    {extra}\n    try:\n        completed", 1)
+            text = self.GOOD.replace("    try:\n        with _output_file()", f"    {extra}\n    try:\n        with _output_file()", 1)
             self.assertNotEqual(text, self.GOOD)
             self.assertTrue(self.flagged(text), extra)
 
@@ -198,6 +203,9 @@ class SubprocessExceptionIsNarrowTests(SimpleTestCase):
             "환경변수 통째 전달": ('env={"PATH": "/usr/local/bin:/usr/bin:/bin"},', "env=os.environ,"),
             "환경변수에 변수 사용": ('env={"PATH": "/usr/local/bin:/usr/bin:/bin"},', 'env={"PATH": data},'),
             "Popen으로 변경": ("subprocess.run(", "subprocess.Popen("),
+            "표준 출력을 파이프로": ("stdout=output,", "stdout=subprocess.PIPE,"),
+            "표준 오류를 출력에 합침": ("stderr=subprocess.DEVNULL,", "stderr=subprocess.STDOUT,"),
+            "capture_output 사용": ("stdout=output,", "capture_output=True,"),
             "스크립트 경로 변경": ('Path(__file__).with_name("pdf_worker.py")', 'Path(__file__).with_name("other.py")'),
             "스크립트 경로를 입력으로": ('Path(__file__).with_name("pdf_worker.py")', 'Path(os.environ["WORKER"])'),
         }

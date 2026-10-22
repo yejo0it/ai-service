@@ -3,7 +3,8 @@
 
 - 확장자·Content-Type을 믿지 않고 파일 내용으로 형식을 확인한다(PDF는 `%PDF`, 이미지는 Pillow로 열어 본다).
 - 크기(10MB)·PDF 쪽수(5쪽)·이미지 크기를 제한하고, 손상·암호가 걸린 PDF를 거절한다.
-- PDF는 별도 프로세스(pdf_worker)에서 구조를 검사한다: 시간·메모리를 제한하고, JavaScript·자동 실행 동작·첨부 파일 등
+- PDF는 별도 프로세스(pdf_worker)에서 구조를 검사한다: 시간·메모리·출력 크기를 제한하고(제한을 걸지 못하면 검사하지 않는다),
+  표준 출력은 메모리 위 익명 파일로 받아 1MB까지만 읽고 표준 오류는 버린다. JavaScript·자동 실행 동작·첨부 파일 등
   위험 요소가 있으면 거절한다. 스크립트·첨부 파일은 실행하거나 열지 않는다. 사용자에게는 이유를 알기 쉬운 안내만 보이고
   내부 오류 내용은 보이지 않는다.
 - 텍스트가 있는 PDF는 텍스트만 뽑아 보내(이미지 분석 비용 절약), 텍스트가 거의 없는 스캔 PDF는 PDF 그대로 보낸다.
@@ -12,9 +13,12 @@
 """
 
 import json
+import logging
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -25,6 +29,7 @@ MAX_BYTES = 10 * 1024 * 1024
 MAX_PDF_PAGES = 5
 MAX_PDF_OBJECTS = 20_000  # 문서 구조에서 따라갈 객체 수 상한(넘으면 너무 복잡한 PDF로 본다)
 PDF_WORKER_TIMEOUT = 15  # 초. 이 시간 안에 검사가 끝나지 않으면 프로세스를 강제 종료한다.
+MAX_PDF_OUTPUT_BYTES = 1024 * 1024  # 검사 프로세스 출력을 읽는 상한(pdf_worker.OUTPUT_BYTES와 같다)
 MAX_IMAGE_PIXELS = 40_000_000  # 압축 폭탄 같은 거대한 이미지를 열기 전에 거절한다.
 MAX_IMAGE_SIDE = 1568  # 모델이 더 큰 이미지는 어차피 줄여서 읽는다.
 MIN_IMAGE_SIDE = 200
@@ -62,6 +67,7 @@ def prepare(upload):
 
 
 PDF_WORKER = Path(__file__).with_name("pdf_worker.py")
+logger = logging.getLogger(__name__)
 
 # 검사 프로세스가 돌려주는 내부 코드 -> 사용자 안내(내부 오류 내용은 보여 주지 않는다)
 PDF_MESSAGES = {
@@ -72,35 +78,56 @@ PDF_MESSAGES = {
     "예약 사이트에서 다시 내려받거나 화면을 캡처해 이미지로 올려 주세요.",
     "complex": "PDF가 너무 복잡해서 분석할 수 없어요. 이미지로 저장해 올려 주세요.",
     "corrupt": "PDF 파일을 읽을 수 없어요. 파일이 손상되었는지 확인해 주세요.",
+    # 서버가 검사 제한을 걸지 못한 경우(서버 환경 문제). 제한 없이는 검사하지 않는다.
+    "limits": "PDF를 읽을 수 없는 상태예요. 이미지로 올리거나 직접 입력해 주세요.",
 }
 
 
+def _output_file():
+    """검사 프로세스의 표준 출력을 받을 익명 파일. Linux에서는 디스크 없이 메모리에만 두고, 그 밖에는 임시 파일을 쓴다."""
+    if hasattr(os, "memfd_create"):
+        return os.fdopen(os.memfd_create("pdf-check"), "w+b")
+    return tempfile.TemporaryFile()
+
+
 def _inspect_pdf(data):
-    """별도 프로세스에서 PDF를 검사한다(시간·메모리 제한). 결과 사전을 돌려주고, 프로세스 이상은 'complex'로 본다."""
+    """
+    별도 프로세스에서 PDF를 검사한다(시간·메모리·출력 크기 제한). 결과 사전을 돌려주고, 프로세스 이상은 'complex'로 본다.
+    표준 출력은 상한이 걸린 익명 파일로 받아 MAX_PDF_OUTPUT_BYTES까지만 읽고(폭주해도 이 프로세스의 메모리는 늘지 않는다),
+    표준 오류는 버린다.
+    """
     limits = json.dumps({"max_pages": MAX_PDF_PAGES, "max_objects": MAX_PDF_OBJECTS, "max_text": MAX_TEXT_CHARS})
     try:
-        completed = subprocess.run(
-            [sys.executable, "-I", str(PDF_WORKER)],
-            input=limits.encode("ascii") + b"\n" + data,
-            capture_output=True,
-            timeout=PDF_WORKER_TIMEOUT,
-            env={"PATH": "/usr/local/bin:/usr/bin:/bin"},
-            check=False,
-        )
+        with _output_file() as output:
+            completed = subprocess.run(
+                [sys.executable, "-I", str(PDF_WORKER)],
+                input=limits.encode("ascii") + b"\n" + data,
+                stdout=output,
+                stderr=subprocess.DEVNULL,
+                timeout=PDF_WORKER_TIMEOUT,
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin"},
+                check=False,
+            )
+            output.seek(0)
+            raw = output.read(MAX_PDF_OUTPUT_BYTES + 1)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "complex"}
-    except OSError as exc:  # 검사 프로세스를 시작하지 못함(서버 환경 문제)
-        raise ReservationFileError("PDF를 읽을 수 없는 상태예요. 이미지로 올리거나 직접 입력해 주세요.") from exc
+    except OSError as exc:  # 검사 프로세스나 출력 파일을 만들지 못함(서버 환경 문제)
+        raise ReservationFileError(PDF_MESSAGES["limits"]) from exc
+    if completed.returncode != 0 or len(raw) > MAX_PDF_OUTPUT_BYTES:
+        return {"ok": False, "error": "complex"}  # 메모리·CPU·출력 제한으로 종료되었거나 비정상 종료
     try:
-        result = json.loads(completed.stdout)
+        result = json.loads(raw)
     except ValueError:
-        return {"ok": False, "error": "complex"}  # 메모리·CPU 제한으로 중간에 종료된 경우
+        return {"ok": False, "error": "complex"}
     return result if isinstance(result, dict) else {"ok": False, "error": "corrupt"}
 
 
 def _prepare_pdf(data):
     result = _inspect_pdf(data)
     if not result.get("ok"):
+        if result.get("error") == "limits":
+            logger.warning("pdf check refused: resource limits could not be applied")  # 문서 내용·파일명은 기록하지 않는다.
         raise ReservationFileError(PDF_MESSAGES.get(result.get("error"), PDF_MESSAGES["corrupt"]))
     text = re.sub(r"[ \t]+", " ", str(result.get("text", ""))).strip()
     pages = int(result.get("pages", 0))
