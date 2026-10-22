@@ -814,3 +814,47 @@ export interface TripFromReservationPayload {
   /** hotels.stays와 같은 순서의 여행지(city_code). 모르면 빈 문자열 */
   hotel_cities: string[];
 }
+
+/** 기존 여행에 예약 정보를 넣었을 때 바뀌는 내용(미리보기, 저장하지 않음) */
+export interface ReservationPreview {
+  flight: {
+    /** add: 기존 구간에 추가, replace: 전체 교체 */
+    mode: "add" | "replace";
+    /** 직접 등록한 항공 정보를 예약 구간으로 바꾸는지 */
+    legacy_replaced: boolean;
+    new: (FlightSegmentData & { direction: "outbound" | "return"; status: string })[];
+    /** 이미 등록된 구간이라 건너뛸 것 */
+    duplicates: FlightSegmentData[];
+    final_count: number;
+  } | null;
+  hotels: {
+    index: number;
+    /** new: 추가, duplicate: 이미 있음, skip: 겹쳐서 건너뜀, replace: 겹치는 기존 숙소를 교체 */
+    status: "new" | "duplicate" | "skip" | "replace";
+    stay: HotelStayData;
+    overlaps: { id: number; name: string; check_in: ISODate; check_out: ISODate | null }[];
+  }[];
+  dates: { start: ISODate; end: ISODate; extend: boolean; current_start: ISODate; current_end: ISODate };
+  /** 교체한 항공·숙소와 함께 빠지는 자동 카드 */
+  replaced_cards: { id: number; title: string; day: ISODate; time: string }[];
+  /** 시간이 겹치는 기존 일정(사용자가 지우기로 고를 수 있다) */
+  conflicts: { id: number; title: string; day: ISODate; time: string; reason: string }[];
+  itinerary_initialized: boolean;
+}
+
+export interface ReservationAttachPayload {
+  flight?: FlightBooking | null;
+  flight_mode?: "add" | "replace";
+  hotels?: HotelBooking | null;
+  hotel_decisions?: ("skip" | "replace")[];
+  hotel_places?: (HotelPlacePick | null)[];
+  hotel_cities?: string[];
+}
+
+export interface ReservationApplyPayload extends ReservationAttachPayload {
+  extend_dates: boolean;
+  /** false: 예약 정보만 저장 */
+  reflect: boolean;
+  cards: ItineraryCardInput[];
+  remove_item_ids: number[];
+}

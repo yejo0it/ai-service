@@ -12,7 +12,7 @@ import logging
 
 from django.conf import settings
 from django.http import Http404
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 
 from . import extract, files, validate
 from . import trips as reservation_trips
+from . import attach
 from .schemas import KINDS
 
 logger = logging.getLogger(__name__)
@@ -158,3 +159,97 @@ class ReservationConfigView(APIView):
 
     def get(self, request):
         return Response({"enabled": bool(getattr(settings, "RESERVATION_ANALYSIS_ENABLED", False))})
+
+
+def _trip_for(request, pk):
+    from django.shortcuts import get_object_or_404
+
+    from ..models import Trip
+
+    return get_object_or_404(Trip.objects.accessible_to(request.user), pk=pk)
+
+
+def _trip_and_itinerary(request, trip):
+    from ..itinerary_views import itinerary_response
+    from ..models import Trip
+    from ..serializers import TripSerializer
+
+    trip = Trip.objects.prefetch_related("hotels", "flight_segments").get(pk=trip.pk)
+    response = itinerary_response(trip)
+    response.data["trip"] = TripSerializer(trip, context={"request": request}).data
+    return response
+
+
+class TripReservationPreviewView(ReservationView):
+    """
+    `POST /api/v1/trips/{id}/reservations/preview/` — 기존 여행에 예약 정보를 넣으면 무엇이 바뀌는지(저장하지 않음):
+    새 구간·숙소, 이미 있는 예약, 숙소 겹침, 여행 기간 변경, 함께 빠지는 자동 카드, 시간이 겹치는 기존 일정.
+    """
+
+    parser_classes = [JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reservation_validate"
+
+    def post(self, request, pk):
+        trip = _trip_for(request, pk)
+        serializer = attach.AttachSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = attach.plan(trip, serializer.validated_data)
+        except reservation_trips.ReservationTripError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response(attach.as_response(trip, result))
+
+
+class ApplySerializer(attach.AttachSerializer):
+    # 예약이 여행 기간 밖이면 기간을 늘리는 데 동의해야 저장한다.
+    extend_dates = serializers.BooleanField(required=False, default=False)
+    # False: 예약 정보만 저장(경로에 더하지 않음). True: 고른 카드를 경로에 넣고 고른 충돌 일정을 지운다.
+    reflect = serializers.BooleanField(required=False, default=False)
+    cards = serializers.ListField(child=serializers.DictField(), required=False, default=list, max_length=attach.MAX_CARDS)
+    remove_item_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list, max_length=attach.MAX_CARDS
+    )
+
+    def validate_cards(self, value):
+        from ..itinerary_views import CardSerializer
+
+        serializer = CardSerializer(data=value, many=True)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
+
+
+class TripReservationApplyView(ReservationView):
+    """
+    `POST /api/v1/trips/{id}/reservations/apply/` — 예약 정보를 저장하고 승인한 변경만 경로에 반영한다(한 트랜잭션).
+    바뀐 여행과 일정을 돌려준다. 같은 예약을 다시 보내면 중복으로 건너뛴다.
+    """
+
+    parser_classes = [JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reservation_validate"
+
+    def post(self, request, pk):
+        trip = _trip_for(request, pk)
+        serializer = ApplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            trip, _ = attach.apply(
+                trip, data, data["cards"], data["remove_item_ids"], data["extend_dates"], data["reflect"]
+            )
+        except reservation_trips.ReservationTripError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return _trip_and_itinerary(request, trip)
+
+
+class FlightSegmentView(APIView):
+    """`DELETE /api/v1/trips/{id}/flight-segments/{order}/` — 예약 항공 구간 하나와 그 자동 카드를 지운다(화면에서 확인 후)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk, order):
+        trip = attach.delete_segment(_trip_for(request, pk), order)
+        if trip is None:
+            return Response({"detail": "항공 구간을 찾을 수 없어요."}, status=status.HTTP_404_NOT_FOUND)
+        return _trip_and_itinerary(request, trip)

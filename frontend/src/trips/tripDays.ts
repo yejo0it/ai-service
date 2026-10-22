@@ -62,7 +62,10 @@ const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): Iti
  * 하루 안의 순서: 체크아웃 → 가는 편 → 숙박 → 체크인 → 오는 편
  */
 /** 예약 정보로 만든 여행의 비행 구간 카드: 구간마다 출발 날짜(현지)에 출발 시각으로, 도착이 다른 날이면 함께 적는다. */
-const segmentCard = (segment: FlightSegmentInfo): ItineraryCardInput => {
+/** 공항 이름이 없는 구간: 앱 공항 목록의 이름, 없으면 코드 */
+const airportName = (code: string) => findAirport(code, "")?.name ?? code;
+
+export const segmentCard = (segment: FlightSegmentInfo): ItineraryCardInput => {
   const outbound = segment.direction === "outbound";
   const arrival =
     segment.arrival_time &&
@@ -75,8 +78,8 @@ const segmentCard = (segment: FlightSegmentInfo): ItineraryCardInput => {
     time_label: outbound ? "출국" : "귀국",
     subtitle: [segment.airline_name, arrival].filter(Boolean).join(" · "),
     stops: [
-      airportStop({ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }, "출발"),
-      airportStop({ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }, "도착"),
+      airportStop({ code: segment.departure_airport_code, name: segment.departure_airport_name || airportName(segment.departure_airport_code) }, "출발"),
+      airportStop({ code: segment.arrival_airport_code, name: segment.arrival_airport_name || airportName(segment.arrival_airport_code) }, "도착"),
     ],
   };
 };
@@ -174,4 +177,20 @@ export function cityPoints(trip: Trip): RoutePoint[] {
     .map((dest) => findCityByCode(dest.city_code))
     .filter((city) => city !== undefined)
     .map((city, index) => ({ order: index + 1, kind: "city", label: city.city, lat: city.lat, lng: city.lng }));
+}
+
+/**
+ * 숙소 하나의 카드(체크인·숙박·체크아웃)를 여행 기간 안의 날짜에 만든다. 기존 여행에 숙소 예약을 추가할 때 쓴다
+ * (처음 여는 여행의 initialCards와 같은 모양).
+ */
+export function stayCards(hotel: Hotel, start: string, end: string): ItineraryCardInput[] {
+  const cards: ItineraryCardInput[] = [];
+  if (!hotel.check_out) return cards;
+  for (let day = hotel.check_in; day <= hotel.check_out; day = toISODate(addDays(parseISODate(day), 1))) {
+    if (day < start || day > end) continue;
+    if (day === hotel.check_in) cards.push(hotelCard(hotel, day, "체크인", hotel.nights ? `${hotel.nights}박` : ""));
+    else if (day === hotel.check_out) cards.push(hotelCard(hotel, day, "체크아웃"));
+    else cards.push(hotelCard(hotel, day, "숙박"));
+  }
+  return cards;
 }

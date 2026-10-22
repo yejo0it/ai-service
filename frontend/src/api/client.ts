@@ -54,6 +54,9 @@ import type {
   TripMembers,
   TripPayload,
   TripFromReservationPayload,
+  ReservationApplyPayload,
+  ReservationAttachPayload,
+  ReservationPreview,
   TripPhoto,
   TripSummary,
 } from "../types/api";
@@ -324,6 +327,18 @@ export const getReservationConfig = () =>
 /** 확인한 예약 정보로 여행 만들기(여행·비행 구간·숙소를 한 번에 저장). 같은 request_id면 처음 만든 여행을 돌려준다. */
 export const createTripFromReservations = (payload: TripFromReservationPayload) =>
   api.post<Trip>("/trips/from-reservations/", payload).then((res) => res.data);
+
+/** 기존 여행에 예약 정보를 넣으면 무엇이 바뀌는지(저장하지 않음) */
+export const previewTripReservation = (tripId: number, payload: ReservationAttachPayload) =>
+  api.post<ReservationPreview>(`/trips/${tripId}/reservations/preview/`, payload).then((res) => res.data);
+
+/** 예약 정보를 저장하고 승인한 변경만 경로에 반영한다. 바뀐 여행과 일정을 돌려준다. */
+export const applyTripReservation = (tripId: number, payload: ReservationApplyPayload) =>
+  api.post<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/reservations/apply/`, payload).then((res) => res.data);
+
+/** 예약 항공 구간 하나와 그 경로 카드를 지운다. */
+export const deleteFlightSegment = (tripId: number, order: number) =>
+  api.delete<ItineraryResponse & { trip: Trip }>(`/trips/${tripId}/flight-segments/${order}/`).then((res) => res.data);
 
 /** 사용자가 고친 예약 정보를 같은 규칙으로 검증한다(AI를 부르지 않는다). */
 export const validateReservation = (kind: ReservationKind, document: FlightBooking | HotelBooking) =>
