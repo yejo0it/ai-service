@@ -15,6 +15,7 @@ import type {
   ItineraryResponse,
   PackingItem,
   PlaceKind,
+  PlacePhotoInfo,
   ApiErrorData,
   AuthSession,
   AuthUser,
@@ -292,6 +293,10 @@ export const deleteTripPhoto = (tripId: number, photoId: number) =>
 
 /** 사진 파일. 공개 주소가 없어 로그인 토큰으로 받아 미리보기용 Blob으로 쓴다. */
 export const getTripPhotoBlob = (url: string) => api.get<Blob>(url, { responseType: "blob" }).then((res) => res.data);
+
+/** 여행 경로 장소의 Google 대표 사진 주소와 작성자. 사진이 없거나 상한·오류여도 성공으로 응답한다(photo_uri가 null). */
+export const getPlacePhoto = (placeId: string) =>
+  api.get<PlacePhotoInfo>("/places/photo/", { params: { place_id: placeId } }).then((res) => res.data);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>

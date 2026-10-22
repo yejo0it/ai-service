@@ -51,6 +51,7 @@ const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): Iti
   subtitle,
   stops: [{ kind: "hotel", caption: label, label: hotel.address || hotel.name, lat: hotel.latitude, lng: hotel.longitude }],
   phone: hotel.phone ?? "",
+  place_id: hotel.place_id, // 장소 사진을 보여 주는 데 쓴다(새로 만드는 카드부터).
 });
 
 /**
