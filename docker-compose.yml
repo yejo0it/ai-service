@@ -40,6 +40,8 @@ services:
       GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
       # 장소 사진 월 상한(과금 호출 수). 무료 한도(1,000건)보다 낮게 둔다. 0이면 사진을 끈다.
       PLACE_PHOTO_MONTHLY_LIMIT: ${PLACE_PHOTO_MONTHLY_LIMIT:-900}
+      # 예약 확인서 분석(1단계). 개발 환경은 기본 켜짐, 운영 서버 환경변수는 기본 꺼짐(0)으로 둔다.
+      RESERVATION_ANALYSIS_ENABLED: ${RESERVATION_ANALYSIS_ENABLED:-1}
       # 소셜 로그인. 비어 있으면 해당 로그인 API가 503을 돌려준다.
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}

@@ -15,6 +15,10 @@ import type {
   ItineraryResponse,
   PackingItem,
   PlaceKind,
+  FlightBooking,
+  HotelBooking,
+  ReservationKind,
+  ReservationResult,
   PlacePhotoInfo,
   ApiErrorData,
   AuthSession,
@@ -297,6 +301,24 @@ export const getTripPhotoBlob = (url: string) => api.get<Blob>(url, { responseTy
 /** 여행 경로 장소의 Google 대표 사진 주소와 작성자. 사진이 없거나 상한·오류여도 성공으로 응답한다(photo_uri가 null). */
 export const getPlacePhoto = (placeId: string) =>
   api.get<PlacePhotoInfo>("/places/photo/", { params: { place_id: placeId } }).then((res) => res.data);
+
+/** 예약 확인서(PDF·이미지) 분석. 저장하지 않고 추출·검증한 예약 정보만 돌려준다. signal로 취소할 수 있다. */
+export const analyzeReservation = (kind: ReservationKind, file: File, signal?: AbortSignal) => {
+  const form = new FormData();
+  form.append("type", kind);
+  form.append("file", file);
+  return api
+    .post<ReservationResult>("/reservations/analyze/", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      signal,
+      timeout: 120_000, // 문서 분석은 수십 초 걸릴 수 있다.
+    })
+    .then((res) => res.data);
+};
+
+/** 사용자가 고친 예약 정보를 같은 규칙으로 검증한다(AI를 부르지 않는다). */
+export const validateReservation = (kind: ReservationKind, document: FlightBooking | HotelBooking) =>
+  api.post<ReservationResult>("/reservations/validate/", { type: kind, document }).then((res) => res.data);
 
 /** 일정 장소 자동완성 (유형별) */
 export const searchPlaces = (params: { input: string; sessionToken: string; cityCode?: string; kind?: PlaceKind }) =>

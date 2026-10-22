@@ -7,6 +7,8 @@ export const ROUTES = {
   ONBOARDING: "/onboarding",
   MY_TRIPS: "/trips",
   PACKING: "/packing",
+  /** 개발용: 예약 확인서 분석 확인 화면(개발 모드에서만 등록) */
+  DEV_RESERVATIONS: "/dev/reservations",
   MYPAGE: "/mypage",
   /** 여행 상세. 뒤에 탭(expenses·checklist)이 붙을 수 있고, 없으면 여행 일정 탭 */
   TRIP_DETAIL: "/trips/:tripId/:tab?",
