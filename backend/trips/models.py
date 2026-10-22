@@ -1,7 +1,13 @@
+import uuid
+
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
+
+from .storage import private_storage
 
 
 class TimeStampedModel(models.Model):
@@ -403,3 +409,56 @@ class ExpenseShare(models.Model):
 
     def __str__(self) -> str:
         return f"{self.expense_id} - {self.user_name}"
+
+
+def trip_photo_upload_to(instance, filename):
+    """여행마다 폴더를 나누고, 파일 이름은 추측할 수 없는 값으로 새로 만든다(원래 이름은 쓰지 않는다)."""
+    return f"trips/{instance.trip_id}/{uuid.uuid4().hex}.jpg"
+
+
+class TripSummary(TimeStampedModel):
+    """여행 요약의 한 줄 메모. 여행마다 하나이며, 여행 시작일부터 만든 회원과 일행이 함께 쓴다."""
+
+    MEMO_MAX = 300
+
+    trip = models.OneToOneField(Trip, related_name="summary", on_delete=models.CASCADE)
+    memo = models.CharField("한 줄 메모", max_length=MEMO_MAX, blank=True, default="")
+
+    class Meta:
+        verbose_name = "여행 요약"
+        verbose_name_plural = "여행 요약"
+
+    def __str__(self) -> str:
+        return f"{self.trip_id}: {self.memo[:20]}"
+
+
+class TripPhoto(TimeStampedModel):
+    """
+    여행 요약 사진. 여행당 최대 3장이고 order 순서대로 보여 준다.
+    이미지는 DB에 넣지 않고 공개하지 않는 저장소(trips.storage)에 파일로 두며, DB에는 경로와 메타데이터만 둔다.
+    """
+
+    MAX_PER_TRIP = 3
+
+    trip = models.ForeignKey(Trip, related_name="photos", on_delete=models.CASCADE)
+    image = models.ImageField("사진", upload_to=trip_photo_upload_to, storage=private_storage)
+    order = models.PositiveSmallIntegerField("순서", default=0)
+    width = models.PositiveIntegerField("너비")
+    height = models.PositiveIntegerField("높이")
+    size_bytes = models.PositiveIntegerField("파일 크기")
+
+    class Meta:
+        verbose_name = "여행 사진"
+        verbose_name_plural = "여행 사진"
+        ordering = ("order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} #{self.order}"
+
+
+@receiver(post_delete, sender=TripPhoto)
+def delete_trip_photo_file(sender, instance, **kwargs):
+    """사진 행이 지워지면(여행을 지울 때 포함) 파일도 지운다. 지워진 내용이 커밋된 뒤에 지운다."""
+    name, storage = instance.image.name, instance.image.storage
+    if name:
+        transaction.on_commit(lambda: storage.delete(name))

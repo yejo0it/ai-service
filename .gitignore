@@ -18,6 +18,7 @@ vite.config.*.timestamp-*
 
 # 업로드 파일 (프로필 사진)
 backend/media/
+backend/private_media/
 
 # 한국어로 바꾸지 못한 역·노선 이름 로그 (trips/untranslated.py)
 backend/logs/

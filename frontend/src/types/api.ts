@@ -667,3 +667,25 @@ export interface Settlement {
   /** 분담 인원을 정하지 않아 정산에서 빠진 지출 수 */
   excluded_count: number;
 }
+
+/* ------------------------------------------------------------------ *
+ * 여행 요약 (한 줄 메모 · 사진)
+ * ------------------------------------------------------------------ */
+
+/** 여행 요약 사진. url은 API 주소 기준 경로이며 로그인한 여행 참여자만 받을 수 있다(공개 주소 없음). */
+export interface TripPhoto {
+  id: number;
+  order: number;
+  width: number;
+  height: number;
+  size_bytes: number;
+  url: string;
+}
+
+export interface TripSummary {
+  memo: string;
+  photos: TripPhoto[];
+  max_photos: number;
+  /** 여행 시작일부터 쓸 수 있다 */
+  writable: boolean;
+}

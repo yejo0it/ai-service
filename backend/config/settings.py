@@ -93,6 +93,8 @@ STATIC_URL = "static/"
 # 업로드 파일(프로필 사진). 개발 서버(DEBUG)는 Django가 직접 서빙하고, 운영은 웹 서버·스토리지에서 서빙한다.
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+# 여행 사진: /media/처럼 공개하지 않고 로그인한 여행 참여자에게만 API로 내려 준다(trips.storage).
+PRIVATE_MEDIA_ROOT = Path(os.environ.get("PRIVATE_MEDIA_ROOT", BASE_DIR / "private_media"))
 
 # 이메일 변경 인증 메일(SMTP). EMAIL_HOST가 비어 있으면 개발(DEBUG)은 콘솔(백엔드 로그)로 보내고,
 # 운영은 발송하지 않는다(503).
