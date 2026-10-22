@@ -715,7 +715,8 @@ export default function TripDetailPage() {
             </div>
             <DayTabs dates={dates} selected={dayIndex} onSelect={setDayIndex} />
             {routeError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{routeError}</p>}
-            <div className="lg:max-w-3xl">
+            {/* 일정 카드(핀 포함)는 최대 1000px 폭으로 여행 경로 섹션 가운데에 둔다. */}
+            <div className="mx-auto w-full max-w-[1000px]">
               {items === null ? (
                 error ? (
                   <p className="text-sm text-rose-600">{error}</p>

@@ -357,6 +357,8 @@ export interface ItineraryCardInput {
   subtitle: string;
   stops: ItineraryStop[];
   phone?: string;
+  /** Google 장소 번호(있으면 경로 카드에 장소 사진을 보여 준다) */
+  place_id?: string;
 }
 
 /** 공항(항공편) 직접 추가: 단일 노선 한 편 */
@@ -688,4 +690,15 @@ export interface TripSummary {
   max_photos: number;
   /** 여행 시작일부터 쓸 수 있다 */
   writable: boolean;
+}
+
+/** 여행 경로 장소 대표 사진. status가 ok일 때만 photo_uri가 있다(none: 사진 없음, limit: 월 상한, error: 오류). */
+export interface PlacePhotoInfo {
+  status: "ok" | "none" | "limit" | "error";
+  /** Google 이미지 주소(API 키가 없는 주소) */
+  photo_uri: string | null;
+  /** 사진 작성자(표시 필수). 링크가 없으면 uri는 빈 문자열 */
+  attributions: { name: string; uri: string }[];
+  /** Google Maps의 사진 원본 링크 */
+  maps_uri: string;
 }

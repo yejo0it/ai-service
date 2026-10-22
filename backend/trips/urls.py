@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import expense_views as expense
 from . import invitation_views as invitation
+from . import place_photo_views as place_photo
 from . import summary_views as summary
 from . import itinerary_views as itinerary
 from .views import (
@@ -22,6 +23,7 @@ router.register("airlines", AirlineViewSet, basename="airline")
 
 urlpatterns = [
     path("places/hotels/", HotelSearchView.as_view(), name="hotel-search"),
+    path("places/photo/", place_photo.PlacePhotoView.as_view(), name="place-photo"),
     path("places/hotels/<str:place_id>/", HotelDetailView.as_view(), name="hotel-detail"),
     path("travel-info/weather/", WeatherView.as_view(), name="travel-weather"),
     path("travel-info/exchange-rates/", ExchangeRateView.as_view(), name="travel-exchange-rates"),

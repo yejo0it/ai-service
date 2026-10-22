@@ -462,3 +462,17 @@ def delete_trip_photo_file(sender, instance, **kwargs):
     name, storage = instance.image.name, instance.image.storage
     if name:
         transaction.on_commit(lambda: storage.delete(name))
+
+
+class PlacePhotoUsage(models.Model):
+    """장소 사진 과금 호출(Google Place Photos) 월별 사용량. 월 상한(PLACE_PHOTO_MONTHLY_LIMIT)을 넘기 전에 막는 데 쓴다."""
+
+    month = models.CharField("월(태평양 시간 기준)", max_length=7, unique=True)
+    count = models.PositiveIntegerField("과금 호출 수", default=0)
+
+    class Meta:
+        verbose_name = "장소 사진 사용량"
+        verbose_name_plural = "장소 사진 사용량"
+
+    def __str__(self) -> str:
+        return f"{self.month}: {self.count}"

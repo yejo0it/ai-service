@@ -126,7 +126,7 @@ REST_FRAMEWORK = {
     ],
     # 인증 API(accounts.views.AuthAPIView)·이메일 변경의 요청 제한(ScopedRateThrottle),
     # AI와 함께 만들기(모델 호출)의 사용자당 요청 제한: 1분 10회, 최근 24시간 100회
-    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day", "legs": "120/hour"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "30/min", "sms": "10/hour", "email": "10/hour", "ai_minute": "10/min", "ai_day": "100/day", "legs": "120/hour", "place_photo": "300/hour"},
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
@@ -177,3 +177,7 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:8002,http://127.0.0.1:8002",
 ).split(",")
+
+# 여행 경로 장소 사진(Google Place Photos, trips.place_photos). 사진 파일 요청은 월 1,000건까지 무료이고 이후 과금되므로,
+# 무료 한도보다 낮은 상한에 닿으면 사진을 더 받지 않고 아이콘으로 대신한다. 0이면 사진 기능을 끈다.
+PLACE_PHOTO_MONTHLY_LIMIT = int(os.environ.get("PLACE_PHOTO_MONTHLY_LIMIT", "900"))

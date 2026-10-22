@@ -43,7 +43,9 @@ def _request(url, field_mask, body=None):
     if not api_key:
         raise PlacesError("숙소 검색 API 키가 설정되지 않았습니다.", status_code=503)
 
-    headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": field_mask}
+    headers = {"X-Goog-Api-Key": api_key}
+    if field_mask:  # 사진 파일 요청(/media)에는 필드 마스크가 없다.
+        headers["X-Goog-FieldMask"] = field_mask
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -173,3 +175,21 @@ def search_place(text, latitude=None, longitude=None):
     if not places:
         return None
     return _place_summary(places[0], places[0].get("id", ""))
+
+
+# 장소 대표 사진: Details에서 `photos`만 받으면 ID 등급(무료)이고, 사진 파일 요청(/media)이 과금 대상이다(trips.place_photos).
+PHOTO_SIZE_PX = 360  # 카드 높이에 맞춰 키운 정사각 썸네일(최대 168px, 고해상도 화면 포함)에도 선명하도록
+
+
+def place_photo_details(place_id):
+    """장소의 사진 목록(이름·작성자). 사진 이름은 만료될 수 있어 저장하지 않고 바로 쓴다."""
+    place = urllib.parse.quote(place_id, safe="")
+    return _request(f"{PLACES_BASE_URL}/places/{place}", "photos")
+
+
+def place_photo_uri(photo_name):
+    """사진 이름 -> 이미지 주소(photoUri, API 키가 들어 있지 않은 주소). 이 요청이 사진 과금 1건이다."""
+    query = urllib.parse.urlencode(
+        {"maxHeightPx": PHOTO_SIZE_PX, "maxWidthPx": PHOTO_SIZE_PX, "skipHttpRedirect": "true"}
+    )
+    return _request(f"{PLACES_BASE_URL}/{photo_name}/media?{query}", None).get("photoUri", "")
