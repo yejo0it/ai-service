@@ -6,6 +6,8 @@ anthropic>=1,<2
 pydantic>=2
 # 프로필 사진 검증·축소
 Pillow>=10
+# 예약 확인서 PDF 쪽수 검증·텍스트 추출
+pypdf>=5
 # 여행 정보 검색(RAG): pgvector 연동, 다국어 문장 임베딩(CPU 전용 torch)
 --extra-index-url https://download.pytorch.org/whl/cpu
 pgvector>=0.3

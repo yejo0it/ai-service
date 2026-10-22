@@ -702,3 +702,69 @@ export interface PlacePhotoInfo {
   /** Google Maps의 사진 원본 링크 */
   maps_uri: string;
 }
+
+
+/* ------------------------------------------------------------------ *
+ * 예약 확인서 분석 (항공권·숙소)
+ * ------------------------------------------------------------------ */
+
+export type ReservationKind = "flight" | "hotel";
+
+/** 비행 구간 하나(경유·다구간은 구간마다). 값이 null이면 문서에서 확인하지 못한 값이다. 시각은 해당 공항의 현지 시각. */
+export interface FlightSegmentData {
+  airline_name: string | null;
+  flight_number: string | null;
+  departure_airport_code: string | null;
+  departure_airport_name: string | null;
+  arrival_airport_code: string | null;
+  arrival_airport_name: string | null;
+  departure_date: string | null;
+  departure_time: string | null;
+  arrival_date: string | null;
+  arrival_time: string | null;
+  /** 왕복에서 가는 편(outbound)·오는 편(return). 알 수 없으면 null */
+  direction: "outbound" | "return" | null;
+  notes: string[];
+}
+
+export interface FlightItineraryData {
+  status: string | null;
+  segments: FlightSegmentData[];
+}
+
+export interface FlightBooking {
+  itineraries: FlightItineraryData[];
+}
+
+export interface HotelStayData {
+  name: string | null;
+  address: string | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
+  check_in_time: string | null;
+  check_out_time: string | null;
+  status: string | null;
+  notes: string[];
+}
+
+export interface HotelBooking {
+  stays: HotelStayData[];
+}
+
+export interface ReservationIssue {
+  /** 입력 칸 경로 (예: itineraries.0.segments.1.departure_date) */
+  path: string;
+  message: string;
+}
+
+/** 분석·검증 결과: 검증된 예약 정보 객체(document)와 오류(막음)·경고(알림). valid면 errors가 없다. */
+export interface ReservationResult<D = FlightBooking | HotelBooking> {
+  kind: ReservationKind;
+  document: D;
+  valid: boolean;
+  errors: ReservationIssue[];
+  warnings: ReservationIssue[];
+  /** 분석 방식(pdf_text · pdf_visual · image). 검증만 한 경우는 없다. */
+  method?: string;
+  pages?: number;
+}

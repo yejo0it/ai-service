@@ -10,6 +10,7 @@ import AppLayout from "./components/layout/AppLayout";
 import HomePage from "./home/HomePage";
 import MyPage from "./mypage/MyPage";
 import PackingRedirect from "./packing/PackingRedirect";
+import DevReservationsPage from "./reservations/DevReservationsPage";
 import { ROUTES, type HomeLocationState } from "./routes";
 import MyTripsPage from "./trips/MyTripsPage";
 import InviteAcceptPage from "./trips/InviteAcceptPage";
@@ -45,6 +46,8 @@ export default function App() {
           {/* 여행 체크리스트는 여행 상세의 탭이다. 예전 주소는 그 여행의 체크리스트 탭으로 보낸다. */}
           <Route path={ROUTES.PACKING} element={<PackingRedirect />} />
           <Route path={ROUTES.MYPAGE} element={<MyPage />} />
+          {/* 개발용 확인 화면: 개발 모드에서만 등록하므로 운영 빌드에서는 이 주소가 없다. */}
+          {import.meta.env.DEV && <Route path={ROUTES.DEV_RESERVATIONS} element={<DevReservationsPage />} />}
         </Route>
       </Route>
     </Routes>
