@@ -92,6 +92,8 @@ class Trip(TimeStampedModel):
     itinerary_initialized = models.BooleanField("일정 초기화 여부", default=False)
     # 짐싸기 노트를 처음 열 때 기본 준비물을 한 번 넣었는지 (지운 기본 항목이 다시 생기지 않도록)
     packing_initialized = models.BooleanField("짐싸기 노트 초기화 여부", default=False)
+    # 예약 정보로 만들 때 화면이 보낸 요청 번호. 같은 요청이 두 번 와도 여행을 하나만 만든다(직접 등록은 비어 있다).
+    creation_key = models.CharField("생성 요청 번호", max_length=64, null=True, blank=True, unique=True)
 
     objects = TripQuerySet.as_manager()
 
@@ -137,7 +139,8 @@ class Hotel(TimeStampedModel):
 
     trip = models.ForeignKey(Trip, related_name="hotels", on_delete=models.CASCADE)
     name = models.CharField("숙소명", max_length=150)
-    address = models.CharField("주소", max_length=255)
+    # 예약 확인서에 주소가 없을 수 있어 비워 둘 수 있다.
+    address = models.CharField("주소", max_length=255, blank=True, default="")
     # Google Places에서 고른 숙소. 직접 입력한 숙소는 비어 있다.
     place_id = models.CharField("Google Place ID", max_length=255, blank=True, default="")
     latitude = models.FloatField("위도", null=True, blank=True)
@@ -149,6 +152,9 @@ class Hotel(TimeStampedModel):
     check_in = models.DateField("체크인")
     # 체크아웃 미정(막날 공항 이동 등)인 경우를 위해 Nullable.
     check_out = models.DateField("체크아웃", null=True, blank=True)
+    # 예약 확인서에 적힌 체크인·체크아웃 시각(현지). 확정된 시각이라 경로 카드에 그대로 보여 주고 바꾸지 않는다.
+    check_in_time = models.TimeField("체크인 시각", null=True, blank=True)
+    check_out_time = models.TimeField("체크아웃 시각", null=True, blank=True)
 
     class Meta:
         verbose_name = "숙소"
@@ -169,6 +175,43 @@ class Hotel(TimeStampedModel):
         if self.check_out is None:
             return None
         return (self.check_out - self.check_in).days
+
+
+class FlightSegment(TimeStampedModel):
+    """
+    예약 정보로 만든 여행의 비행 구간(왕복·편도·경유·다구간을 구간마다 하나씩). 시각은 각 공항의 현지 시각이다.
+    Trip.flight_info는 기존 화면·AI 기능을 위해 이 구간들의 요약(첫 가는 편·마지막 오는 편)으로 함께 저장한다.
+    구간이 있는 여행의 항공편은 예약 정보로 관리하므로 AI·경로 카드로 바꾸지 않는다.
+    직접 등록한 여행에는 구간이 없다(flight_info만 있다).
+    """
+
+    class Direction(models.TextChoices):
+        OUTBOUND = "outbound", "가는 편"
+        RETURN = "return", "오는 편"
+
+    trip = models.ForeignKey(Trip, related_name="flight_segments", on_delete=models.CASCADE)
+    order = models.PositiveSmallIntegerField("순서")
+    direction = models.CharField("방향", max_length=8, choices=Direction.choices, default=Direction.OUTBOUND)
+    airline_name = models.CharField("항공사", max_length=60, blank=True, default="")
+    flight_number = models.CharField("항공편명", max_length=12)
+    departure_airport_code = models.CharField("출발 공항 코드", max_length=3)
+    departure_airport_name = models.CharField("출발 공항 이름", max_length=80, blank=True, default="")
+    arrival_airport_code = models.CharField("도착 공항 코드", max_length=3)
+    arrival_airport_name = models.CharField("도착 공항 이름", max_length=80, blank=True, default="")
+    departure_date = models.DateField("출발 날짜(현지)")
+    departure_time = models.TimeField("출발 시각(현지)")
+    arrival_date = models.DateField("도착 날짜(현지)", null=True, blank=True)
+    arrival_time = models.TimeField("도착 시각(현지)", null=True, blank=True)
+    status = models.CharField("예약 상태", max_length=40, blank=True, default="")
+
+    class Meta:
+        verbose_name = "비행 구간"
+        verbose_name_plural = "비행 구간"
+        ordering = ("order", "id")
+        constraints = [models.UniqueConstraint(fields=("trip", "order"), name="flight_segment_order_unique")]
+
+    def __str__(self) -> str:
+        return f"{self.trip_id} #{self.order} {self.flight_number}"
 
 
 class ItineraryItem(TimeStampedModel):

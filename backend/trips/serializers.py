@@ -4,7 +4,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .cities import normalize_key
-from .models import Hotel, Trip, Airline
+from .models import Airline, FlightSegment, Hotel, Trip
 
 
 def _jsonify(value):
@@ -46,6 +46,35 @@ class AirportSerializer(serializers.Serializer):
 
     code = serializers.CharField(max_length=3)
     name = serializers.CharField(max_length=60)
+
+
+FLIGHT_LOCKED_MESSAGE = "예약 정보로 등록한 항공편은 여기서 바꿀 수 없어요."
+
+
+class FlightSegmentSerializer(serializers.ModelSerializer):
+    """예약 정보로 만든 여행의 비행 구간(읽기 전용). 시각은 각 공항의 현지 시각이다."""
+
+    departure_time = serializers.TimeField(format="%H:%M")
+    arrival_time = serializers.TimeField(format="%H:%M", allow_null=True)
+
+    class Meta:
+        model = FlightSegment
+        fields = (
+            "order",
+            "direction",
+            "airline_name",
+            "flight_number",
+            "departure_airport_code",
+            "departure_airport_name",
+            "arrival_airport_code",
+            "arrival_airport_name",
+            "departure_date",
+            "departure_time",
+            "arrival_date",
+            "arrival_time",
+            "status",
+        )
+        read_only_fields = fields
 
 
 class FlightInfoSerializer(serializers.Serializer):
@@ -99,6 +128,9 @@ class NestedHotelSerializer(serializers.ModelSerializer):
     """Trip 생성 요청(Step 1~3 단일 요청)에 포함되는 숙소."""
 
     nights = serializers.IntegerField(read_only=True)
+    # 예약 확인서에 적힌 체크인·체크아웃 시각(선택)
+    check_in_time = serializers.TimeField(format="%H:%M", required=False, allow_null=True)
+    check_out_time = serializers.TimeField(format="%H:%M", required=False, allow_null=True)
 
     class Meta:
         model = Hotel
@@ -113,6 +145,8 @@ class NestedHotelSerializer(serializers.ModelSerializer):
             "city_code",
             "check_in",
             "check_out",
+            "check_in_time",
+            "check_out_time",
             "nights",
         )
         read_only_fields = ("id", "nights")
@@ -169,6 +203,8 @@ class TripSerializer(serializers.ModelSerializer):
 
     hotels = NestedHotelSerializer(many=True, required=False)
     flight_info = FlightInfoSerializer(required=False, allow_null=True)
+    # 예약 정보로 만든 여행의 비행 구간(직접 등록한 여행은 빈 목록). flight_info는 이 구간들의 요약이다.
+    flight_segments = FlightSegmentSerializer(many=True, read_only=True)
     # 여행지는 1개 이상. partial update(PATCH)에서는 DRF가 required를 자동 해제한다.
     destinations = DestinationSerializer(many=True, allow_empty=False)
     destination_label = serializers.CharField(read_only=True)
@@ -187,6 +223,7 @@ class TripSerializer(serializers.ModelSerializer):
             "end_date",
             "date_source",
             "flight_info",
+            "flight_segments",
             "color",
             "has_flight",
             "nights",
@@ -221,6 +258,10 @@ class TripSerializer(serializers.ModelSerializer):
         if "destinations" in attrs:
             # OrderedDict -> 순수 list[dict]로 변환해 JSONField에 저장한다.
             attrs["destinations"] = [_jsonify(dict(entry)) for entry in attrs["destinations"]]
+
+        if "flight_info" in attrs and instance is not None and instance.flight_segments.exists():
+            # 예약 정보로 등록한 항공편(비행 구간)은 예약 정보로 관리한다(3단계에서 정식 수정 기능 제공).
+            raise serializers.ValidationError({"flight_info": FLIGHT_LOCKED_MESSAGE})
 
         if "flight_info" in attrs:
             flight = attrs["flight_info"]  # 검증 통과한 dict(datetime 포함) 또는 None

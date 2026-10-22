@@ -1,7 +1,7 @@
 import { findAirport } from "../onboarding/airports";
 import { findCityByCode } from "../onboarding/cities";
-import type { Airport, Hotel, ItineraryCardInput, ItineraryItem, ItineraryStop, Trip } from "../types/api";
-import { addDays, parseISODate, toISODate } from "../utils/date";
+import type { Airport, FlightSegmentInfo, Hotel, ItineraryCardInput, ItineraryItem, ItineraryStop, Trip } from "../types/api";
+import { addDays, formatShortDot, parseISODate, toISODate } from "../utils/date";
 
 export type StopKind = ItineraryStop["kind"];
 
@@ -46,7 +46,8 @@ const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): Iti
   day,
   kind: "hotel",
   title: hotel.name,
-  time: "",
+  // 예약 확인서에 적힌 확정 시각은 그대로 보여 준다(체크인·체크아웃 날만).
+  time: (label === "체크인" ? hotel.check_in_time : label === "체크아웃" ? hotel.check_out_time : null) ?? "",
   time_label: label,
   subtitle,
   stops: [{ kind: "hotel", caption: label, label: hotel.address || hotel.name, lat: hotel.latitude, lng: hotel.longitude }],
@@ -60,8 +61,30 @@ const hotelCard = (hotel: Hotel, day: string, label: string, subtitle = ""): Iti
  * - 숙소: 체크인 날(체크인), 사이 날(숙박), 체크아웃 날(체크아웃)
  * 하루 안의 순서: 체크아웃 → 가는 편 → 숙박 → 체크인 → 오는 편
  */
+/** 예약 정보로 만든 여행의 비행 구간 카드: 구간마다 출발 날짜(현지)에 출발 시각으로, 도착이 다른 날이면 함께 적는다. */
+const segmentCard = (segment: FlightSegmentInfo): ItineraryCardInput => {
+  const outbound = segment.direction === "outbound";
+  const arrival =
+    segment.arrival_time &&
+    `도착 ${segment.arrival_date && segment.arrival_date !== segment.departure_date ? `${formatShortDot(segment.arrival_date)} ` : ""}${segment.arrival_time}`;
+  return {
+    day: segment.departure_date,
+    kind: "flight",
+    title: `${outbound ? "가는 편" : "오는 편"} · ${segment.flight_number}`,
+    time: segment.departure_time,
+    time_label: outbound ? "출국" : "귀국",
+    subtitle: [segment.airline_name, arrival].filter(Boolean).join(" · "),
+    stops: [
+      airportStop({ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }, "출발"),
+      airportStop({ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }, "도착"),
+    ],
+  };
+};
+
 export function initialCards(trip: Trip): ItineraryCardInput[] {
-  const flight = trip.flight_info;
+  // 비행 구간이 있으면(예약 정보로 만든 여행) 구간마다 카드를 만들고, flight_info 요약 카드는 만들지 않는다.
+  const segments = trip.flight_segments ?? [];
+  const flight = segments.length > 0 ? null : trip.flight_info;
   const departureDate = flight?.departure_at?.slice(0, 10) || trip.start_date;
   const returnDate = flight?.return_arrival_at?.slice(0, 10) || trip.end_date;
   const hotels = [...trip.hotels].sort((a, b) => a.check_in.localeCompare(b.check_in));
@@ -71,6 +94,10 @@ export function initialCards(trip: Trip): ItineraryCardInput[] {
     hotels
       .filter((hotel) => hotel.check_out === day && hotel.check_in !== day)
       .forEach((hotel) => cards.push(hotelCard(hotel, day, "체크아웃")));
+
+    segments
+      .filter((segment) => segment.direction === "outbound" && segment.departure_date === day)
+      .forEach((segment) => cards.push(segmentCard(segment)));
 
     if (flight && day === departureDate) {
       cards.push({
@@ -91,6 +118,10 @@ export function initialCards(trip: Trip): ItineraryCardInput[] {
     hotels
       .filter((hotel) => hotel.check_in === day)
       .forEach((hotel) => cards.push(hotelCard(hotel, day, "체크인", hotel.nights ? `${hotel.nights}박` : "")));
+
+    segments
+      .filter((segment) => segment.direction === "return" && segment.departure_date === day)
+      .forEach((segment) => cards.push(segmentCard(segment)));
 
     if (flight && day === returnDate && (flight.return_flight_number || flight.return_arrival_at)) {
       cards.push({

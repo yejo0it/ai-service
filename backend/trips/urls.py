@@ -28,6 +28,8 @@ urlpatterns = [
     # 예약 확인서 분석(1단계: 추출·검증만 하고 저장하지 않는다)
     path("reservations/analyze/", reservation.AnalyzeView.as_view(), name="reservation-analyze"),
     path("reservations/validate/", reservation.ValidateView.as_view(), name="reservation-validate"),
+    path("reservations/config/", reservation.ReservationConfigView.as_view(), name="reservation-config"),
+    path("trips/from-reservations/", reservation.TripFromReservationView.as_view(), name="trip-from-reservations"),
     path("places/hotels/<str:place_id>/", HotelDetailView.as_view(), name="hotel-detail"),
     path("travel-info/weather/", WeatherView.as_view(), name="travel-weather"),
     path("travel-info/exchange-rates/", ExchangeRateView.as_view(), name="travel-exchange-rates"),
