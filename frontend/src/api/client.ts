@@ -53,6 +53,7 @@ import type {
   TripInvitation,
   TripMembers,
   TripPayload,
+  TripFromReservationPayload,
   TripPhoto,
   TripSummary,
 } from "../types/api";
@@ -315,6 +316,14 @@ export const analyzeReservation = (kind: ReservationKind, file: File, signal?: A
     })
     .then((res) => res.data);
 };
+
+/** 예약 확인서 기능을 쓸 수 있는지(꺼져 있으면 '예약 정보로 만들기'를 보이지 않는다) */
+export const getReservationConfig = () =>
+  api.get<{ enabled: boolean }>("/reservations/config/").then((res) => res.data);
+
+/** 확인한 예약 정보로 여행 만들기(여행·비행 구간·숙소를 한 번에 저장). 같은 request_id면 처음 만든 여행을 돌려준다. */
+export const createTripFromReservations = (payload: TripFromReservationPayload) =>
+  api.post<Trip>("/trips/from-reservations/", payload).then((res) => res.data);
 
 /** 사용자가 고친 예약 정보를 같은 규칙으로 검증한다(AI를 부르지 않는다). */
 export const validateReservation = (kind: ReservationKind, document: FlightBooking | HotelBooking) =>

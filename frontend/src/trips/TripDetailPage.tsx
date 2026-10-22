@@ -169,7 +169,9 @@ interface TripBasicsProps {
  * 항공·숙소는 선택 입력이라 비어 있으면 안내와 바로 추가 버튼을 보여준다.
  */
 function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
-  const flight = trip.flight_info;
+  // 예약 정보로 만든 여행은 비행 구간(경유·다구간)을 구간마다 보여 주고, flight_info 요약은 쓰지 않는다.
+  const segments = trip.flight_segments ?? [];
+  const flight = segments.length > 0 ? null : trip.flight_info;
   // 경로에서 가는 편·오는 편 카드를 지우면 그 편의 정보가 비워진다. 남은 편만 보여준다.
   const hasOutbound = Boolean(
     flight &&
@@ -195,8 +197,21 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
   return (
     <div className={`${CARD_CLASS} space-y-4`}>
       <Section title="항공">
-        {hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
+        {segments.length > 0 || hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
           <div className="space-y-2">
+            {segments.map((segment) => (
+              <FlightLeg
+                key={segment.order}
+                label={segment.direction === "outbound" ? "가는 편" : "오는 편"}
+                airline={segment.airline_name}
+                flightNumber={segment.flight_number}
+                from={{ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }}
+                to={{ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }}
+                when={`${formatMonthDay(segment.departure_date)} ${segment.departure_time}`}
+                whenLabel="출발"
+              />
+            ))}
+            {segments.length > 0 && <p className="text-xs text-slate-400">예약 확인서로 등록한 항공편이에요(현지 시각).</p>}
             {flight && hasOutbound && (
               <FlightLeg
                 label="가는 편"

@@ -13,6 +13,12 @@ type Step =
 interface ReservationFlowProps {
   /** 사용자가 확인을 마쳐 서버 검증을 통과한 예약 정보가 나오면 호출된다(2·3단계가 이 값을 여행 생성·추가에 쓴다). */
   onConfirmed: (result: ReservationResult) => void;
+  /** 종류를 고정한다(종류 선택을 숨긴다). 예약 정보로 여행 만들기에서 항공권·숙소 단계마다 쓴다. */
+  fixedKind?: ReservationKind;
+  /** 이전에 확인한 결과(단계를 오가도 다시 업로드하지 않게) */
+  initial?: ReservationResult | null;
+  /** 확인 버튼 문구 */
+  confirmLabel?: string;
 }
 
 const KIND_LABEL: Record<ReservationKind, string> = { flight: "항공권", hotel: "숙소" };
@@ -21,9 +27,13 @@ const KIND_LABEL: Record<ReservationKind, string> = { flight: "항공권", hotel
  * 예약 확인서 분석 → 확인·수정 → 검증 흐름. 업로드와 확인 화면을 묶은 재사용 컴포넌트다.
  * 여행·항공편·숙소에는 저장하지 않고, 검증된 예약 정보 객체만 onConfirmed로 넘긴다.
  */
-export default function ReservationFlow({ onConfirmed }: ReservationFlowProps) {
-  const [kind, setKind] = useState<ReservationKind>("flight");
-  const [step, setStep] = useState<Step>({ phase: "upload" });
+export default function ReservationFlow({ onConfirmed, fixedKind, initial = null, confirmLabel = "예약 정보 확인" }: ReservationFlowProps) {
+  const [kind, setKind] = useState<ReservationKind>(fixedKind ?? "flight");
+  const [step, setStep] = useState<Step>(() =>
+    initial
+      ? { phase: "review", original: initial.document, draft: initial.document, result: initial, manual: false }
+      : { phase: "upload" },
+  );
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -56,6 +66,7 @@ export default function ReservationFlow({ onConfirmed }: ReservationFlowProps) {
 
   return (
     <div className="space-y-4">
+      {!fixedKind && (
       <div className="inline-flex rounded-xl bg-slate-100 p-0.5" role="group" aria-label="예약 종류">
         {(["flight", "hotel"] as const).map((item) => (
           <button
@@ -74,6 +85,7 @@ export default function ReservationFlow({ onConfirmed }: ReservationFlowProps) {
           </button>
         ))}
       </div>
+      )}
 
       {step.phase === "upload" ? (
         <ReservationUpload
@@ -122,7 +134,7 @@ export default function ReservationFlow({ onConfirmed }: ReservationFlowProps) {
               disabled={checking}
               className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400"
             >
-              {checking ? "확인 중…" : "예약 정보 확인"}
+              {checking ? "확인 중…" : confirmLabel}
             </button>
             {message && (
               <p role="alert" className="text-sm text-rose-600">

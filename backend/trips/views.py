@@ -34,7 +34,7 @@ class TripViewSet(viewsets.ModelViewSet):
     홈 캘린더가 여행 전체를 한 번에 그리므로 목록은 페이지로 나누지 않는다.
     """
 
-    queryset = Trip.objects.prefetch_related("hotels")
+    queryset = Trip.objects.prefetch_related("hotels", "flight_segments")
     serializer_class = TripSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None

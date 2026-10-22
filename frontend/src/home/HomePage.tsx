@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { updateTripColor } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { nicknameOf } from "../components/layout/AppHeader";
-import OnboardingWizard from "../onboarding/OnboardingWizard";
+import NewTripDialog from "../onboarding/NewTripDialog";
 import { tripDetailPath, type HomeLocationState } from "../routes";
 import type { TripDetailState } from "../trips/TripDetailPage";
 import { nextTrip } from "../trips/tripUtils";
@@ -172,7 +172,7 @@ export default function HomePage() {
       )}
 
       {newTripOpen && (
-        <OnboardingWizard
+        <NewTripDialog
           onClose={() => setNewTripOpen(false)}
           onComplete={(trip, notice) => {
             const state: TripDetailState = { trip, created: true, notice };

@@ -20,6 +20,7 @@ from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from . import extract, files, validate
+from . import trips as reservation_trips
 from .schemas import KINDS
 
 logger = logging.getLogger(__name__)
@@ -123,3 +124,37 @@ class ValidateView(ReservationView):
             return Response(validate.build_result(kind, request.data.get("document")))
         except validate.ReservationDataError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TripFromReservationView(ReservationView):
+    """
+    `POST /api/v1/trips/from-reservations/` — 확인한 예약 정보(항공권 필수·숙소 선택)로 여행을 만든다(2단계).
+    여행·비행 구간·숙소를 한 번에 저장하고(부분 저장 없음), 같은 request_id로 다시 오면 처음 만든 여행을 200으로 돌려준다.
+    AI·외부 API를 부르지 않는다.
+    """
+
+    parser_classes = [JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reservation_validate"
+
+    def post(self, request):
+        serializer = reservation_trips.TripFromReservationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            trip, created = reservation_trips.create_trip(request.user, serializer.validated_data, request)
+        except reservation_trips.ReservationTripError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        from ..serializers import TripSerializer
+
+        trip = type(trip).objects.prefetch_related("hotels", "flight_segments").get(pk=trip.pk)
+        data = TripSerializer(trip, context={"request": request}).data
+        return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class ReservationConfigView(APIView):
+    """`GET /api/v1/reservations/config/` — 예약 확인서 기능을 쓸 수 있는지(화면이 '예약 정보로 만들기'를 보일지 정한다)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"enabled": bool(getattr(settings, "RESERVATION_ANALYSIS_ENABLED", False))})

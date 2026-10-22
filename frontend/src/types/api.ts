@@ -69,6 +69,9 @@ export interface HotelPayload {
   check_in: ISODate;
   /** 체크아웃 미정이면 null */
   check_out: ISODate | null;
+  /** 예약 확인서에 적힌 체크인·체크아웃 시각("HH:MM", 현지). 없으면 null */
+  check_in_time?: string | null;
+  check_out_time?: string | null;
 }
 
 export interface Hotel extends HotelPayload {
@@ -90,6 +93,8 @@ export type TripColorKey = "indigo" | "red" | "orange" | "yellow" | "green" | "b
 
 export interface Trip extends Omit<TripPayload, "hotels"> {
   id: number;
+  /** 예약 정보로 만든 여행의 비행 구간(직접 등록한 여행은 빈 목록). flight_info는 이 구간들의 요약이다. */
+  flight_segments?: FlightSegmentInfo[];
   /** 사용자가 고른 캘린더 색. 비어 있으면 자동 색상 */
   color: TripColorKey | "";
   /** "도쿄 → 오사카" 형태의 동선 표기 */
@@ -767,4 +772,45 @@ export interface ReservationResult<D = FlightBooking | HotelBooking> {
   /** 분석 방식(pdf_text · pdf_visual · image). 검증만 한 경우는 없다. */
   method?: string;
   pages?: number;
+}
+
+/** 예약 정보로 만든 여행의 비행 구간 하나. 시각은 각 공항의 현지 시각("HH:MM"). */
+export interface FlightSegmentInfo {
+  order: number;
+  direction: "outbound" | "return";
+  airline_name: string;
+  flight_number: string;
+  departure_airport_code: string;
+  departure_airport_name: string;
+  arrival_airport_code: string;
+  arrival_airport_name: string;
+  departure_date: ISODate;
+  departure_time: string;
+  arrival_date: ISODate | null;
+  arrival_time: string | null;
+  status: string;
+}
+
+/** 숙소 위치(사용자가 기존 숙소 검색으로 고른 값) */
+export interface HotelPlacePick {
+  place_id: string;
+  latitude: number | null;
+  longitude: number | null;
+  address: string;
+  phone: string;
+}
+
+/** 예약 정보로 여행 만들기 요청. flight·hotels는 1단계에서 검증한 예약 정보 객체다. */
+export interface TripFromReservationPayload {
+  /** 같은 요청이 두 번 가도 여행을 하나만 만들기 위한 번호(화면에서 한 번 만든다) */
+  request_id: string;
+  flight: FlightBooking;
+  hotels: HotelBooking | null;
+  start_date: ISODate;
+  end_date: ISODate;
+  destinations: Destination[];
+  /** hotels.stays와 같은 순서. 위치를 고르지 않은 숙소는 null */
+  hotel_places: (HotelPlacePick | null)[];
+  /** hotels.stays와 같은 순서의 여행지(city_code). 모르면 빈 문자열 */
+  hotel_cities: string[];
 }
