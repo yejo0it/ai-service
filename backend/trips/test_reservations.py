@@ -9,6 +9,7 @@
 테스트용 문서는 모두 코드로 만든 가짜 문서다(실제 예약 확인서를 쓰지 않는다).
 """
 
+import json
 from io import BytesIO
 from types import SimpleNamespace
 from unittest import mock
@@ -281,11 +282,9 @@ class PdfSecurityTests(SimpleTestCase):
                 self.prepare()
 
     def test_worker_killed_or_garbled_output_is_a_friendly_rejection(self):
-        killed = SimpleNamespace(stdout=b"", stderr=b"", returncode=-9)
-        garbled = SimpleNamespace(stdout=b"not json", stderr=b"Traceback (most recent call last)", returncode=1)
-        for result in (killed, garbled):
-            with mock.patch("trips.reservations.files.subprocess.run", return_value=result):
-                with self.assertRaisesMessage(files.ReservationFileError, "너무 복잡"):
+        for output, returncode in ((b"", -9), (b"not json", 1), (b"not json", 0), (b"[1, 2]", 0)):
+            with mock.patch("trips.reservations.files.subprocess.run", side_effect=fake_worker(output, returncode)):
+                with self.assertRaises(files.ReservationFileError):
                     self.prepare()
 
     def test_worker_start_failure_is_reported_without_details(self):
@@ -304,21 +303,23 @@ class PdfSecurityTests(SimpleTestCase):
         self.assertNotIn("ANTHROPIC_API_KEY", kwargs["env"])  # 키 같은 환경변수를 넘기지 않는다.
 
     def test_worker_sets_resource_limits(self):
-        # 검사 프로세스가 시작하자마자 CPU·메모리 상한을 건다.
+        # 검사 프로세스가 시작하자마자 CPU·메모리·출력 크기 상한을 건다.
         import subprocess
         import sys
 
         code = (
-            "import resource, runpy, sys;"
-            "sys.argv=['w'];"
-            "runpy.run_path(%r, run_name='not_main');"
-            "w = runpy.run_path(%r, run_name='not_main');"
-            "w['limit_resources']();"
-            "print(resource.getrlimit(resource.RLIMIT_CPU)[0], resource.getrlimit(resource.RLIMIT_AS)[0])"
-        ) % (str(files.PDF_WORKER), str(files.PDF_WORKER))
+            "import resource, runpy\n"
+            "w = runpy.run_path(%r, run_name='not_main')\n"
+            "w['limit_resources']()\n"
+            "print(*(resource.getrlimit(getattr(resource, n))[0] for n in ('RLIMIT_CPU', 'RLIMIT_AS', 'RLIMIT_FSIZE')))\n"
+        ) % str(files.PDF_WORKER)
         output = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True).stdout.split()
-        self.assertEqual(int(output[0]), 10)
-        self.assertEqual(int(output[1]), 768 * 1024 * 1024)
+        self.assertEqual([int(value) for value in output], [10, 768 * 1024 * 1024, 1024 * 1024])
+
+    def test_worker_and_parent_output_limits_match(self):
+        import runpy
+
+        self.assertEqual(runpy.run_path(str(files.PDF_WORKER), run_name="not_main")["OUTPUT_BYTES"], files.MAX_PDF_OUTPUT_BYTES)
 
     def test_upload_file_name_and_content_never_reach_the_command_or_script_path(self):
         import os
@@ -378,16 +379,144 @@ class PdfSecurityTests(SimpleTestCase):
         self.assertEqual(result.stdout, b"")
 
     def test_abnormal_exit_codes_are_treated_as_rejections(self):
-        for returncode in (-9, -24, -11, 1, 137):  # SIGKILL(메모리 초과로 종료), SIGXCPU(CPU 초과), SIGSEGV, 오류, 강제 종료
-            result = SimpleNamespace(stdout=b"", stderr=b"", returncode=returncode)
-            with mock.patch("trips.reservations.files.subprocess.run", return_value=result):
+        valid = json.dumps({"ok": True, "pages": 1, "text": "x" * 500}).encode()
+        for returncode in (-9, -24, -25, -11, 1, 137):  # SIGKILL, SIGXCPU(CPU 초과), SIGXFSZ(출력 초과), SIGSEGV, 오류, 강제 종료
+            # 결과처럼 보이는 출력이 있어도 비정상 종료면 믿지 않는다.
+            with mock.patch("trips.reservations.files.subprocess.run", side_effect=fake_worker(valid, returncode)):
                 with self.assertRaisesMessage(files.ReservationFileError, "너무 복잡"):
                     files.prepare(upload(text_pdf(FLIGHT_LINES)))
+
+    # ---------------------------------------------------- 제한 설정 실패 시 검사 중단(fail-closed)
+
+    def run_worker_with(self, preamble, pdf=None):
+        """실제 검사 스크립트를 preamble(먼저 실행할 코드) 다음에 실행하고 표준 출력 JSON을 돌려준다."""
+        import subprocess
+        import sys
+
+        code = preamble + "import runpy\nrunpy.run_path(%r, run_name='__main__')\n" % str(files.PDF_WORKER)
+        header = json.dumps({"max_pages": 5, "max_objects": 20000, "max_text": 30000}).encode()
+        stdin = header + b"\n" + (pdf if pdf is not None else text_pdf(FLIGHT_LINES))
+        result = subprocess.run([sys.executable, "-I", "-c", code], input=stdin, capture_output=True, timeout=30)
+        return json.loads(result.stdout), result.returncode
+
+    def test_worker_refuses_to_inspect_when_any_limit_cannot_be_set(self):
+        for limit in ("RLIMIT_CPU", "RLIMIT_AS", "RLIMIT_FSIZE"):
+            with self.subTest(limit):
+                preamble = (
+                    "import resource\n"
+                    "real = resource.setrlimit\n"
+                    "def refuse(which, value):\n"
+                    "    if which == resource.%s:\n"
+                    "        raise ValueError('refused')\n"
+                    "    return real(which, value)\n"
+                    "resource.setrlimit = refuse\n"
+                ) % limit
+                output, returncode = self.run_worker_with(preamble)
+                self.assertEqual(output, {"ok": False, "error": "limits"})  # 페이지 수·텍스트 없이 끝난다(PDF를 읽지 않음).
+                self.assertEqual(returncode, 0)
+
+    def test_worker_refuses_when_setting_limits_raises_os_errors(self):
+        preamble = (
+            "import resource\n"
+            "def refuse(which, value):\n"
+            "    raise OSError('operation not permitted')\n"
+            "resource.setrlimit = refuse\n"
+        )
+        self.assertEqual(self.run_worker_with(preamble)[0], {"ok": False, "error": "limits"})
+
+    def test_worker_without_resource_module_still_inspects(self):
+        # resource 모듈이 없는 환경(Windows 직접 실행)만 제한 없이 진행한다.
+        output, _ = self.run_worker_with("import sys\nsys.modules['resource'] = None\n")
+        self.assertEqual((output["ok"], output["pages"]), (True, 1))
+
+    def test_limit_failure_is_shown_kindly_and_logged_without_content(self):
+        refused = json.dumps({"ok": False, "error": "limits"}).encode()
+        with mock.patch("trips.reservations.files.subprocess.run", side_effect=fake_worker(refused, 0)):
+            with self.assertLogs("trips.reservations.files", level="WARNING") as logs:
+                with self.assertRaisesMessage(files.ReservationFileError, "읽을 수 없는 상태"):
+                    files.prepare(upload(text_pdf(FLIGHT_LINES), "HONG-ticket.pdf"))
+        output = "\n".join(logs.output)
+        self.assertIn("resource limits", output)
+        for secret in ("HONG", "KE 703", "gildong"):
+            self.assertNotIn(secret, output)
+
+    # ---------------------------------------------------- 표준 출력·오류가 부모 메모리를 쓰지 않게
+
+    def with_worker_script(self, body):
+        """검사 스크립트 대신 실행할 임시 스크립트(실제 검사 스크립트의 제한 설정을 그대로 쓴다)."""
+        import tempfile
+
+        handle = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
+        handle.write("import runpy, sys\nw = runpy.run_path(%r, run_name='not_main')\n" % str(files.PDF_WORKER) + body)
+        handle.close()
+        self.addCleanup(lambda: __import__("os").remove(handle.name))
+        return mock.patch.object(files, "PDF_WORKER", files.Path(handle.name))
+
+    def spy_run(self):
+        """실제 실행을 감싸서 호출 인자와 출력 파일 크기를 기록한다."""
+        import os
+
+        calls = []
+        real_run = files.subprocess.run
+
+        def spy(*args, **kwargs):
+            result = real_run(*args, **kwargs)
+            calls.append({"kwargs": kwargs, "size": os.fstat(kwargs["stdout"].fileno()).st_size})
+            return result
+
+        return calls, mock.patch("trips.reservations.files.subprocess.run", side_effect=spy)
+
+    def test_stdout_flood_is_capped_and_rejected_quickly(self):
+        import time
+
+        flood = "w['limit_resources']()\nchunk = b'x' * 65536\nwhile True:\n    sys.stdout.buffer.write(chunk)\n    sys.stdout.buffer.flush()\n"
+        calls, spy = self.spy_run()
+        with self.with_worker_script(flood), spy:
+            started = time.monotonic()
+            with self.assertRaisesMessage(files.ReservationFileError, "너무 복잡"):
+                self.prepare()
+        self.assertLess(time.monotonic() - started, 5)  # 제한 시간(15초)까지 기다리지 않고 바로 끝난다.
+        self.assertEqual(calls[0]["size"], files.MAX_PDF_OUTPUT_BYTES)  # 출력은 1MB에서 멈췄다(부모는 그 이상 읽지 않는다).
+
+    def test_stderr_noise_is_discarded_and_does_not_affect_the_result(self):
+        noisy = "sys.stderr.write('warning ' * 10_000_000)\nsys.stderr.flush()\nw['main']()\n"  # 약 80MB
+        calls, spy = self.spy_run()
+        with self.with_worker_script(noisy), spy:
+            prepared = self.prepare()
+        self.assertEqual(prepared.method, files.PDF_TEXT)
+        self.assertIs(calls[0]["kwargs"]["stderr"], files.subprocess.DEVNULL)  # 부모는 표준 오류를 받지 않는다.
+        self.assertNotIn("capture_output", calls[0]["kwargs"])
+
+    def test_output_is_read_only_up_to_the_limit(self):
+        with mock.patch("trips.reservations.files.subprocess.run", side_effect=fake_worker(b"x" * (files.MAX_PDF_OUTPUT_BYTES + 10), 0)):
+            with mock.patch.object(files, "MAX_PDF_OUTPUT_BYTES", 1024):
+                with self.assertRaisesMessage(files.ReservationFileError, "너무 복잡"):
+                    self.prepare()
+
+    def test_output_file_is_anonymous_and_in_memory_on_linux(self):
+        import os
+
+        if not hasattr(os, "memfd_create"):
+            self.skipTest("Linux 전용")
+        with files._output_file() as output:
+            target = os.readlink(f"/proc/self/fd/{output.fileno()}")
+        self.assertTrue(target.startswith("/memfd:"))  # 디스크에 파일을 만들지 않는다.
 
     def test_oversized_image_is_rejected_before_decoding(self):
         with mock.patch.object(files, "MAX_IMAGE_PIXELS", 100_000):
             with self.assertRaisesMessage(files.ReservationFileError, "너무 커요"):
                 files.prepare(upload(image_bytes("PNG", size=(900, 700))))
+
+
+def fake_worker(output, returncode=0):
+    """subprocess.run 대신 쓰는 가짜 검사 프로세스: 출력 파일(stdout)에 output을 쓰고 returncode로 끝난다."""
+
+    def run(*args, **kwargs):
+        kwargs["stdout"].write(output)
+        kwargs["stdout"].flush()
+        return SimpleNamespace(returncode=returncode)
+
+    return run
 
 
 def subprocess_timeout():

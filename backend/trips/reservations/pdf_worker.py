@@ -6,6 +6,10 @@ PDF 검사 작업 프로세스(예약 확인서 업로드). `files.py`가 별도
   이 프로세스는 시작하자마자 CPU 시간과 메모리(주소 공간)를 운영체제 수준으로 제한하고, 부모는 제한 시간이 지나면 강제 종료한다.
   제한을 넘으면 이 프로세스만 죽고 웹 서버는 영향이 없다.
 - PDF 안의 스크립트·첨부 파일은 실행하지도 열지도 않는다(pypdf는 구조를 읽기만 한다).
+- 제한은 실패하면 검사하지 않는다(fail-closed): Linux 등 `resource` 모듈이 있는 환경에서 CPU·메모리·출력 크기 상한을 하나라도
+  걸지 못하면 PDF를 읽지 않고 {"ok": false, "error": "limits"}로 끝낸다. `resource`가 없는 환경(Windows 직접 실행)만 제한 없이 진행한다.
+- 표준 출력은 OUTPUT_BYTES(1MB)까지만 쓸 수 있다(RLIMIT_FSIZE). 부모가 출력을 파일로 받아 같은 크기까지만 읽으므로
+  출력이 폭주해도 Django 프로세스의 메모리는 늘지 않는다. 표준 오류 출력은 부모가 버린다.
 
 검사 내용(PDF 구조 기반, 문자열 검색이 아니다)
 1. 문서 구조의 루트(Root)에서 닿을 수 있는 객체를 따라가며 사전(dictionary)의 키와 값을 확인한다.
@@ -25,6 +29,7 @@ from io import BytesIO
 CPU_SECONDS = 10
 MEMORY_BYTES = 768 * 1024 * 1024
 MAX_DEPTH = 60
+OUTPUT_BYTES = 1024 * 1024  # 결과 JSON이 쓸 수 있는 최대 크기(부모의 읽기 상한과 같다)
 
 BAD_KEYS = {"/JS", "/JavaScript", "/AA", "/EmbeddedFiles", "/EmbeddedFile", "/EF", "/XFA", "/RichMedia", "/RichMediaContent"}
 BAD_SUBTYPES = {"/FileAttachment", "/Movie", "/Sound", "/Screen", "/RichMedia", "/3D"}
@@ -34,6 +39,10 @@ SAFE_URI_SCHEMES = ("http://", "https://", "mailto:", "tel:")
 SKIP_KEYS = {"/Parent", "/P", "/Contents", "/FontFile", "/FontFile2", "/FontFile3", "/Thumb"}
 
 
+class LimitsUnavailable(Exception):
+    """CPU·메모리·출력 크기 제한을 걸지 못했다. 이 경우 PDF를 검사하지 않는다."""
+
+
 class Rejected(Exception):
     def __init__(self, code):
         super().__init__(code)
@@ -41,14 +50,20 @@ class Rejected(Exception):
 
 
 def limit_resources():
-    """CPU 시간·메모리를 이 프로세스에 제한한다(Linux). 제한을 지원하지 않는 환경에서는 건너뛴다."""
+    """
+    CPU 시간·메모리·출력 크기를 이 프로세스에 제한한다. `resource` 모듈이 없는 환경(Windows)에서는 건너뛰고,
+    있는 환경에서는 하나라도 실패하면 LimitsUnavailable을 올려 검사를 막는다(fail-closed).
+    """
     try:
         import resource
-
+    except ImportError:
+        return
+    try:
         resource.setrlimit(resource.RLIMIT_CPU, (CPU_SECONDS, CPU_SECONDS + 1))
         resource.setrlimit(resource.RLIMIT_AS, (MEMORY_BYTES, MEMORY_BYTES))
-    except (ImportError, ValueError, OSError):
-        pass
+        resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_BYTES, OUTPUT_BYTES))
+    except (ValueError, OSError) as exc:
+        raise LimitsUnavailable from exc
 
 
 def check_action(action, objects):
@@ -138,7 +153,11 @@ def inspect(data, limits):
 
 
 def main():
-    limit_resources()
+    try:
+        limit_resources()
+    except LimitsUnavailable:
+        sys.stdout.write(json.dumps({"ok": False, "error": "limits"}))
+        return  # 제한 없이는 PDF를 읽지 않는다.
     raw = sys.stdin.buffer.read()
     header, _, data = raw.partition(b"\n")
     try:
