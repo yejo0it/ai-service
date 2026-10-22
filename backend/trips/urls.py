@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import expense_views as expense
 from . import invitation_views as invitation
+from . import summary_views as summary
 from . import itinerary_views as itinerary
 from .views import (
     AirlineViewSet,
@@ -34,6 +35,11 @@ urlpatterns = [
     path("trips/<int:pk>/budget/", expense.BudgetView.as_view(), name="trip-budget"),
     path("trips/<int:pk>/expense-currencies/", expense.ExpenseCurrenciesView.as_view(), name="trip-expense-currencies"),
     path("trips/<int:pk>/settlement/", expense.SettlementView.as_view(), name="trip-settlement"),
+    # 여행 요약(메모·사진)
+    path("trips/<int:pk>/summary/", summary.SummaryView.as_view(), name="trip-summary"),
+    path("trips/<int:pk>/photos/", summary.PhotoListView.as_view(), name="trip-photos"),
+    path("trips/<int:pk>/photos/<int:photo_id>/", summary.PhotoView.as_view(), name="trip-photo"),
+    path("trip-photos/<int:photo_id>/file/", summary.PhotoFileView.as_view(), name="trip-photo-file"),
     path("expenses/<int:expense_id>/", expense.ExpenseView.as_view(), name="expense"),
     path("trips/<int:pk>/ai/propose/", itinerary.AiProposeView.as_view(), name="trip-ai-propose"),
     path("trips/<int:pk>/ai/apply/", itinerary.AiApplyView.as_view(), name="trip-ai-apply"),

@@ -14,6 +14,7 @@ import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind
 import { formatMeridiemTime } from "../components/pickers";
 import ExpensePage from "../expenses/ExpensePage";
 import PackingNote from "../packing/PackingNotePage";
+import SummaryPage from "../summary/SummaryPage";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
 import AddPlaceDrawer from "./AddPlaceDrawer";
@@ -425,13 +426,15 @@ const TRIP_TABS: { tab: TripTab; label: string; icon: string }[] = [
   { tab: "schedule", label: "여행 일정", icon: "fas fa-route" },
   { tab: "expenses", label: "경비 관리", icon: "fas fa-wallet" },
   { tab: "checklist", label: "여행 체크리스트", icon: "fas fa-clipboard-list" },
+  // 여행 시작일부터 보인다. 여행 중·종료 후 모두 맨 마지막 탭이다.
+  { tab: "summary", label: "여행 요약", icon: "fas fa-camera-retro" },
 ];
 
 /** 여행 상세 탭. 주소로 구분하므로 새로고침·직접 접근해도 선택이 유지된다. 스크롤 없이 한 줄에 나눠 담는다. */
-function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
+function TripTabs({ tripId, selected, started }: { tripId: number; selected: TripTab; started: boolean }) {
   return (
     <nav aria-label="여행 상세 탭" className="mb-6 flex border-b border-slate-200 sm:gap-1">
-      {TRIP_TABS.map(({ tab, label, icon }) => {
+      {TRIP_TABS.filter(({ tab }) => started || tab !== "summary").map(({ tab, label, icon }) => {
         const active = tab === selected;
         return (
           <Link
@@ -455,7 +458,7 @@ function TripTabs({ tripId, selected }: { tripId: number; selected: TripTab }) {
 
 /**
  * `/trips/:tripId` 여행 상세.
- * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`) · 여행 체크리스트(`/checklist`)
+ * - 탭: 여행 일정(`/trips/:id`) · 경비 관리(`/expenses`) · 여행 체크리스트(`/checklist`) · 여행 요약(`/summary`, 시작일부터)
  * - 제목 오른쪽 끝에 일행 초대하기, 여행 경로 카드 머리에 AI와 함께 만들기 · 직접 추가
  * - 넓은 화면: [지도 | 항공·여행지·숙소] 아래에 여행 경로 / 좁은 화면: 정보 → 지도 → 경로
  * - 일정은 서버에 저장된다. 처음 열 때 항공편·숙소 카드를 한 번 만들어 저장한다.
@@ -614,6 +617,8 @@ export default function TripDetailPage() {
   }
 
   const today = todayISODate();
+  const started = trip.start_date <= today; // 여행 시작일부터 여행 요약 탭이 보인다.
+  if (tab === "summary" && !started) return <Navigate to={`/trips/${tripId}`} replace />;
   // 방금 만든 여행: 첫째 날의 출발 공항 → 도착 공항 → 첫 숙소를 맨 위에 한 줄로 보여준다.
   // 공항은 공항명, 숙소는 숙소명으로 보여준다.
   const firstDayStops = (items ?? [])
@@ -664,10 +669,11 @@ export default function TripDetailPage() {
         </div>
       </header>
 
-      <TripTabs tripId={trip.id} selected={tab} />
+      <TripTabs tripId={trip.id} selected={tab} started={started} />
 
       {tab === "expenses" && <ExpensePage key={trip.id} trip={trip} />}
       {tab === "checklist" && <PackingNote key={trip.id} trip={trip} />}
+      {tab === "summary" && <SummaryPage key={trip.id} trip={trip} />}
 
       {/* 좁은 화면: 정보 → 지도 → 경로 / 넓은 화면: [지도 | 정보] 아래 경로 */}
       {tab === "schedule" && (

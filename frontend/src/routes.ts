@@ -34,10 +34,15 @@ export interface HomeLocationState {
 /** "/trips/12" */
 export const tripDetailPath = (tripId: number) => `/trips/${tripId}`;
 
-/** 여행 상세 탭: 여행 일정(기본) · 경비 관리 · 여행 체크리스트 */
-export type TripTab = "schedule" | "expenses" | "checklist";
+/** 여행 상세 탭: 여행 일정(기본) · 경비 관리 · 여행 체크리스트 · 여행 요약(여행 시작일부터) */
+export type TripTab = "schedule" | "expenses" | "checklist" | "summary";
 
-const TRIP_TAB_SEGMENTS: Record<TripTab, string> = { schedule: "", expenses: "/expenses", checklist: "/checklist" };
+const TRIP_TAB_SEGMENTS: Record<TripTab, string> = {
+  schedule: "",
+  expenses: "/expenses",
+  checklist: "/checklist",
+  summary: "/summary",
+};
 
 /** "/trips/12/checklist" (여행 일정은 "/trips/12") */
 export const tripTabPath = (tripId: number, tab: TripTab) => `${tripDetailPath(tripId)}${TRIP_TAB_SEGMENTS[tab]}`;
