@@ -29,7 +29,7 @@ interface ReservationTripWizardProps {
 }
 
 /** 숙소 위치 찾기: 기존 숙소 검색(Google Places 자동완성)을 사용자가 누를 때만 쓴다. 고르면 같은 세션으로 상세를 받는다. */
-function HotelPlaceSearch({ name, city, onPick }: { name: string; city: string; onPick: (place: HotelPlacePick) => void }) {
+export function HotelPlaceSearch({ name, city, onPick }: { name: string; city: string; onPick: (place: HotelPlacePick) => void }) {
   const [query, setQuery] = useState(name);
   const [items, setItems] = useState<HotelSuggestion[]>([]);
   const [error, setError] = useState("");

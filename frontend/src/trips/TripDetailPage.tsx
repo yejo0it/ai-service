@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  deleteFlightSegment,
   deleteItineraryItem,
+  getReservationConfig,
   getDayLegs,
   getItinerary,
   getTrip,
@@ -10,13 +12,14 @@ import {
   toErrorMessage,
 } from "../api/client";
 import { ROUTES, tripTabFromSegment, tripTabPath, type TripTab } from "../routes";
-import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, Trip } from "../types/api";
+import type { Airport, ItineraryItem, ItineraryLeg, ItineraryResponse, PlaceKind, ReservationKind, Trip } from "../types/api";
 import { formatMeridiemTime } from "../components/pickers";
 import ExpensePage from "../expenses/ExpensePage";
 import PackingNote from "../packing/PackingNotePage";
 import SummaryPage from "../summary/SummaryPage";
 import { PAGE_CONTAINER_CLASS } from "../components/layout/pageContainer";
 import { formatMonthDay, todayISODate } from "../utils/date";
+import AddReservationDrawer from "../reservations/AddReservationDrawer";
 import AddPlaceDrawer from "./AddPlaceDrawer";
 import AiPlannerDrawer, { type Message as AiMessage } from "./AiPlannerDrawer";
 import EditItemDrawer from "./EditItemDrawer";
@@ -161,6 +164,20 @@ interface TripBasicsProps {
   items: ItineraryItem[] | null;
   /** 요약 카드에서 숙소·공항 직접 추가 열기 */
   onAdd?: (kind: PlaceKind) => void;
+  /** 예약 확인서로 항공·숙소 추가(editFlight: 저장된 예약 항공편 고치기). 기능이 꺼져 있으면 없다. */
+  onReservation?: (kind: ReservationKind, editFlight?: boolean) => void;
+  /** 예약 항공 구간 하나 지우기(경로의 그 항공 카드도 함께) */
+  onDeleteSegment?: (order: number) => Promise<void>;
+}
+
+/** 예약 확인서로 추가하는 작은 버튼 */
+function ReservationButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline">
+      <i className="fas fa-file-upload text-[10px]" aria-hidden="true" />
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -168,7 +185,9 @@ interface TripBasicsProps {
  * 여행을 만들 때 등록한 항공·숙소에 더해, 여행 경로에서 추가한 공항·숙소도 함께 보여준다.
  * 항공·숙소는 선택 입력이라 비어 있으면 안내와 바로 추가 버튼을 보여준다.
  */
-function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
+function TripBasics({ trip, items, onAdd, onReservation, onDeleteSegment }: TripBasicsProps) {
+  const [confirmSegment, setConfirmSegment] = useState<number | null>(null);
+  const [segmentError, setSegmentError] = useState("");
   // 예약 정보로 만든 여행은 비행 구간(경유·다구간)을 구간마다 보여 주고, flight_info 요약은 쓰지 않는다.
   const segments = trip.flight_segments ?? [];
   const flight = segments.length > 0 ? null : trip.flight_info;
@@ -200,17 +219,49 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
         {segments.length > 0 || hasOutbound || hasReturn || routeFlights.length > 0 || airports.length > 0 ? (
           <div className="space-y-2">
             {segments.map((segment) => (
-              <FlightLeg
-                key={segment.order}
-                label={segment.direction === "outbound" ? "가는 편" : "오는 편"}
-                airline={segment.airline_name}
-                flightNumber={segment.flight_number}
-                from={{ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }}
-                to={{ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }}
-                when={`${formatMonthDay(segment.departure_date)} ${segment.departure_time}`}
-                whenLabel="출발"
-              />
+              <div key={segment.order}>
+                <FlightLeg
+                  label={segment.direction === "outbound" ? "가는 편" : "오는 편"}
+                  airline={segment.airline_name}
+                  flightNumber={segment.flight_number}
+                  from={{ code: segment.departure_airport_code, name: segment.departure_airport_name || segment.departure_airport_code }}
+                  to={{ code: segment.arrival_airport_code, name: segment.arrival_airport_name || segment.arrival_airport_code }}
+                  when={`${formatMonthDay(segment.departure_date)} ${segment.departure_time}`}
+                  whenLabel="출발"
+                />
+                {onDeleteSegment &&
+                  (confirmSegment === segment.order ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="구간 삭제 확인">
+                      <span className="text-slate-600">이 항공편과 경로의 항공 카드를 지울까요?</span>
+                      <button type="button" onClick={() => setConfirmSegment(null)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-600">
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSegmentError("");
+                          onDeleteSegment(segment.order)
+                            .then(() => setConfirmSegment(null))
+                            .catch((err: unknown) => setSegmentError(toErrorMessage(err)));
+                        }}
+                        className="rounded-lg bg-rose-500 px-2 py-1 font-semibold text-white"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSegment(segment.order)}
+                      className="mt-1 text-xs text-slate-400 hover:text-rose-500"
+                      aria-label={`${segment.flight_number} 구간 삭제`}
+                    >
+                      이 구간 삭제
+                    </button>
+                  ))}
+              </div>
             ))}
+            {segmentError && <p className="text-xs text-rose-600">{segmentError}</p>}
             {segments.length > 0 && <p className="text-xs text-slate-400">예약 확인서로 등록한 항공편이에요(현지 시각).</p>}
             {flight && hasOutbound && (
               <FlightLeg
@@ -265,6 +316,12 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
             등록된 항공권이 없어요. 날짜만 등록한 여행이에요.
           </EmptyWithAction>
         )}
+        {onReservation && (
+          <div className="mt-2 flex flex-wrap gap-3">
+            <ReservationButton label="예약 확인서로 항공권 추가" onClick={() => onReservation("flight")} />
+            {segments.length > 0 && <ReservationButton label="예약 항공편 수정" onClick={() => onReservation("flight", true)} />}
+          </div>
+        )}
       </Section>
 
       <Section title="여행지">
@@ -307,6 +364,11 @@ function TripBasics({ trip, items, onAdd }: TripBasicsProps) {
           <EmptyWithAction action="숙소 추가" onClick={addHotel}>
             등록된 숙소가 없어요.
           </EmptyWithAction>
+        )}
+        {onReservation && (
+          <div className="mt-2">
+            <ReservationButton label="예약 확인서로 숙소 추가" onClick={() => onReservation("hotel")} />
+          </div>
         )}
       </Section>
     </div>
@@ -485,6 +547,19 @@ export default function TripDetailPage() {
   const state = useLocation().state as TripDetailState | null;
   const [trip, setTrip] = useState<Trip | null>(state?.trip ?? null);
   const [items, setItems] = useState<ItineraryItem[] | null>(null);
+  // 예약 확인서로 항공·숙소 추가(기능이 켜져 있을 때만)
+  const [reservationEnabled, setReservationEnabled] = useState(false);
+  const [reservation, setReservation] = useState<{ kind: ReservationKind; editFlight: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getReservationConfig()
+      .then((config) => !cancelled && setReservationEnabled(config.enabled))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const closeReservation = useCallback(() => setReservation(null), []);
   const [error, setError] = useState("");
   const [routeError, setRouteError] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
@@ -715,6 +790,14 @@ export default function TripDetailPage() {
                       setPanel("add");
                     }
               }
+              onReservation={
+                reservationEnabled && items !== null ? (kind, editFlight = false) => setReservation({ kind, editFlight }) : undefined
+              }
+              onDeleteSegment={async (order) => {
+                const result = await deleteFlightSegment(trip.id, order);
+                setTrip(result.trip);
+                setItems(result.items);
+              }}
             />
           </div>
 
@@ -754,6 +837,19 @@ export default function TripDetailPage() {
         </div>
       )}
 
+      {reservation && (
+        <AddReservationDrawer
+          trip={trip}
+          kind={reservation.kind}
+          editFlight={reservation.editFlight}
+          onClose={closeReservation}
+          onSaved={(updatedTrip, updatedItems) => {
+            setTrip(updatedTrip);
+            setItems(updatedItems);
+            setReservation(null);
+          }}
+        />
+      )}
       {editing && (
         <EditItemDrawer item={editing} trip={trip} dates={dates} onClose={closeEdit} onSaved={onItemSaved} />
       )}
