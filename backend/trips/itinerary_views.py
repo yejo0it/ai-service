@@ -697,7 +697,9 @@ class AiProposeView(APIView):
         # 여행 정보 질문의 근거: 여행지 안내 문서에서 마지막 질문과 관련된 발췌를 찾는다(없으면 빈 목록).
         references = guide_search.search_for_trip(trip, messages[-1]["content"])
         try:
-            plan = ai_planner.propose(trip, ordered_days, days, messages, draft, references, request_id=request_id)
+            plan = ai_planner.propose(
+                trip, ordered_days, days, messages, draft, references, source=ai_usage.SOURCE_USER, request_id=request_id
+            )
         except ai_planner.PlannerError as exc:
             _record_request(request_id, "planner_error", exc.status_code, started)
             return Response({"detail": str(exc)}, status=exc.status_code)
@@ -833,9 +835,11 @@ class AiProposeView(APIView):
 def _record_request(request_id, outcome, status_code, started):
     """
     모델을 부른 제안 요청의 처리 전체 시간을 남긴다(trips.ai_usage).
-    대화·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다.
+    대화·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다(사용자 채팅 요청이라 source=user).
     """
-    ai_usage.record_request(ai_planner.USAGE_FEATURE, request_id, outcome, status_code, (perf_counter() - started) * 1000)
+    ai_usage.record_request(
+        ai_planner.USAGE_FEATURE, ai_usage.SOURCE_USER, request_id, outcome, status_code, (perf_counter() - started) * 1000
+    )
 
 
 def _eta_text(route_plan, day, card):

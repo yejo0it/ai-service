@@ -17,7 +17,7 @@ from django.db import transaction
 
 from guides import search
 from guides.eval_queries import QUERIES, is_relevant
-from trips import ai_planner
+from trips import ai_planner, ai_usage
 from trips.itinerary_views import days_map
 from trips.models import Trip
 
@@ -93,7 +93,9 @@ class Command(BaseCommand):
                 row = {"question": query.question}
                 for label, refs in (("without_rag", ()), ("with_rag", references)):
                     started = time.time()
-                    plan = ai_planner.propose(trip, sorted(days), days, conversation, None, refs)
+                    # 토큰 사용량 기록에서 실제 사용자 요청과 구분한다(source=evaluation).
+                    plan = ai_planner.propose(trip, sorted(days), days, conversation, None, refs,
+                                              source=ai_usage.SOURCE_EVALUATION)
                     row[label] = {
                         "reply": plan.reply,
                         "sources": [f"{ref.title} · {ref.section}" for ref in refs if ref.id in set(plan.source_ids)],

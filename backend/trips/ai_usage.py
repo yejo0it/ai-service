@@ -10,6 +10,8 @@
 - claude_call: Claude API 호출 한 번. api_ms는 API 호출 전후 시간이다.
 - ai_request: 제안 요청 처리 전체(검증·문서 검색·모델 호출·장소 확정·이동 시간 계산). total_ms는 뷰 처리 시간이다.
   모델을 부른 요청만 남긴다(미리 거절·요청 제한에 걸린 요청은 모델을 부르지 않아 남기지 않는다).
+- source: 호출 목적. 호출하는 쪽이 직접 넘긴다(추측하지 않는다).
+  SOURCE_USER(실제 'AI와 함께 만들기' 채팅 요청) / SOURCE_EVALUATION(eval_guides 평가 명령)
 - request_id: HTTP 요청마다 새로 만드는 무작위 값(UUID4)으로, 같은 요청의 claude_call과 ai_request에 똑같이 붙는다.
   사용자·여행·시각에서 만들지 않으므로 이 값으로 사람이나 여행을 알아낼 수 없고, 서버 어디에도 따로 저장하지 않는다.
 
@@ -27,6 +29,9 @@ from datetime import datetime, timezone
 
 LOGGER_NAME = "pinroute.ai_usage"
 logger = logging.getLogger(LOGGER_NAME)
+
+SOURCE_USER = "user"
+SOURCE_EVALUATION = "evaluation"
 
 USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
@@ -57,11 +62,11 @@ def _write(record):
     logger.info(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
 
-def record_call(feature, request_id, model, response, api_ms, error=None):
+def record_call(feature, source, request_id, model, response, api_ms, error=None):
     """
     Claude API 호출 한 번: 모델·토큰 수·API 응답 시간(ms)·성공 여부.
-    request_id: 이 호출을 한 요청의 id(new_request_id), response: 받은 응답(실패하면 None),
-    error: 실패한 예외 클래스 이름(성공이면 None)
+    source: 호출 목적(SOURCE_USER·SOURCE_EVALUATION), request_id: 이 호출을 한 요청의 id(new_request_id),
+    response: 받은 응답(실패하면 None), error: 실패한 예외 클래스 이름(성공이면 None)
     """
     try:
         stop_reason = getattr(response, "stop_reason", None)
@@ -70,6 +75,7 @@ def record_call(feature, request_id, model, response, api_ms, error=None):
                 "event": "claude_call",
                 "request_id": request_id,
                 "feature": feature,
+                "source": source,
                 "model": model,
                 "success": error is None,
                 "error": error,
@@ -82,9 +88,9 @@ def record_call(feature, request_id, model, response, api_ms, error=None):
         pass
 
 
-def record_request(feature, request_id, outcome, status_code, total_ms):
+def record_request(feature, source, request_id, outcome, status_code, total_ms):
     """
-    제안 요청 처리 전체 시간(ms)과 결과. request_id는 같은 요청의 claude_call과 같은 값이다.
+    제안 요청 처리 전체 시간(ms)과 결과. source·request_id는 같은 요청의 claude_call과 같은 값이다.
     outcome: ok(제안) / off_topic(범위 밖이라 거절) / planner_error(모델 호출 실패)
     """
     try:
@@ -93,6 +99,7 @@ def record_request(feature, request_id, outcome, status_code, total_ms):
                 "event": "ai_request",
                 "request_id": request_id,
                 "feature": feature,
+                "source": source,
                 "outcome": outcome,
                 "status": status_code,
                 "total_ms": round(total_ms),

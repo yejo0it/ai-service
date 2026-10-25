@@ -245,12 +245,13 @@ def reference_context(references):
     )
 
 
-def propose(trip, days, items_by_day, conversation, draft=None, references=(), request_id=None):
+def propose(trip, days, items_by_day, conversation, draft=None, references=(), *, source, request_id=None):
     """
     conversation: [{"role": "user"|"assistant", "content": str}, ...] (마지막은 사용자 메시지)
     가장 최근 사용자 메시지 앞에 현재 여행 정보를 붙여 보낸다(적용 후 바뀐 일정을 반영하려고).
     draft: 같은 대화에서 아직 적용하지 않은 항공·숙소 제안
     references: 마지막 질문으로 검색한 여행 정보 발췌(guides.search.GuideHit). 있으면 <reference_docs>로 붙인다.
+    source: 호출 목적(ai_usage.SOURCE_USER·SOURCE_EVALUATION). 토큰 사용량 기록에 붙이며, 부르는 쪽이 반드시 넘긴다.
     request_id: 토큰 사용량 기록을 요청 기록과 잇는 id(trips.ai_usage). 없으면 새로 만든다.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -268,7 +269,7 @@ def propose(trip, days, items_by_day, conversation, draft=None, references=(), r
 
     client = anthropic.Anthropic()
     try:
-        response = _parse(client, messages, request_id or ai_usage.new_request_id())
+        response = _parse(client, messages, source, request_id or ai_usage.new_request_id())
     except anthropic.AuthenticationError as exc:
         raise PlannerError("AI 키가 올바르지 않아요.", status_code=503) from exc
     except anthropic.RateLimitError as exc:
@@ -285,7 +286,7 @@ def propose(trip, days, items_by_day, conversation, draft=None, references=(), r
     return limit_plan(response.parsed_output)
 
 
-def _parse(client, messages, request_id):
+def _parse(client, messages, source, request_id):
     """모델 호출 한 번. 토큰 사용량·API 응답 시간을 기록하고, 실패하면 기록한 뒤 예외를 그대로 낸다."""
     started = perf_counter()
     try:
@@ -297,9 +298,11 @@ def _parse(client, messages, request_id):
             output_format=PlanResponse,
         )
     except Exception as exc:
-        ai_usage.record_call(USAGE_FEATURE, request_id, MODEL, None, (perf_counter() - started) * 1000, type(exc).__name__)
+        ai_usage.record_call(
+            USAGE_FEATURE, source, request_id, MODEL, None, (perf_counter() - started) * 1000, type(exc).__name__
+        )
         raise
-    ai_usage.record_call(USAGE_FEATURE, request_id, MODEL, response, (perf_counter() - started) * 1000)
+    ai_usage.record_call(USAGE_FEATURE, source, request_id, MODEL, response, (perf_counter() - started) * 1000)
     return response
 
 
