@@ -144,7 +144,7 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
   - 전체 계획을 짜 달라고 하면 장소 수를 고정하지 말고 하루 시간(약 9시~22시)에 체류 시간·이동·식사·휴식이 무리 없이
     들어가도록 고르세요. 보통 하루 4~6곳이 적당하고, 출국·귀국일은 항공 시각을 고려해 적게 넣으세요. 사용자가 더 많이
     원하면 그만큼 넣되, 같은 날에는 서로 가까운 동네의 장소를 묶어 day_index를 정하세요. 숙소가 있으면 그 주변을 우선하세요.
-- 현재 일정에 이미 있는 장소는 다시 추가하지 마세요. 빼거나 옮길 때는 현재 일정에 있는 id만 쓰세요.
+- 현재 일정에 이미 있는 장소는 다시 추가하지 마세요. 빼거나 옮길 때는 현재 일정에 있는 id(#뒤의 숫자)만 쓰세요.
 - reply는 친근한 한국어로 2~4문장. 무엇을 추가·이동·삭제하자고 제안하는지 설명하세요.
 - 여행에 관한 질문이지만 일정을 바꿀 필요가 없으면(예: 날씨, 환전, 준비물) reply로만 답하고 나머지는 빈 값으로
   두세요.
@@ -226,15 +226,17 @@ def trip_context(trip, days, items_by_day, draft=None):
     else:
         hotels = [f"[hotel_id={h.id}] {h.name} ({h.check_in}~{h.check_out or '?'})" for h in trip.hotels.all()]
         lines.append("숙소 등록 정보: " + (", ".join(hotels) or "미등록"))
-    lines.append("현재 일정:")
+    # 줄마다 반복되던 표기("- day_index", "[id=...]")는 머리말에서 한 번만 설명한다(토큰 절약).
+    # 날짜·방문 순서·일정 id·시간·시간 표기는 그대로 모두 보낸다.
+    lines.append("현재 일정 (줄마다 'day_index 날짜: 방문 순서대로 #일정id 이름 시간 (시간 표기)'):")
     for index, day in enumerate(days):
         cards = items_by_day.get(day, [])
         entries = ", ".join(
-            f"[id={c['id']}] {c['title']}" + (f" {c['time']}" if c.get("time") else "")
+            f"#{c['id']} {c['title']}" + (f" {c['time']}" if c.get("time") else "")
             + (f" ({c['time_label']})" if c.get("time_label") else "")
             for c in cards
         ) or "없음"
-        lines.append(f"- day_index {index} ({day}): {entries}")
+        lines.append(f"{index} {day}: {entries}")
     return "\n".join(lines)
 
 
