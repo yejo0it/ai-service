@@ -722,7 +722,6 @@ class AiProposeView(APIView):
             time = addition.time if addition.time and TIME_PATTERN.match(addition.time) else ""
             card = place_card(detail, addition.kind, time)
             card["day"] = day
-            card["reason"] = addition.reason
             if addition.stay_minutes:  # AI가 정한 값만 저장한다(없으면 모르는 것으로 두고 계산에서만 기본값을 쓴다)
                 card["stay_minutes"] = max(route_planner.MIN_STAY, min(route_planner.MAX_STAY, int(addition.stay_minutes)))
             additions.append(card)

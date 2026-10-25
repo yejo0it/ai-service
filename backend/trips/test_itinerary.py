@@ -195,11 +195,11 @@ class AiPlanTests(ItineraryTests):
             reply="스카이트리와 도톤보리를 넣었어요.",
             additions=[
                 ai_planner.PlanAddition(name="스카이트리", search_query="도쿄 스카이트리", kind="sight",
-                                        day_index=None, time=None, reason="전망", stay_minutes=None),
+                                        day_index=None, time=None, stay_minutes=None),
                 ai_planner.PlanAddition(name="도톤보리", search_query="도톤보리 오사카", kind="sight",
-                                        day_index=None, time=None, reason="야경", stay_minutes=None),
+                                        day_index=None, time=None, stay_minutes=None),
                 ai_planner.PlanAddition(name="없는 곳", search_query="없는 곳", kind="cafe",
-                                        day_index=0, time=None, reason="", stay_minutes=None),
+                                        day_index=0, time=None, stay_minutes=None),
             ],
             remove_item_ids=[],
             moves=[],
@@ -563,7 +563,7 @@ class ChatScopeTests(APITestCase):
 
     def test_off_topic_refused_and_changes_dropped(self):
         addition = ai_planner.PlanAddition(name="도쿄타워", search_query="도쿄타워 도쿄", kind="sight", day_index=0,
-                                           time=None, reason="", stay_minutes=None)
+                                           time=None, stay_minutes=None)
         response, propose = self.ask("Python으로 Django 로그인 기능 만들어줘",
                                      self.plan(reply="코드는 이렇게...", additions=[addition], off_topic=True))
         self.assertTrue(propose.called)
