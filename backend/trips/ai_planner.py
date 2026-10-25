@@ -18,6 +18,13 @@ Claude(claude-sonnet-5)는 '어느 날, 어떤 장소, 몇 시'만 정한다(구
 - 대화는 서버에 저장·로그하지 않는다(브라우저 화면에만 있다).
 - Anthropic API: 기본적으로 입력·출력을 모델 학습에 쓰지 않고, 30일 안에 자동 삭제한다
   (이용 정책 위반 시 최대 2년 등 예외). 출처: privacy.claude.com (2026-10 확인)
+
+프롬프트 캐싱 (SYSTEM_BLOCKS)
+- 매 요청 같은 시스템 프롬프트 끝에 캐시 지점(cache_control, 기본 5분)을 둔다. 대화·여행 정보·참고 문서·질문은 그 뒤에
+  있어 매 요청 새로 보낸다(캐시 때문에 DB 조회를 건너뛰거나 이전 여행 정보를 다시 쓰지 않는다).
+- 캐시는 워크스페이스 안에서만 공유되고, 1,024토큰(Sonnet 5)보다 짧거나 만료되면 오류 없이 캐시 없이 처리된다.
+- 시스템 프롬프트·응답 스키마(output_format)를 바꾸면 캐시가 다시 만들어진다. 적중 여부는 토큰 사용량 기록
+  (trips.ai_usage의 cache_creation_input_tokens·cache_read_input_tokens)으로 본다.
 """
 
 import os
@@ -182,6 +189,9 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
   - 숙소 이름이 있으면 search_query(숙소 이름 + 도시)를 적으세요.
 - 등록·수정할 때 reply는 정리한 내용을 짧게 확인하고, 비어 있는 항목은 나중에 알려 주면 채울 수 있다고 안내하세요."""
 
+# 시스템 프롬프트는 매 요청 같으므로 끝에 캐시 지점을 둔다(기본 5분, 적중할 때마다 연장). 내용·순서를 바꾸면 캐시가 새로 만들어진다.
+SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
 
 class PlannerError(Exception):
     def __init__(self, message, status_code=502):
@@ -295,7 +305,7 @@ def _parse(client, messages, source, request_id):
         response = client.messages.parse(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
+            system=SYSTEM_BLOCKS,
             messages=messages,
             output_format=PlanResponse,
         )

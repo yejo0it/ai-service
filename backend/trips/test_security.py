@@ -312,7 +312,8 @@ class AiInputSecurityTests(APITestCase):
             response = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
                                         {"messages": [{"role": "user", "content": "일정 짜줘"}]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        sent = captured["system"] + "".join(message["content"] for message in captured["messages"])
+        system = "".join(block["text"] for block in captured["system"])  # 캐시 지점을 둔 텍스트 블록 목록
+        sent = system + "".join(message["content"] for message in captured["messages"])
         for secret in [*secrets.values(), settings.DATABASES["default"]["PASSWORD"], settings.SECRET_KEY]:
             self.assertNotIn(secret, sent)
         # 사용자 데이터가 여행 정보 경계를 깨지 못한다(서비스가 붙인 시작·끝 태그 한 쌍만 남는다).
