@@ -36,7 +36,8 @@ User = get_user_model()
 KEY = {"ANTHROPIC_API_KEY": "sk-ant-TEST-USAGE-SECRET"}
 CALL_FIELDS = {
     "t", "event", "request_id", "feature", "source", "model", "success", "error", "stop_reason", "input_tokens", "output_tokens",
-    "cache_creation_input_tokens", "cache_read_input_tokens", "total_input_tokens", "total_tokens", "api_ms",
+    "cache_creation_input_tokens", "cache_read_input_tokens", "thinking_tokens", "total_input_tokens", "total_tokens",
+    "api_ms",
 }
 REQUEST_FIELDS = {"t", "event", "request_id", "feature", "source", "outcome", "status", "total_ms"}
 REQUEST_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -90,6 +91,21 @@ class UsageFieldsTests(SimpleTestCase):
         fields = ai_usage.usage_fields(usage(input_tokens=None, output_tokens=mock.Mock(), cache_read_input_tokens=-5))
         self.assertEqual(fields["total_tokens"], 0)
         self.assertTrue(all(value is None for value in ai_usage.usage_fields(None).values()))
+
+    def test_thinking_tokens_come_from_usage_and_are_not_added_to_totals(self):
+        fields = ai_usage.usage_fields(usage(input_tokens=500, output_tokens=4200,
+                                             output_tokens_details=SimpleNamespace(thinking_tokens=3900)))
+        self.assertEqual(fields["thinking_tokens"], 3900)
+        self.assertEqual(fields["total_tokens"], 4700)  # thinking은 output_tokens 안에 이미 들어 있다
+
+    def test_thinking_tokens_are_null_when_the_api_does_not_report_them(self):
+        for details in (None, SimpleNamespace(), SimpleNamespace(thinking_tokens=None),
+                        SimpleNamespace(thinking_tokens=mock.Mock())):
+            with self.subTest(details=details):
+                fields = ai_usage.usage_fields(usage(input_tokens=500, output_tokens=200, output_tokens_details=details))
+                self.assertIsNone(fields["thinking_tokens"])  # 추정하지 않는다
+                self.assertEqual(fields["output_tokens"], 200)
+        self.assertIsNone(ai_usage.usage_fields(usage(input_tokens=1, output_tokens=1))["thinking_tokens"])
 
 
 class ProposeUsageTests(SimpleTestCase):
