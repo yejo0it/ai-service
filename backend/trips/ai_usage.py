@@ -1,0 +1,102 @@
+"""
+'AI와 함께 만들기' 토큰 사용량·응답 시간 기록. 컨텍스트 최적화(프롬프트 캐싱 등) 전후의 비용·속도를 비교하는 데 쓴다.
+
+- 한 줄에 JSON 하나로 LOGGER_NAME 로거에 남긴다(출력 위치는 config.settings의 LOGGING, 기본은 표준 출력).
+- 숫자와 모델명·결과 종류만 남긴다. 사용자·여행 id, 대화, 여행 정보, 프롬프트, 응답 내용, 키, 오류 메시지는 기록하지 않는다
+  (오류는 예외 클래스 이름만).
+- 기록이 실패해도 AI 기능에는 영향이 없다(예외를 밖으로 내보내지 않는다).
+
+이벤트
+- claude_call: Claude API 호출 한 번. api_ms는 API 호출 전후 시간이다.
+- ai_request: 제안 요청 처리 전체(검증·문서 검색·모델 호출·장소 확정·이동 시간 계산). total_ms는 뷰 처리 시간이다.
+  모델을 부른 요청만 남긴다(미리 거절·요청 제한에 걸린 요청은 모델을 부르지 않아 남기지 않는다).
+- request_id: HTTP 요청마다 새로 만드는 무작위 값(UUID4)으로, 같은 요청의 claude_call과 ai_request에 똑같이 붙는다.
+  사용자·여행·시각에서 만들지 않으므로 이 값으로 사람이나 여행을 알아낼 수 없고, 서버 어디에도 따로 저장하지 않는다.
+
+usage 필드 (Anthropic Messages API)
+- input_tokens: 새로 처리한 입력 토큰. 캐시에 쓰거나 캐시에서 읽은 토큰은 들어 있지 않다.
+- cache_creation_input_tokens / cache_read_input_tokens: 캐시에 쓴 / 캐시에서 읽은 입력 토큰
+- total_input_tokens = 위 세 값의 합, total_tokens = total_input_tokens + output_tokens
+- 응답에 usage가 없으면(호출 실패) 토큰 값은 모두 null, usage에 일부 필드가 없으면 그 값은 0으로 센다.
+"""
+
+import json
+import logging
+import uuid
+from datetime import datetime, timezone
+
+LOGGER_NAME = "pinroute.ai_usage"
+logger = logging.getLogger(LOGGER_NAME)
+
+USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def new_request_id():
+    """요청 하나를 가리키는 무작위 id (개인정보와 관계없는 UUID4, 32자리 16진수)"""
+    return uuid.uuid4().hex
+
+
+def _count(usage, field):
+    value = getattr(usage, field, None)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def usage_fields(usage):
+    """응답의 usage -> 기록할 토큰 수 (usage가 없으면 모두 None)"""
+    if usage is None:
+        return {field: None for field in (*USAGE_FIELDS, "total_input_tokens", "total_tokens")}
+    counts = {field: _count(usage, field) for field in USAGE_FIELDS}
+    total_input = counts["input_tokens"] + counts["cache_creation_input_tokens"] + counts["cache_read_input_tokens"]
+    return {**counts, "total_input_tokens": total_input, "total_tokens": total_input + counts["output_tokens"]}
+
+
+def _write(record):
+    if not logger.isEnabledFor(logging.INFO):
+        return
+    record = {"t": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **record}
+    logger.info(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+
+
+def record_call(feature, request_id, model, response, api_ms, error=None):
+    """
+    Claude API 호출 한 번: 모델·토큰 수·API 응답 시간(ms)·성공 여부.
+    request_id: 이 호출을 한 요청의 id(new_request_id), response: 받은 응답(실패하면 None),
+    error: 실패한 예외 클래스 이름(성공이면 None)
+    """
+    try:
+        stop_reason = getattr(response, "stop_reason", None)
+        _write(
+            {
+                "event": "claude_call",
+                "request_id": request_id,
+                "feature": feature,
+                "model": model,
+                "success": error is None,
+                "error": error,
+                "stop_reason": stop_reason if isinstance(stop_reason, str) else None,
+                **usage_fields(getattr(response, "usage", None)),
+                "api_ms": round(api_ms),
+            }
+        )
+    except Exception:  # noqa: BLE001 - 기록 실패가 AI 응답을 막지 않게 한다.
+        pass
+
+
+def record_request(feature, request_id, outcome, status_code, total_ms):
+    """
+    제안 요청 처리 전체 시간(ms)과 결과. request_id는 같은 요청의 claude_call과 같은 값이다.
+    outcome: ok(제안) / off_topic(범위 밖이라 거절) / planner_error(모델 호출 실패)
+    """
+    try:
+        _write(
+            {
+                "event": "ai_request",
+                "request_id": request_id,
+                "feature": feature,
+                "outcome": outcome,
+                "status": status_code,
+                "total_ms": round(total_ms),
+            }
+        )
+    except Exception:  # noqa: BLE001 - 기록 실패가 AI 응답을 막지 않게 한다.
+        pass

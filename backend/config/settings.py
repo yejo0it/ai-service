@@ -166,6 +166,22 @@ STATION_NAMES_ENABLED = os.environ.get("STATION_NAMES_ENABLED", "1") == "1"
 # 한국어로 바꾸지 못한 역·노선 이름 수집(trips.untranslated). 사전을 보완할 때 `python manage.py untranslated_names`로 본다.
 UNTRANSLATED_LOG_ENABLED = os.environ.get("UNTRANSLATED_LOG_ENABLED", "1") == "1"
 UNTRANSLATED_LOG_PATH = os.environ.get("UNTRANSLATED_LOG_PATH", str(BASE_DIR / "logs" / "untranslated_names.jsonl"))
+# 'AI와 함께 만들기' 토큰 사용량·응답 시간 기록(trips.ai_usage). 한 줄에 JSON 하나로 표준 출력(docker compose logs backend)에 남긴다.
+# 숫자·모델명·결과 종류만 남기고 대화·여행 정보·id는 남기지 않는다. 0으로 끌 수 있고, 테스트 실행 중에는 출력하지 않는다.
+AI_USAGE_LOG_ENABLED = os.environ.get("AI_USAGE_LOG_ENABLED", "1") == "1"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"message": {"format": "%(message)s"}},
+    "handlers": {"ai_usage": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "message"}},
+    "loggers": {
+        "pinroute.ai_usage": {
+            "handlers": ["ai_usage"],
+            "level": "INFO" if AI_USAGE_LOG_ENABLED and not TESTING else "WARNING",
+            "propagate": False,
+        },
+    },
+}
 # Google 데이터는 DB에 저장하지 않고 이 시간 동안만 서버 메모리 캐시에 둔다(초).
 ROUTES_CACHE_TTL_SECONDS = int(os.environ.get("ROUTES_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 ROUTES_TIMEOUT_SECONDS = int(os.environ.get("ROUTES_TIMEOUT_SECONDS", "8"))
