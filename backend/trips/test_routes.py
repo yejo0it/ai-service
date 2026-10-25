@@ -311,7 +311,7 @@ class ProposeApplyFlowTests(APITestCase):
     def plan(self):
         additions = [
             ai_planner.PlanAddition(name=name, search_query=name, kind="sight", day_index=0, time=None,
-                                    reason="", stay_minutes=90)
+                                    stay_minutes=90)
             for name in self.places
         ]
         return ai_planner.PlanResponse(reply="좋아요", additions=additions, remove_item_ids=[], moves=[], form=None,
@@ -627,7 +627,7 @@ class StayAndArrivalStorageTests(ProposeApplyFlowTests):
             reply="추가", remove_item_ids=[], moves=[], form=None, confirm=None, flight=None, hotel_change=None,
             off_topic=False,
             additions=[ai_planner.PlanAddition(name="스카이트리", search_query="스카이트리", kind="sight", day_index=0,
-                                               time=None, reason="", stay_minutes=30)],
+                                               time=None, stay_minutes=30)],
         )
         with mock.patch("trips.ai_planner.propose", return_value=extra), \
                 mock.patch("trips.places.search_place", side_effect=self.search), \
