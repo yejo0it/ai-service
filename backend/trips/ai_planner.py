@@ -21,14 +21,18 @@ Claude(claude-sonnet-5)는 '어느 날, 어떤 장소, 몇 시'만 정한다(구
 """
 
 import os
+from time import perf_counter
 from typing import Literal, Optional
 
 import anthropic
 from pydantic import BaseModel, Field
 
+from . import ai_usage
 from .chat_guard import strip_trip_tags
 
 MODEL = "claude-sonnet-5"
+# 토큰 사용량 기록에 붙이는 기능 이름(trips.ai_usage)
+USAGE_FEATURE = "ai_planner"
 MAX_TOKENS = 16000
 # 모델 응답 상한 (서비스가 쓰기 전에 자른다)
 MAX_REPLY_CHARS = 2000
@@ -241,12 +245,14 @@ def reference_context(references):
     )
 
 
-def propose(trip, days, items_by_day, conversation, draft=None, references=()):
+def propose(trip, days, items_by_day, conversation, draft=None, references=(), *, source, request_id=None):
     """
     conversation: [{"role": "user"|"assistant", "content": str}, ...] (마지막은 사용자 메시지)
     가장 최근 사용자 메시지 앞에 현재 여행 정보를 붙여 보낸다(적용 후 바뀐 일정을 반영하려고).
     draft: 같은 대화에서 아직 적용하지 않은 항공·숙소 제안
     references: 마지막 질문으로 검색한 여행 정보 발췌(guides.search.GuideHit). 있으면 <reference_docs>로 붙인다.
+    source: 호출 목적(ai_usage.SOURCE_USER·SOURCE_EVALUATION). 토큰 사용량 기록에 붙이며, 부르는 쪽이 반드시 넘긴다.
+    request_id: 토큰 사용량 기록을 요청 기록과 잇는 id(trips.ai_usage). 없으면 새로 만든다.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise PlannerError("AI 키(ANTHROPIC_API_KEY)가 설정되지 않았어요.", status_code=503)
@@ -263,13 +269,7 @@ def propose(trip, days, items_by_day, conversation, draft=None, references=()):
 
     client = anthropic.Anthropic()
     try:
-        response = client.messages.parse(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=messages,
-            output_format=PlanResponse,
-        )
+        response = _parse(client, messages, source, request_id or ai_usage.new_request_id())
     except anthropic.AuthenticationError as exc:
         raise PlannerError("AI 키가 올바르지 않아요.", status_code=503) from exc
     except anthropic.RateLimitError as exc:
@@ -284,6 +284,26 @@ def propose(trip, days, items_by_day, conversation, draft=None, references=()):
     if response.parsed_output is None:
         raise PlannerError("AI 응답을 이해하지 못했어요. 다시 시도해 주세요.")
     return limit_plan(response.parsed_output)
+
+
+def _parse(client, messages, source, request_id):
+    """모델 호출 한 번. 토큰 사용량·API 응답 시간을 기록하고, 실패하면 기록한 뒤 예외를 그대로 낸다."""
+    started = perf_counter()
+    try:
+        response = client.messages.parse(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+            output_format=PlanResponse,
+        )
+    except Exception as exc:
+        ai_usage.record_call(
+            USAGE_FEATURE, source, request_id, MODEL, None, (perf_counter() - started) * 1000, type(exc).__name__
+        )
+        raise
+    ai_usage.record_call(USAGE_FEATURE, source, request_id, MODEL, response, (perf_counter() - started) * 1000)
+    return response
 
 
 def limit_plan(plan):

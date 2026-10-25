@@ -49,6 +49,8 @@ services:
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
       # 여행 상세 'AI와 함께 만들기'(Claude). 비어 있으면 AI API가 503을 돌려준다.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 토큰 사용량·응답 시간 로그(숫자만, docker compose logs backend). 0이면 끈다.
+      AI_USAGE_LOG_ENABLED: ${AI_USAGE_LOG_ENABLED:-1}
       # AI 일정 제안의 실제 이동 시간 계산(Google Routes API). 비어 있으면 직선거리 기준으로 동작한다.
       GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
       # 대중교통 이동 시간(NAVITIME Route, RapidAPI). 비어 있으면 대중교통 시간은 표시하지 않는다.
