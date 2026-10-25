@@ -20,6 +20,8 @@ usage 필드 (Anthropic Messages API)
 - cache_creation_input_tokens / cache_read_input_tokens: 캐시에 쓴 / 캐시에서 읽은 입력 토큰
 - total_input_tokens = 위 세 값의 합, total_tokens = total_input_tokens + output_tokens
 - 응답에 usage가 없으면(호출 실패) 토큰 값은 모두 null, usage에 일부 필드가 없으면 그 값은 0으로 센다.
+- thinking_tokens: output_tokens 가운데 모델 내부 추론(thinking)에 쓴 토큰(usage.output_tokens_details.thinking_tokens).
+  output_tokens에 이미 들어 있으므로 합계에 더하지 않는다. API가 알려 주지 않으면 추정하지 않고 null로 둔다.
 """
 
 import json
@@ -46,13 +48,20 @@ def _count(usage, field):
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
+def _thinking_tokens(usage):
+    """API가 알려 준 추론 토큰 수. 없거나 숫자가 아니면 None(추정하지 않는다)."""
+    value = getattr(getattr(usage, "output_tokens_details", None), "thinking_tokens", None)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 def usage_fields(usage):
     """응답의 usage -> 기록할 토큰 수 (usage가 없으면 모두 None)"""
     if usage is None:
-        return {field: None for field in (*USAGE_FIELDS, "total_input_tokens", "total_tokens")}
+        return {field: None for field in (*USAGE_FIELDS, "thinking_tokens", "total_input_tokens", "total_tokens")}
     counts = {field: _count(usage, field) for field in USAGE_FIELDS}
     total_input = counts["input_tokens"] + counts["cache_creation_input_tokens"] + counts["cache_read_input_tokens"]
-    return {**counts, "total_input_tokens": total_input, "total_tokens": total_input + counts["output_tokens"]}
+    return {**counts, "thinking_tokens": _thinking_tokens(usage), "total_input_tokens": total_input,
+            "total_tokens": total_input + counts["output_tokens"]}
 
 
 def _write(record):
