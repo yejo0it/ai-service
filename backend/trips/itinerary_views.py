@@ -577,6 +577,7 @@ class ConversationSerializer(serializers.Serializer):
     def validate_messages(self, value):
         if value[-1]["role"] != "user":
             raise serializers.ValidationError("마지막 메시지는 사용자 메시지여야 해요.")
+        self.received_count = len(value)  # 최근 메시지만 남기기 전의 실제 수(대화 길이 기록용, trips.ai_usage)
         return value[-20:]
 
 
@@ -690,6 +691,13 @@ class AiProposeView(APIView):
             safe_messages.append({**turn, "content": content})
             redacted += [label for label in found if label not in redacted]
         messages = safe_messages
+        # 대화 길이 기록(숫자만): 가린 뒤 모델에 실제로 보내는 이전 대화 기준. ai_planner와 같은 정리(strip_trip_tags)를 거친 글자 수다.
+        conversation = {
+            "messages_received": serializer.received_count,
+            "messages_sent": len(messages),
+            "history_truncated": serializer.received_count > len(messages),
+            "history_chars": sum(len(chat_guard.strip_trip_tags(turn["content"])) for turn in messages[:-1]),
+        }
 
         days = days_map(trip)
         ordered_days = sorted(days)
@@ -701,11 +709,11 @@ class AiProposeView(APIView):
                 trip, ordered_days, days, messages, draft, references, source=ai_usage.SOURCE_USER, request_id=request_id
             )
         except ai_planner.PlannerError as exc:
-            _record_request(request_id, "planner_error", exc.status_code, started)
+            _record_request(request_id, "planner_error", exc.status_code, started, conversation)
             return Response({"detail": str(exc)}, status=exc.status_code)
         # 여행과 관계없는 요청: 정해진 문구로 거절하고 아무것도 바꾸지 않는다.
         if plan.off_topic:
-            _record_request(request_id, "off_topic", status.HTTP_200_OK, started)
+            _record_request(request_id, "off_topic", status.HTTP_200_OK, started, conversation)
             return _refusal_response()
 
         additions, unresolved = [], []
@@ -805,7 +813,7 @@ class AiProposeView(APIView):
             }
             for day in ordered_days
         ]
-        _record_request(request_id, "ok", status.HTTP_200_OK, started)
+        _record_request(request_id, "ok", status.HTTP_200_OK, started, conversation)
         return Response(
             {
                 "reply": reply,
@@ -831,13 +839,14 @@ class AiProposeView(APIView):
         )
 
 
-def _record_request(request_id, outcome, status_code, started):
+def _record_request(request_id, outcome, status_code, started, conversation):
     """
-    모델을 부른 제안 요청의 처리 전체 시간을 남긴다(trips.ai_usage).
-    대화·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다(사용자 채팅 요청이라 source=user).
+    모델을 부른 제안 요청의 처리 전체 시간과 대화 길이 수치를 남긴다(trips.ai_usage).
+    대화 내용·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다(사용자 채팅 요청이라 source=user).
     """
     ai_usage.record_request(
-        ai_planner.USAGE_FEATURE, ai_usage.SOURCE_USER, request_id, outcome, status_code, (perf_counter() - started) * 1000
+        ai_planner.USAGE_FEATURE, ai_usage.SOURCE_USER, request_id, outcome, status_code, (perf_counter() - started) * 1000,
+        conversation,
     )
 
 
