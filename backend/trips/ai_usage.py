@@ -22,6 +22,11 @@
 - history_chars: 모델에 보낸 이전 대화(현재 질문 제외)의 글자 수. 개인정보를 가린 뒤 실제로 보낸 내용 기준이다.
   글자 수만 남기고 내용은 남기지 않는다. 토큰 수는 여기서 계산하지 않는다(분석할 때 추정치로만 환산한다).
 
+여행 정보 검색 (ai_request, 조건부 검색의 효과를 보는 데 쓴다. 판단 규칙은 trips.rag_policy)
+- rag_used: 여행지 안내 문서를 검색했는지 / rag_reason: 판단 사유 코드(confirm_choice·info·registration·add_place·
+  edit_only·default) / rag_hits: 모델에 보낸 문서 수 / rag_chars: 모델에 보낸 문서 블록 글자 수(토큰 환산은 분석 때) /
+  rag_ms: 검색 시간(검색하지 않았으면 null)
+
 usage 필드 (Anthropic Messages API)
 - input_tokens: 새로 처리한 입력 토큰. 캐시에 쓰거나 캐시에서 읽은 토큰은 들어 있지 않다.
 - cache_creation_input_tokens / cache_read_input_tokens: 캐시에 쓴 / 캐시에서 읽은 입력 토큰
@@ -105,16 +110,18 @@ def record_call(feature, source, request_id, model, response, api_ms, error=None
 
 
 CONVERSATION_FIELDS = ("messages_received", "messages_sent", "history_truncated", "history_chars")
+RAG_FIELDS = ("rag_used", "rag_reason", "rag_hits", "rag_chars", "rag_ms")
 
 
-def record_request(feature, source, request_id, outcome, status_code, total_ms, conversation=None):
+def record_request(feature, source, request_id, outcome, status_code, total_ms, conversation=None, rag=None):
     """
     제안 요청 처리 전체 시간(ms)과 결과. source·request_id는 같은 요청의 claude_call과 같은 값이다.
     outcome: ok(제안) / off_topic(범위 밖이라 거절) / planner_error(모델 호출 실패)
-    conversation: 대화 길이 수치(CONVERSATION_FIELDS). 없으면 null로 남긴다.
+    conversation: 대화 길이 수치(CONVERSATION_FIELDS), rag: 여행 정보 검색 수치(RAG_FIELDS). 없으면 null로 남긴다.
     """
     try:
         conversation = conversation or {}
+        rag = rag or {}
         _write(
             {
                 "event": "ai_request",
@@ -125,6 +132,7 @@ def record_request(feature, source, request_id, outcome, status_code, total_ms, 
                 "status": status_code,
                 "total_ms": round(total_ms),
                 **{field: conversation.get(field) for field in CONVERSATION_FIELDS},
+                **{field: rag.get(field) for field in RAG_FIELDS},
             }
         )
     except Exception:  # noqa: BLE001 - 기록 실패가 AI 응답을 막지 않게 한다.
