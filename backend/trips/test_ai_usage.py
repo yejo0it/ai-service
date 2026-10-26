@@ -39,7 +39,8 @@ CALL_FIELDS = {
     "cache_creation_input_tokens", "cache_read_input_tokens", "thinking_tokens", "total_input_tokens", "total_tokens",
     "api_ms",
 }
-REQUEST_FIELDS = {"t", "event", "request_id", "feature", "source", "outcome", "status", "total_ms"}
+REQUEST_FIELDS = {"t", "event", "request_id", "feature", "source", "outcome", "status", "total_ms",
+                  "messages_received", "messages_sent", "history_truncated", "history_chars"}
 REQUEST_ID = re.compile(r"^[0-9a-f]{32}$")
 
 

@@ -15,6 +15,13 @@
 - request_id: HTTP 요청마다 새로 만드는 무작위 값(UUID4)으로, 같은 요청의 claude_call과 ai_request에 똑같이 붙는다.
   사용자·여행·시각에서 만들지 않으므로 이 값으로 사람이나 여행을 알아낼 수 없고, 서버 어디에도 따로 저장하지 않는다.
 
+대화 길이 (ai_request, 실제 대화 길이를 보고 대화 요약 필요 여부를 판단하는 데 쓴다)
+- messages_received: 요청에 들어온 메시지 수(현재 질문 포함, 서버가 최근 메시지만 남기기 전)
+- messages_sent: 모델에 실제로 보낸 메시지 수(현재 질문 포함)
+- history_truncated: 메시지 상한 때문에 앞의 대화가 잘렸는지
+- history_chars: 모델에 보낸 이전 대화(현재 질문 제외)의 글자 수. 개인정보를 가린 뒤 실제로 보낸 내용 기준이다.
+  글자 수만 남기고 내용은 남기지 않는다. 토큰 수는 여기서 계산하지 않는다(분석할 때 추정치로만 환산한다).
+
 usage 필드 (Anthropic Messages API)
 - input_tokens: 새로 처리한 입력 토큰. 캐시에 쓰거나 캐시에서 읽은 토큰은 들어 있지 않다.
 - cache_creation_input_tokens / cache_read_input_tokens: 캐시에 쓴 / 캐시에서 읽은 입력 토큰
@@ -97,12 +104,17 @@ def record_call(feature, source, request_id, model, response, api_ms, error=None
         pass
 
 
-def record_request(feature, source, request_id, outcome, status_code, total_ms):
+CONVERSATION_FIELDS = ("messages_received", "messages_sent", "history_truncated", "history_chars")
+
+
+def record_request(feature, source, request_id, outcome, status_code, total_ms, conversation=None):
     """
     제안 요청 처리 전체 시간(ms)과 결과. source·request_id는 같은 요청의 claude_call과 같은 값이다.
     outcome: ok(제안) / off_topic(범위 밖이라 거절) / planner_error(모델 호출 실패)
+    conversation: 대화 길이 수치(CONVERSATION_FIELDS). 없으면 null로 남긴다.
     """
     try:
+        conversation = conversation or {}
         _write(
             {
                 "event": "ai_request",
@@ -112,6 +124,7 @@ def record_request(feature, source, request_id, outcome, status_code, total_ms):
                 "outcome": outcome,
                 "status": status_code,
                 "total_ms": round(total_ms),
+                **{field: conversation.get(field) for field in CONVERSATION_FIELDS},
             }
         )
     except Exception:  # noqa: BLE001 - 기록 실패가 AI 응답을 막지 않게 한다.
