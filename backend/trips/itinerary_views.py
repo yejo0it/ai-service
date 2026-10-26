@@ -27,7 +27,7 @@ from rest_framework.views import APIView
 
 from guides import search as guide_search
 
-from . import ai_planner, ai_usage, chat_guard, legs, places, registration, route_planner
+from . import ai_planner, ai_usage, chat_guard, legs, places, rag_policy, registration, route_planner
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ItineraryItem, PackingItem, Trip
@@ -703,17 +703,27 @@ class AiProposeView(APIView):
         ordered_days = sorted(days)
         draft = _validated_draft(request.data.get("draft"))
         # 여행 정보 질문의 근거: 여행지 안내 문서에서 마지막 질문과 관련된 발췌를 찾는다(없으면 빈 목록).
-        references = guide_search.search_for_trip(trip, messages[-1]["content"])
+        # 분명한 수정·등록 요청은 문서가 도움이 되지 않아 검색하지 않는다(rag_policy, 애매하면 검색).
+        use_guides, rag_reason = rag_policy.guide_search_decision(messages[-1]["content"])
+        rag_started = perf_counter()
+        references = guide_search.search_for_trip(trip, messages[-1]["content"]) if use_guides else []
+        rag = {
+            "rag_used": use_guides,
+            "rag_reason": rag_reason,
+            "rag_hits": len(references),
+            "rag_chars": len(ai_planner.reference_context(references)) if references else 0,
+            "rag_ms": round((perf_counter() - rag_started) * 1000) if use_guides else None,
+        }
         try:
             plan = ai_planner.propose(
                 trip, ordered_days, days, messages, draft, references, source=ai_usage.SOURCE_USER, request_id=request_id
             )
         except ai_planner.PlannerError as exc:
-            _record_request(request_id, "planner_error", exc.status_code, started, conversation)
+            _record_request(request_id, "planner_error", exc.status_code, started, conversation, rag)
             return Response({"detail": str(exc)}, status=exc.status_code)
         # 여행과 관계없는 요청: 정해진 문구로 거절하고 아무것도 바꾸지 않는다.
         if plan.off_topic:
-            _record_request(request_id, "off_topic", status.HTTP_200_OK, started, conversation)
+            _record_request(request_id, "off_topic", status.HTTP_200_OK, started, conversation, rag)
             return _refusal_response()
 
         additions, unresolved = [], []
@@ -813,7 +823,7 @@ class AiProposeView(APIView):
             }
             for day in ordered_days
         ]
-        _record_request(request_id, "ok", status.HTTP_200_OK, started, conversation)
+        _record_request(request_id, "ok", status.HTTP_200_OK, started, conversation, rag)
         return Response(
             {
                 "reply": reply,
@@ -839,14 +849,14 @@ class AiProposeView(APIView):
         )
 
 
-def _record_request(request_id, outcome, status_code, started, conversation):
+def _record_request(request_id, outcome, status_code, started, conversation, rag):
     """
-    모델을 부른 제안 요청의 처리 전체 시간과 대화 길이 수치를 남긴다(trips.ai_usage).
+    모델을 부른 제안 요청의 처리 전체 시간과 대화 길이·여행 정보 검색 수치를 남긴다(trips.ai_usage).
     대화 내용·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다(사용자 채팅 요청이라 source=user).
     """
     ai_usage.record_request(
         ai_planner.USAGE_FEATURE, ai_usage.SOURCE_USER, request_id, outcome, status_code, (perf_counter() - started) * 1000,
-        conversation,
+        conversation, rag,
     )
 
 

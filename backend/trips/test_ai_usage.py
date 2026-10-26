@@ -40,7 +40,8 @@ CALL_FIELDS = {
     "api_ms",
 }
 REQUEST_FIELDS = {"t", "event", "request_id", "feature", "source", "outcome", "status", "total_ms",
-                  "messages_received", "messages_sent", "history_truncated", "history_chars"}
+                  "messages_received", "messages_sent", "history_truncated", "history_chars",
+                  "rag_used", "rag_reason", "rag_hits", "rag_chars", "rag_ms"}
 REQUEST_ID = re.compile(r"^[0-9a-f]{32}$")
 
 

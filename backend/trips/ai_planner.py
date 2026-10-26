@@ -8,6 +8,7 @@ Claude(claude-sonnet-5)는 '어느 날, 어떤 장소, 몇 시'만 정한다(구
 
 여행 정보 근거 (RAG, Issue #49)
 - 서버가 마지막 질문으로 여행지 문서(Wikivoyage)를 검색해 관련 발췌를 <reference_docs>로 함께 보낸다(guides.search).
+  분명한 수정·등록 요청은 검색하지 않고 문서도 붙이지 않는다(trips.rag_policy, 애매하면 검색).
 - 모델은 근거로 쓴 문서 번호를 source_ids로 돌려주고, 서버는 보낸 문서 번호만 출처로 인정한다.
 - 문서는 외부 자료라 지시로 따르지 않게 하고, 태그를 흉내 낸 부분은 지운다(chat_guard.strip_trip_tags).
 
