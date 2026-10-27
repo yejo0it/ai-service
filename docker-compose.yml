@@ -1,3 +1,10 @@
+# 컨테이너 로그(docker compose logs) 보존 상한: 서비스마다 10MB 파일 3개까지 두고 오래된 것부터 지운다.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     # postgres:16-alpine + pgvector (db/Dockerfile)
@@ -19,6 +26,7 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
 
   backend:
     build: ./backend
@@ -51,6 +59,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # AI 토큰 사용량·응답 시간 로그(숫자만, docker compose logs backend). 0이면 끈다.
       AI_USAGE_LOG_ENABLED: ${AI_USAGE_LOG_ENABLED:-1}
+      # 앱 로그 레벨(DEBUG·INFO·WARNING·ERROR·CRITICAL). Django 오류와 외부 라이브러리 경고는 레벨과 관계없이 남는다.
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
       # AI 일정 제안의 실제 이동 시간 계산(Google Routes API). 비어 있으면 직선거리 기준으로 동작한다.
       GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
       # 대중교통 이동 시간(NAVITIME Route, RapidAPI). 비어 있으면 대중교통 시간은 표시하지 않는다.
@@ -107,6 +117,7 @@ services:
       retries: 3
       start_period: 60s
     restart: unless-stopped
+    logging: *default-logging
 
   frontend:
     build: ./frontend
@@ -130,6 +141,7 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   pgdata:
