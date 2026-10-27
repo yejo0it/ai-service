@@ -21,7 +21,8 @@ class Command(BaseCommand):
             try:
                 phone = places.place_details(hotel.place_id).get("phone", "")
             except places.PlacesError as exc:
-                self.stderr.write(f"{hotel.name}: {exc}")
+                # 사용자가 등록한 숙소 이름과 예외 메시지는 출력하지 않는다.
+                self.stderr.write(f"숙소 #{hotel.pk}: {type(exc).__name__}({exc.status_code})")
                 continue
             if not phone:
                 continue

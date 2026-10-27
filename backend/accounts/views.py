@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -107,13 +107,17 @@ class SignupView(AuthAPIView):
         serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        with transaction.atomic():
-            user = User.objects.create_user(
-                username=data["email"], email=data["email"], password=data["password"]
-            )
-            Profile.objects.create(
-                user=user, phone=data["phone"], nickname=data.get("name") or random_nickname()
-            )
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=data["email"], email=data["email"], password=data["password"]
+                )
+                Profile.objects.create(
+                    user=user, phone=data["phone"], nickname=data.get("name") or random_nickname()
+                )
+        except IntegrityError:
+            # 같은 이메일 가입이 동시에 들어와 중복 검사를 함께 통과한 경우. DB 오류(이메일 포함)는 그대로 올리지 않는다.
+            return Response({"email": ["이미 가입된 이메일이에요."]}, status=status.HTTP_400_BAD_REQUEST)
         return auth_response(user, status.HTTP_201_CREATED)
 
 
@@ -486,14 +490,21 @@ def social_login(provider, profile):
             status=status.HTTP_409_CONFLICT,
         )
 
-    with transaction.atomic():
-        user = User.objects.create_user(
-            username=f"{provider}_{profile.uid}", email=email
-        )
-        user.set_unusable_password()
-        user.save(update_fields=["password"])
-        Profile.objects.create(user=user, nickname=usable_nickname(profile.name))
-        SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=f"{provider}_{profile.uid}", email=email
+            )
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
+            Profile.objects.create(user=user, nickname=usable_nickname(profile.name))
+            SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
+    except IntegrityError:
+        # 같은 소셜 계정의 로그인이 동시에 들어와 다른 요청이 먼저 가입시킨 경우: 그 계정으로 로그인한다.
+        account = SocialAccount.objects.filter(provider=provider, uid=profile.uid).first()
+        if account:
+            return auth_response(account.user)
+        return Response({"detail": "소셜 로그인에 실패했어요. 다시 시도해 주세요."}, status=status.HTTP_409_CONFLICT)
     return auth_response(user, status.HTTP_201_CREATED)
 
 
@@ -531,7 +542,15 @@ class SocialLinkView(APIView):
             return Response(
                 {"detail": f"이미 다른 PinRoute 계정에 연결된 {label} 계정이에요."}, status=status.HTTP_409_CONFLICT
             )
-        SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
+        try:
+            with transaction.atomic():
+                SocialAccount.objects.create(user=user, provider=provider, uid=profile.uid)
+        except IntegrityError:
+            # 연결 요청이 동시에 들어온 경우. 이 계정에 이미 연결됐으면 그대로 성공으로 본다.
+            if not user.social_accounts.filter(provider=provider, uid=profile.uid).exists():
+                return Response(
+                    {"detail": f"이미 다른 PinRoute 계정에 연결된 {label} 계정이에요."}, status=status.HTTP_409_CONFLICT
+                )
         return Response(UserSerializer(user).data)
 
     def delete(self, request, provider):
