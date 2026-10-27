@@ -3,7 +3,7 @@ from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -86,6 +86,9 @@ class HotelViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset().filter(trip__in=Trip.objects.accessible_to(self.request.user))
         trip_id = self.request.query_params.get("trip")
         if trip_id:
+            # 숫자가 아니면 DB 조회에서 ValueError(500, 입력값이 traceback에 남음)가 나므로 먼저 거른다.
+            if not (trip_id.isascii() and trip_id.isdigit()):
+                raise ValidationError({"trip": ["여행 ID가 올바르지 않습니다."]})
             queryset = queryset.filter(trip_id=trip_id)
         return queryset
 

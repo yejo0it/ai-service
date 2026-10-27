@@ -58,6 +58,15 @@ class EmailSignupTests(PhoneVerificationMixin, APITestCase):
         }
         return self.client.post("/api/v1/auth/signup/", payload)
 
+    def test_concurrent_duplicate_signup_is_a_400_not_a_db_error(self):
+        # 다른 요청이 먼저 가입시킨 상황: 중복 검사는 통과했지만 저장할 때 DB 제약에 걸린다.
+        User.objects.create_user(username="traveler@example.com", email="traveler@example.com")
+        with mock.patch("accounts.serializers.email_taken", return_value=False):
+            response = self.signup()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {"email": ["이미 가입된 이메일이에요."]})
+        self.assertEqual(User.objects.count(), 1)
+
     def test_signup_with_nickname(self):
         response = self.signup(name="핀루트_1")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -139,6 +148,15 @@ class EmailSignupTests(PhoneVerificationMixin, APITestCase):
         response = self.client.post("/api/v1/auth/phone/request/", {"phone": PHONE})
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
+    def test_dev_sms_notice_logs_no_phone_number_or_code(self):
+        with self.assertLogs("accounts.phone", "WARNING") as logs:
+            response = self.client.post("/api/v1/auth/phone/request/", {"phone": PHONE})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        output = "\n".join(logs.output)
+        for secret in (PHONE, PHONE[-4:], response.data["debug_code"]):
+            self.assertNotIn(secret, output)
+        self.assertIn("[SMS 미연동]", output)
+
 
 class SocialLoginTests(APITestCase):
     """카카오·네이버 프로필 조회는 모킹하고, 로그인/자동 가입 처리만 검증한다."""
@@ -164,6 +182,32 @@ class SocialLoginTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(SocialAccount.objects.count(), 1)
         self.assertEqual(User.objects.count(), 1)
+
+    def test_concurrent_first_login_logs_into_the_account_the_other_request_created(self):
+        # 다른 요청이 먼저 같은 소셜 계정으로 가입시킨 상황: 첫 조회에서는 계정이 없었다.
+        other = User.objects.create_user(username="kakao_42", email="kakao@example.com")
+        SocialAccount.objects.create(user=other, provider="kakao", uid="42")
+        real_filter = SocialAccount.objects.filter
+        lookups = []
+
+        def first_lookup_misses(*args, **kwargs):
+            lookups.append(kwargs)
+            return SocialAccount.objects.none() if len(lookups) == 1 else real_filter(*args, **kwargs)
+
+        with mock.patch("accounts.views.email_taken", return_value=False), \
+                mock.patch.object(SocialAccount.objects, "filter", side_effect=first_lookup_misses):
+            response = self.kakao_login()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["user"]["id"], other.id)
+        self.assertEqual((User.objects.count(), SocialAccount.objects.count()), (1, 1))
+
+    def test_signup_conflict_without_a_linked_account_is_a_409(self):
+        User.objects.create_user(username="kakao_42")  # 같은 이름의 사용자만 있고 소셜 연결은 없다
+        with mock.patch("accounts.views.email_taken", return_value=False):
+            response = self.kakao_login()
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data, {"detail": "소셜 로그인에 실패했어요. 다시 시도해 주세요."})
+        self.assertFalse(SocialAccount.objects.exists())
 
     def test_does_not_merge_into_existing_email_account(self):
         User.objects.create_user(username="kakao@example.com", email="kakao@example.com")
@@ -527,6 +571,16 @@ class SocialLinkTests(APITestCase):
         with mock.patch("accounts.social.kakao_profile", return_value=profile):
             login = self.client.post("/api/v1/auth/kakao/", self.payload, format="json")
         self.assertEqual(login.data["user"]["id"], self.user.id)
+
+    def test_concurrent_link_to_other_user_is_a_409_not_a_db_error(self):
+        # 연결 여부를 확인한 뒤 다른 회원이 같은 카카오 계정을 먼저 연결한 상황
+        other = User.objects.create_user(username="kakao_kakao-1")
+        SocialAccount.objects.create(user=other, provider="kakao", uid="kakao-1")
+        with mock.patch.object(SocialAccount.objects, "filter", return_value=SocialAccount.objects.none()):
+            response = self.link()
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data, {"detail": "이미 다른 PinRoute 계정에 연결된 카카오 계정이에요."})
+        self.assertFalse(self.user.social_accounts.exists())
 
     def test_cannot_link_account_of_other_user(self):
         other = User.objects.create_user(username="kakao_kakao-1")

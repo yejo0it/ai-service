@@ -94,5 +94,6 @@ def lookup(place_id):
         # 정책: 사진은 Google Maps의 원본(googleMapsUri)으로 연결하고 작성자를 함께 표시한다.
         return result(OK, photo_uri, _attributions(photo), _safe_https(photo.get("googleMapsUri")))
     except places.PlacesError as exc:
-        logger.warning("place photo failed for %s: %s", quote(place_id), exc)
+        # 예외 메시지는 남기지 않는다(앞으로 응답 내용이 들어가도 로그에 남지 않게). 종류와 상태 코드만 남긴다.
+        logger.warning("place photo failed for %s: %s(%s)", quote(place_id), type(exc).__name__, exc.status_code)
         return result(ERROR)

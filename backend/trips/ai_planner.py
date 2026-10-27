@@ -33,7 +33,7 @@ from time import perf_counter
 from typing import Literal, Optional
 
 import anthropic
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import ai_usage
 from .chat_guard import strip_trip_tags
@@ -291,6 +291,10 @@ def propose(trip, days, items_by_day, conversation, draft=None, references=(), *
         raise PlannerError("AI 응답을 받지 못했어요. 잠시 후 다시 시도해 주세요.") from exc
     except anthropic.APIConnectionError as exc:
         raise PlannerError("AI 서버에 연결하지 못했어요.") from exc
+    except ValidationError:
+        # 응답이 잘리거나(max_tokens) 형식에 맞지 않아 SDK가 검증에 실패했다. pydantic 오류 메시지에는 모델 출력 일부
+        # (여행 장소·일정)가 들어 있으므로 원래 예외를 이어 붙이지 않는다(from None).
+        raise PlannerError("AI 응답을 이해하지 못했어요. 다시 시도해 주세요.") from None
 
     if response.stop_reason == "refusal":
         raise PlannerError("이 요청은 도와드리기 어려워요. 다르게 말씀해 주세요.", status_code=400)
