@@ -117,7 +117,7 @@ docker compose logs backend | grep '"event":"ai_request"'       # AI 요청 사�
 | 로그 | 형식 | 내용 |
 | --- | --- | --- |
 | 앱·Django | `시각 수준 로거: 메시지` | 앱 로그(`DJANGO_LOG_LEVEL`, 기본 `INFO`), 4xx 경고, 5xx 오류와 traceback |
-| 요청 줄 | `[시각] "요청" 상태 크기` | 개발 서버(runserver)의 요청 기록 |
+| 요청 줄 | `[시각] "요청" 상태 크기` | 개발 서버(runserver)의 요청 기록. 정상 헬스체크(`/api/v1/health/`, 15초 간격, 서버 응답·DB 연결 확인)는 남기지 않음 |
 | AI 사용량 | JSON 한 줄 | 'AI와 함께 만들기' 토큰·응답 시간(숫자만, `AI_USAGE_LOG_ENABLED`) |
 | 번역하지 못한 역 이름 | 파일 | `backend/logs/untranslated_names.jsonl` (`python manage.py untranslated_names`) |
 
