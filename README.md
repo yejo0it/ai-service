@@ -104,6 +104,28 @@ docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py ingest_guides
 ```
 
+**로그 확인**
+
+백엔드 로그는 모두 컨테이너 표준 출력으로 나가며 `docker compose logs`로 봅니다.
+
+```bash
+docker compose logs -f --tail 100 backend                       # 실시간 확인
+docker compose logs --since 1h backend | grep -E "WARNING|ERROR"  # 최근 1시간 경고·오류
+docker compose logs backend | grep '"event":"ai_request"'       # AI 요청 사용량(JSON 한 줄)
+```
+
+| 로그 | 형식 | 내용 |
+| --- | --- | --- |
+| 앱·Django | `시각 수준 로거: 메시지` | 앱 로그(`DJANGO_LOG_LEVEL`, 기본 `INFO`), 4xx 경고, 5xx 오류와 traceback |
+| 요청 줄 | `[시각] "요청" 상태 크기` | 개발 서버(runserver)의 요청 기록 |
+| AI 사용량 | JSON 한 줄 | 'AI와 함께 만들기' 토큰·응답 시간(숫자만, `AI_USAGE_LOG_ENABLED`) |
+| 번역하지 못한 역 이름 | 파일 | `backend/logs/untranslated_names.jsonl` (`python manage.py untranslated_names`) |
+
+- 외부 라이브러리는 경고 이상만 남깁니다. 앱은 대화 내용·API 키·인증 토큰을 기록하지 않습니다.
+- 앱·Django 로그와 요청 줄은 traceback까지 포함한 출력 전체에서 초대 링크 토큰, URL 쿼리의 인증 값, `Authorization` 값, API 키, `password`·`secret`·`api_key` 같은 키의 값, DB 제약 위반 메시지의 값, 이메일 주소를 `***`로 가립니다(`backend/config/log_masking.py`). 키·컬럼 이름과 예외 종류·파일·줄 번호는 남습니다.
+- 예외: 개발 서버에서 SMS 대신 남기는 인증번호 안내에는 휴대폰 번호가 그대로 나옵니다.
+- 컨테이너 로그는 서비스마다 10MB 파일 3개까지 보존합니다(`docker-compose.yml`의 `x-logging`). 바꾼 설정은 `docker compose up -d`로 컨테이너를 다시 만들어야 반영됩니다.
+
 ## Notes
 
 - **DB 데이터**는 `pgdata` 볼륨에 저장됩니다. `docker compose down -v`는 데이터까지 삭제하니 주의하세요.
