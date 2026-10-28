@@ -175,7 +175,9 @@ class ConditionalSearchRequestTests(APITestCase):
     def test_cache_point_and_response_shape_do_not_depend_on_the_search(self):
         model = FakeMessages()
         skipped, *_ = self.post("센소지는 오전 10시로 바꿔줘", model)
-        searched_response, *_ = self.post("도쿄 맛집 추천해줘", model)
+        # 같은 요청의 RAG 여부만 바꿔 비교한다. 두 고정 시스템 블록은 검색 여부와 무관하다.
+        with mock.patch("trips.itinerary_views.rag_policy.guide_search_decision", return_value=(True, "default")):
+            searched_response, *_ = self.post("센소지는 오전 10시로 바꿔줘", model)
         self.assertEqual(model.sent[0]["system"], model.sent[1]["system"])
         self.assertEqual(model.sent[0]["system"], ai_planner.SYSTEM_BLOCKS)
         self.assertEqual(set(skipped.data), set(searched_response.data))

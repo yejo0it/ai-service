@@ -14,14 +14,16 @@ Claude(claude-sonnet-5)는 '어느 날, 어떤 장소, 몇 시'만 정한다(구
 
 데이터 보호
 - 모델에 보내는 것은 로그인한 사용자의 여행 하나에 대한 최소 정보뿐이다: 여행지·기간, 항공(공항·항공사·편명·일시),
-  숙소 이름·기간, 일정 제목·시간. 회원 정보(이름·이메일·전화), 주소, 메모·체크리스트는 보내지 않는다.
+  숙소 이름·기간, 일정 제목·시간·종류·체류 시간, 장소·숙소의 반올림한 좌표.
+  회원 정보(이름·이메일·전화), 주소, 메모·체크리스트는 보내지 않는다.
 - 사용자가 채팅에 적은 개인정보·인증 정보는 보내기 전에 가린다(chat_guard.redact_sensitive).
 - 대화는 서버에 저장·로그하지 않는다(브라우저 화면에만 있다).
 - Anthropic API: 기본적으로 입력·출력을 모델 학습에 쓰지 않고, 30일 안에 자동 삭제한다
   (이용 정책 위반 시 최대 2년 등 예외). 출처: privacy.claude.com (2026-10 확인)
 
 프롬프트 캐싱 (SYSTEM_BLOCKS)
-- 매 요청 같은 시스템 프롬프트 끝에 캐시 지점(cache_control, 기본 5분)을 둔다. 대화·여행 정보·참고 문서·질문은 그 뒤에
+- 모든 요청에 같은 공통 지침과 재구성 상세 지침을 전달하고 각 블록 끝에 캐시 지점(cache_control, 기본 5분)을 둔다.
+  대화·여행 정보·참고 문서·질문은 그 뒤에
   있어 매 요청 새로 보낸다(캐시 때문에 DB 조회를 건너뛰거나 이전 여행 정보를 다시 쓰지 않는다).
 - 캐시는 워크스페이스 안에서만 공유되고, 1,024토큰(Sonnet 5)보다 짧거나 만료되면 오류 없이 캐시 없이 처리된다.
 - 시스템 프롬프트·응답 스키마(output_format)를 바꾸면 캐시가 다시 만들어진다. 적중 여부는 토큰 사용량 기록
@@ -152,10 +154,18 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
   - 전체 계획을 짜 달라고 하면 장소 수를 고정하지 말고 하루 시간(약 9시~22시)에 체류 시간·이동·식사·휴식이 무리 없이
     들어가도록 고르세요. 보통 하루 4~6곳이 적당하고, 출국·귀국일은 항공 시각을 고려해 적게 넣으세요. 사용자가 더 많이
     원하면 그만큼 넣되, 같은 날에는 서로 가까운 동네의 장소를 묶어 day_index를 정하세요. 숙소가 있으면 그 주변을 우선하세요.
-- 현재 일정에 이미 있는 장소는 다시 추가하지 마세요. 빼거나 옮길 때는 현재 일정에 있는 id(#뒤의 숫자)만 쓰세요.
 - reply는 친근한 한국어로 2~4문장. 무엇을 추가·이동·삭제하자고 제안하는지 설명하세요.
 - 여행에 관한 질문이지만 일정을 바꿀 필요가 없으면(예: 날씨, 환전, 준비물) reply로만 답하고 나머지는 빈 값으로
   두세요.
+
+공통 보호 정책 (모든 요청)
+- 현재 장소를 중복 추가하지 마세요. 사용자가 명시하지 않은 장소 추가·삭제·교체는 금지합니다.
+  항공·공항·숙소 카드와 시간이 정해진 장소의 날짜·시간, 항공·숙소 등록 정보도 보존하세요.
+  특정 대상의 변경을 사용자가 명시하면 그 요청을 우선하며 요청 범위만 바꾸세요.
+- 변경은 최소화하세요. 비슷한 후보면 현재 날짜를 유지하고, 변경 불필요·근거 부족이면 변경안을 비워 이유만 답하세요.
+- 삭제·이동은 현재 일정 id(#뒤의 숫자)만 사용하며 각 이동 id는 한 번만 쓰세요.
+- day_index는 0부터 시작합니다(1일차=0, 4일차=3). 본문의 일차·날짜와 대조해 여행 기간 안에서 고르세요.
+  reply의 대상·날짜는 변경안과 일치시키고 실제 날짜로 설명하세요.
 
 여행 정보 참고 문서 (<reference_docs>)
 - <reference_docs>는 서비스가 여행지 안내 문서(Wikivoyage)에서 이번 질문과 관련해 찾은 발췌입니다.
@@ -190,8 +200,20 @@ SYSTEM_PROMPT = """당신은 여행 계획 서비스 PinRoute의 여행 플래�
   - 숙소 이름이 있으면 search_query(숙소 이름 + 도시)를 적으세요.
 - 등록·수정할 때 reply는 정리한 내용을 짧게 확인하고, 비어 있는 항목은 나중에 알려 주면 채울 수 있다고 안내하세요."""
 
-# 시스템 프롬프트는 매 요청 같으므로 끝에 캐시 지점을 둔다(기본 5분, 적중할 때마다 연장). 내용·순서를 바꾸면 캐시가 새로 만들어진다.
-SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+# 평가에서 채택한 S의 지침 원문을 유지한다. 요청 종류와 관계없이 두 고정 블록을 항상 전달한다.
+REORGANIZATION_PROMPT = """기존 일정 재구성
+- 기존 장소가 있으면 새 계획 생성과 구분하고 날짜별 지역 묶음만 제안하세요. 추가·삭제·등록 변경을 명시하지 않으면
+  additions·remove_item_ids는 [], flight·hotel_change·form·confirm은 null입니다.
+- AI는 날짜 간 묶음을 담당하고 같은 날의 방문 순서는 서버가 계산합니다. 순서 변경용 같은 날 moves는 금지합니다.
+  시간 없는 관광지·식당·카페만 다른 날로 옮기며 time=null로 두세요. 특정 날짜·시간 변경의 명시 요청은 우선합니다.
+- 제공된 좌표로 묶고 장소명·주소·지역 지식으로 위치를 추측하지 마세요. 좌표 미상은 유지하세요.
+  숙소 기간·위치, 항공일의 짧은 활동 시간, 체류량을 고려해 과밀·다른 도시 숙소와 멀어지는 이동을 피하세요.
+- 고정 일정 보존 → 지역 묶음 → 체류량 균형 → 최소 변경 순서입니다. 변경 건수 목표를 두지 마세요.
+  현재 날짜와 비슷하면 유지하고, 꼭 이동해야 하는 동등 후보면 이른 날짜를 고르세요. 이미 잘 묶였으면 변경하지 마세요."""
+SYSTEM_BLOCKS = [
+    {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+    {"type": "text", "text": REORGANIZATION_PROMPT, "cache_control": {"type": "ephemeral"}},
+]
 
 
 class PlannerError(Exception):
@@ -228,27 +250,50 @@ def trip_context(trip, days, items_by_day, draft=None):
     pending = " (이번 대화에서 제안한 내용 포함, 아직 적용 전)"
     flight = draft.get("flight_info")
     lines.append(f"항공 등록 정보{pending if flight else ''}: " + flight_summary(flight or trip.flight_info))
-    if draft.get("hotels") is not None:
-        hotels = [
-            (f"[hotel_id={h['id']}] " if h.get("id") else "[새 숙소] ") + f"{h['name']} ({h['check_in']}~{h.get('check_out') or '?'})"
-            for h in draft["hotels"]
-        ]
-        lines.append(f"숙소 등록 정보{pending}: " + (", ".join(hotels) or "미등록"))
-    else:
-        hotels = [f"[hotel_id={h.id}] {h.name} ({h.check_in}~{h.check_out or '?'})" for h in trip.hotels.all()]
-        lines.append("숙소 등록 정보: " + (", ".join(hotels) or "미등록"))
-    # 줄마다 반복되던 표기("- day_index", "[id=...]")는 머리말에서 한 번만 설명한다(토큰 절약).
-    # 날짜·방문 순서·일정 id·시간·시간 표기는 그대로 모두 보낸다.
-    lines.append("현재 일정 (줄마다 'day_index 날짜: 방문 순서대로 #일정id 이름 시간 (시간 표기)'):")
+    pending_hotels = draft.get("hotels") is not None
+    hotel_data = draft["hotels"] if pending_hotels else [
+        {"id": h.id, "name": h.name, "check_in": h.check_in, "check_out": h.check_out,
+         "latitude": h.latitude, "longitude": h.longitude} for h in trip.hotels.all()
+    ]
+    hotels = [
+        (f"[hotel_id={h['id']}] " if h.get("id") else "[새 숙소] ")
+        + f"{h['name']} ({h['check_in']}~{h.get('check_out') or '?'})"
+        + f" [{_coordinates(h.get('latitude'), h.get('longitude')) or '미상'}]"
+        for h in hotel_data
+    ]
+    lines.append(f"숙소 등록 정보{pending if pending_hotels else ''}: " + (", ".join(hotels) or "미등록"))
+    # 일정 id는 #으로 짧게 표시하되, 0부터 시작하는 인덱스는 일차·날짜와 함께 명시해 혼동을 막는다.
+    # 날짜·방문 순서·일정 id·시간·시간 표기는 모두 보낸다.
+    legend = "종류;좌표(위도,경도·소수점3자리);체류분"
+    lines.append(f"현재 일정 (방문 순서, #id 이름 시간 (표기) [{legend}], 미상은 추측 금지):")
     for index, day in enumerate(days):
         cards = items_by_day.get(day, [])
-        entries = ", ".join(
-            f"#{c['id']} {c['title']}" + (f" {c['time']}" if c.get("time") else "")
-            + (f" ({c['time_label']})" if c.get("time_label") else "")
-            for c in cards
-        ) or "없음"
-        lines.append(f"{index} {day}: {entries}")
+        entries = ", ".join(_card_context(card) for card in cards) or "없음"
+        lines.append(f"day_index={index} ({index + 1}일차, {day}): {entries}")
     return "\n".join(lines)
+
+
+def _coordinates(latitude, longitude):
+    """지역 묶음에 필요한 약 100m 정밀도만 보낸다. 없거나 잘못된 좌표는 추정하지 않는다."""
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in (latitude, longitude)):
+        return None
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    return f"({latitude:.3f},{longitude:.3f})"
+
+
+def _card_context(card):
+    """ID·일시는 한 번만 표시하고 종류·위치를 같은 일정 항목에 연결한다."""
+    points = dict.fromkeys(
+        point for stop in card.get("stops", [])
+        if (point := _coordinates(stop.get("lat"), stop.get("lng"))) is not None
+    )
+    metadata = card["kind"] + ";" + ("→".join(points) or "미상")
+    stay = card.get("stay_minutes")
+    if isinstance(stay, int) and not isinstance(stay, bool) and 10 <= stay <= 240:
+        metadata += f";{stay}m"
+    return (f"#{card['id']} {card['title']}" + (f" {card['time']}" if card.get("time") else "")
+            + (f" ({card['time_label']})" if card.get("time_label") else "") + f" [{metadata}]")
 
 
 def reference_context(references):

@@ -1,0 +1,2557 @@
+{
+  "source_hashes": {
+    "/app/trips/ai_planner.py": "0a039b8b35d1e0f8a3d12ce1bb81e752507fb6f31274e41f1dfeec8e9b53fd54",
+    "/app/trips/planner_policy.py": "3c7094fd4a9213740819cc68f0f950622dc0b4d649276480716b448fe6d35cc3",
+    "/tmp/ai-context-before-optimization.json": "d7f99df0f4d2d5777209c3e85438346d8bfea43aec2ea4e207f901989ad8344f"
+  },
+  "model": "claude-sonnet-5",
+  "max_tokens": 16000,
+  "rates_usd_per_million": {
+    "input": 2,
+    "cache_create_5m": 2.5,
+    "cache_read": 0.2,
+    "output": 10
+  },
+  "summary": {
+    "usage_pricing_note": "Usage-based official list-price calculation; not reconciled to invoice.",
+    "total_calls": 40,
+    "total_usd": 0.530117,
+    "supplement_calls": 32,
+    "supplement_usd": 0.4104561,
+    "calls_this_resume": 31,
+    "usd_this_resume": 0.37646009999999996,
+    "all_actual_version_totals": {
+      "A": {
+        "calls": 18,
+        "policy_passed": 18,
+        "integrity_passed": 18,
+        "mean_input": 8035.111111111111,
+        "mean_uncached_input": 735.1111111111111,
+        "mean_output": 882.1666666666666,
+        "mean_thinking": 570.7777777777778,
+        "mean_ms": 9858.777777777777,
+        "median_ms": 8662.0,
+        "read_requests": 15,
+        "cache_creation_tokens": 21900,
+        "cache_read_tokens": 109500,
+        "usd": 0.261904,
+        "warm_normalized_usd": 0.211534
+      },
+      "B": {
+        "calls": 18,
+        "policy_passed": 18,
+        "integrity_passed": 18,
+        "mean_input": 7525.777777777777,
+        "mean_uncached_input": 518.1111111111111,
+        "mean_output": 882.0555555555555,
+        "mean_thinking": 559.2777777777778,
+        "mean_ms": 9800.166666666666,
+        "median_ms": 10059.5,
+        "read_requests": 16,
+        "cache_creation_tokens": 14302,
+        "cache_read_tokens": 111836,
+        "usd": 0.2355442,
+        "warm_normalized_usd": 0.2026496
+      },
+      "S": {
+        "calls": 4,
+        "policy_passed": 4,
+        "integrity_passed": 4,
+        "mean_input": 7664.5,
+        "mean_uncached_input": 513.5,
+        "mean_output": 571.0,
+        "mean_thinking": 230.5,
+        "mean_ms": 7671.25,
+        "median_ms": 6940.0,
+        "read_requests": 4,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 28604,
+        "usd": 0.0326688,
+        "warm_normalized_usd": 0.0326688
+      }
+    },
+    "matched_supplement_groups": [
+      {
+        "group": "general",
+        "version": "A",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 8013.0,
+        "mean_uncached_input": 713.0,
+        "mean_output": 445.0,
+        "mean_thinking": 147.5,
+        "mean_ms": 6095.5,
+        "median_ms": 6095.5,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14600,
+        "usd": 0.014672000000000001,
+        "warm_normalized_usd": 0.014672
+      },
+      {
+        "group": "general",
+        "version": "B",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7034.0,
+        "mean_uncached_input": 399.0,
+        "mean_output": 400.0,
+        "mean_thinking": 48.0,
+        "mean_ms": 5663.5,
+        "median_ms": 5663.5,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 13270,
+        "usd": 0.01225,
+        "warm_normalized_usd": 0.01225
+      },
+      {
+        "group": "general",
+        "version": "S",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7666.0,
+        "mean_uncached_input": 515.0,
+        "mean_output": 461.0,
+        "mean_thinking": 45.0,
+        "mean_ms": 6580,
+        "median_ms": 6580.0,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14302,
+        "usd": 0.014140400000000001,
+        "warm_normalized_usd": 0.0141404
+      },
+      {
+        "group": "location",
+        "version": "A",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 8010.0,
+        "mean_uncached_input": 710.0,
+        "mean_output": 621.5,
+        "mean_thinking": 338.0,
+        "mean_ms": 7064,
+        "median_ms": 7064.0,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14600,
+        "usd": 0.018189999999999998,
+        "warm_normalized_usd": 0.01819
+      },
+      {
+        "group": "location",
+        "version": "B",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7147.0,
+        "mean_uncached_input": 512.0,
+        "mean_output": 815.5,
+        "mean_thinking": 491.0,
+        "mean_ms": 9612,
+        "median_ms": 9612.0,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 13270,
+        "usd": 0.021012,
+        "warm_normalized_usd": 0.021012
+      },
+      {
+        "group": "location",
+        "version": "S",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7663.0,
+        "mean_uncached_input": 512.0,
+        "mean_output": 681.0,
+        "mean_thinking": 416.0,
+        "mean_ms": 8762.5,
+        "median_ms": 8762.5,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14302,
+        "usd": 0.0185284,
+        "warm_normalized_usd": 0.0185284
+      },
+      {
+        "group": "reorganization",
+        "version": "A",
+        "calls": 6,
+        "policy_passed": 6,
+        "integrity_passed": 6,
+        "mean_input": 8023.333333333333,
+        "mean_uncached_input": 723.3333333333334,
+        "mean_output": 907.0,
+        "mean_thinking": 612.3333333333334,
+        "mean_ms": 9831.666666666666,
+        "median_ms": 10754.5,
+        "read_requests": 4,
+        "cache_creation_tokens": 14600,
+        "cache_read_tokens": 29200,
+        "usd": 0.10543999999999998,
+        "warm_normalized_usd": 0.07186
+      },
+      {
+        "group": "reorganization",
+        "version": "B",
+        "calls": 6,
+        "policy_passed": 6,
+        "integrity_passed": 6,
+        "mean_input": 7677.0,
+        "mean_uncached_input": 526.0,
+        "mean_output": 955.3333333333334,
+        "mean_thinking": 667.0,
+        "mean_ms": 10235.5,
+        "median_ms": 11884.5,
+        "read_requests": 5,
+        "cache_creation_tokens": 7151,
+        "cache_read_tokens": 35755,
+        "usd": 0.0886605,
+        "warm_normalized_usd": 0.07221319999999999
+      },
+      {
+        "group": "followup",
+        "version": "A",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 8135.0,
+        "mean_uncached_input": 835.0,
+        "mean_output": 1027.5,
+        "mean_thinking": 694.0,
+        "mean_ms": 10836,
+        "median_ms": 10836.0,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14600,
+        "usd": 0.02681,
+        "warm_normalized_usd": 0.02681
+      },
+      {
+        "group": "followup",
+        "version": "B",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7788.0,
+        "mean_uncached_input": 637.0,
+        "mean_output": 945.5,
+        "mean_thinking": 694.5,
+        "mean_ms": 10267.5,
+        "median_ms": 10267.5,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14302,
+        "usd": 0.0243184,
+        "warm_normalized_usd": 0.0243184
+      },
+      {
+        "group": "compound",
+        "version": "A",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 8047.0,
+        "mean_uncached_input": 747.0,
+        "mean_output": 1551.0,
+        "mean_thinking": 1153.0,
+        "mean_ms": 16384,
+        "median_ms": 16384.0,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14600,
+        "usd": 0.036928,
+        "warm_normalized_usd": 0.036928
+      },
+      {
+        "group": "compound",
+        "version": "B",
+        "calls": 2,
+        "policy_passed": 2,
+        "integrity_passed": 2,
+        "mean_input": 7700.0,
+        "mean_uncached_input": 549.0,
+        "mean_output": 1222.5,
+        "mean_thinking": 784.0,
+        "mean_ms": 12619.5,
+        "median_ms": 12619.5,
+        "read_requests": 2,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 14302,
+        "usd": 0.029506400000000002,
+        "warm_normalized_usd": 0.029506400000000002
+      }
+    ],
+    "all_core_reorganization": {
+      "A": {
+        "calls": 9,
+        "policy_passed": 9,
+        "integrity_passed": 9,
+        "mean_input": 8023.333333333333,
+        "mean_uncached_input": 723.3333333333334,
+        "mean_output": 912.1111111111111,
+        "mean_thinking": 619.4444444444445,
+        "mean_ms": 10107.444444444445,
+        "median_ms": 9706,
+        "read_requests": 6,
+        "cache_creation_tokens": 21900,
+        "cache_read_tokens": 43800,
+        "usd": 0.15862,
+        "warm_normalized_usd": 0.10825
+      },
+      "B": {
+        "calls": 9,
+        "policy_passed": 9,
+        "integrity_passed": 9,
+        "mean_input": 7677.0,
+        "mean_uncached_input": 526.0,
+        "mean_output": 949.1111111111111,
+        "mean_thinking": 665.4444444444445,
+        "mean_ms": 10250.444444444445,
+        "median_ms": 11562,
+        "read_requests": 7,
+        "cache_creation_tokens": 14302,
+        "cache_read_tokens": 50057,
+        "usd": 0.14065440000000004,
+        "warm_normalized_usd": 0.1077598
+      }
+    },
+    "manual_explanation_date_errors": {
+      "A": [
+        5,
+        9,
+        13
+      ],
+      "B": [],
+      "S_reorganization": "No independent calls; identical-input B references only."
+    },
+    "confirmed_electrical_fact_errors": {
+      "A": [
+        7,
+        24
+      ],
+      "B": [
+        8
+      ],
+      "S": [
+        23
+      ]
+    },
+    "unverified_streamer_shinjuku_recommendations": {
+      "A": [
+        15
+      ],
+      "B": [
+        35
+      ],
+      "S": [
+        34
+      ]
+    },
+    "same_workload_estimates": {
+      "A_actual_14": {
+        "calls": 14,
+        "policy_passed": 14,
+        "integrity_passed": 14,
+        "mean_input": 8039.285714285715,
+        "mean_uncached_input": 739.2857142857143,
+        "mean_output": 909.4285714285714,
+        "mean_thinking": 595.6428571428571,
+        "mean_ms": 9982.07142857143,
+        "median_ms": 9157.5,
+        "read_requests": 12,
+        "cache_creation_tokens": 14600,
+        "cache_read_tokens": 87600,
+        "usd": 0.20204000000000003,
+        "warm_normalized_usd": 0.16846
+      },
+      "B_actual_14": {
+        "calls": 14,
+        "policy_passed": 14,
+        "integrity_passed": 14,
+        "mean_input": 7528.571428571428,
+        "mean_uncached_input": 525.0,
+        "mean_output": 892.7857142857143,
+        "mean_thinking": 574.0714285714286,
+        "mean_ms": 9838.42857142857,
+        "median_ms": 10521.0,
+        "read_requests": 13,
+        "cache_creation_tokens": 7151,
+        "cache_read_tokens": 90899,
+        "usd": 0.17574730000000002,
+        "warm_normalized_usd": 0.1593
+      },
+      "S_estimated_14_using_10_shared_B_and_4_actual_S": {
+        "calls": 14,
+        "policy_passed": 14,
+        "integrity_passed": 14,
+        "mean_input": 7692.571428571428,
+        "mean_uncached_input": 541.5714285714286,
+        "mean_output": 882.2857142857143,
+        "mean_thinking": 562.9285714285714,
+        "mean_ms": 9848,
+        "median_ms": 10784.5,
+        "read_requests": 13,
+        "cache_creation_tokens": 7151,
+        "cache_read_tokens": 92963,
+        "usd": 0.1751541,
+        "warm_normalized_usd": 0.15870679999999998
+      },
+      "S_independent_calls": 4,
+      "S_shared_B_call_ids": [
+        10,
+        12,
+        14,
+        19,
+        21,
+        28,
+        30,
+        32,
+        37,
+        39
+      ],
+      "note": "S 14-task cost is a shared-output estimate, not 14 independent S calls or actual S total billed usage."
+    }
+  },
+  "records": [
+    {
+      "call": 1,
+      "case": "mixed",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "61487c6937e8ea6707713b08218d52f14c9d67e98dc7e54fb3862262f99f7523",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 742,
+        "cache_creation_input_tokens": 7300,
+        "cache_read_input_tokens": 0,
+        "thinking_tokens": 434,
+        "total_input_tokens": 8028,
+        "total_tokens": 8770
+      },
+      "estimated_usd": 0.027126,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정을 보니 센소지·스카이트리는 아사쿠사 쪽으로 가깝고, 하치코 동상·시부야 스카이는 시부야 쪽으로 가까운데 서로 엇갈려 배치되어 있었어요. 11/11에는 센소지+스카이트리, 11/12에는 시부야 스카이+하치코 동상으로 묶어서 이동 거리를 줄이는 걸 제안드려요. 항공과 숙소, 예약 시간이 있는 일정은 그대로 두었습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "ms": 8715,
+      "batch": "initial8",
+      "call_id": 1,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 2,
+      "case": "mixed",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "df54f1fefe391d6553abd5a9cede092060f064825ac6ac4a8c6d4a0df51388f7",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 805,
+        "cache_creation_input_tokens": 7151,
+        "cache_read_input_tokens": 0,
+        "thinking_tokens": 546,
+        "total_input_tokens": 7681,
+        "total_tokens": 8486
+      },
+      "estimated_usd": 0.0269875,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "아사쿠사 쪽(센소지·스카이트리)과 시부야 쪽(하치코·시부야 스카이)이 섞여 있어서 동선이 겹치네요. 2일차는 센소지+스카이트리로, 3일차는 하치코+시부야 스카이로 묶어서 이동을 줄여볼게요. 예약 시간이 있는 장소는 그대로 유지했습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "ms": 9286,
+      "batch": "initial8",
+      "call_id": 2,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 3,
+      "case": "grouped",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "23d4b48cab3990e4c21ff8aa4d9cc6aed3caeffd81e713005b228788594ed31e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 480,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 211,
+        "total_input_tokens": 8028,
+        "total_tokens": 8508
+      },
+      "estimated_usd": 0.007716,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "확인해보니 2일차(11/11)에는 아사쿠사 근처의 센소지와 스카이트리가, 3일차(11/12)에는 시부야 권역의 시부야 스카이와 하치코 동상이 이미 가까운 지역끼리 잘 묶여 있어요. 항공·숙소 일정도 고정이라 그대로 두고, 따로 옮길 장소는 없어 보여요. 혹시 새로운 장소를 추가하거나 다른 기준으로 바꾸고 싶으시면 말씀해 주세요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "ms": 5682,
+      "batch": "initial8",
+      "call_id": 3,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 4,
+      "case": "grouped",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "e56656a9821f7379497b4abec1f38ecf92ec2c21f67cbcbfb4b51fabcd7286f9",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 440,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 206,
+        "total_input_tokens": 7681,
+        "total_tokens": 8121
+      },
+      "estimated_usd": 0.0068902,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "확인해보니 2일차는 센소지·스카이트리가 모두 아사쿠사 권역, 3일차는 시부야 스카이·하치코 동상이 모두 시부야 권역으로 이미 지역별로 잘 묶여 있어요. 항공·숙소 일정도 고정되어 있어서 특별히 옮길 곳이 없네요. 지금 구성 그대로 유지하는 게 동선상 가장 효율적입니다!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "ms": 4968,
+      "batch": "initial8",
+      "call_id": 4,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 5,
+      "case": "missing",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "59882805ab21ec9a1cda5bb05396fe5909279ec33cefa100d7efb6ad06372311",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 714,
+        "output_tokens": 1545,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 1256,
+        "total_input_tokens": 8014,
+        "total_tokens": 9559
+      },
+      "estimated_usd": 0.018338,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "좌표를 보면 1일차(11/10)의 센소지는 아사쿠사 쪽, 2일차(11/12)의 시부야 스카이는 신주쿠 숙소와 가까운 시부야 쪽이라 이미 지역별로 잘 나뉘어 있어요. 하치코 동상과 스카이트리는 좌표 정보가 없어서 위치를 추정해 옮기지 않고 현재 일정 그대로 두는 게 안전할 것 같아요. 그래서 이번엔 별도로 옮길 항목 없이 현재 배치를 유지하는 걸 추천드려요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "ms": 17580,
+      "batch": "initial8",
+      "call_id": 5,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 6,
+      "case": "missing",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "374db0dd1162749ab59d3b59ed6b0c9d1573aa2f9c26f0951e9c80e5f781aff4",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 1565,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 1235,
+        "total_input_tokens": 7669,
+        "total_tokens": 9234
+      },
+      "estimated_usd": 0.018116200000000002,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "확인해보니 2일차·3일차에 있는 센소지와 시부야 스카이는 예약 시간이 정해져 있어 날짜를 옮기기 어렵고, 하치코 동상과 스카이트리는 좌표 정보가 없어서 실제 위치를 기준으로 묶어드리기가 어려워요. 그래서 동선을 임의로 재배치하면 오히려 예약 시간과 어긋날 수 있어 현재 일정을 그대로 유지하는 게 좋을 것 같습니다. 혹시 하치코 동상이나 스카이트리의 정확한 방문 희망 시간이나 위치 정보를 알려주시면 그에 맞춰 다시 동선을 짜드릴게요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "ms": 16587,
+      "batch": "initial8",
+      "call_id": 6,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 7,
+      "case": "packing",
+      "group": "general",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "a39da9573f4f24bd72a58f15884a4bba5f88b434813a168ce3404ddb8479bc8e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 712,
+        "output_tokens": 380,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 34,
+        "total_input_tokens": 8012,
+        "total_tokens": 8392
+      },
+      "estimated_usd": 0.006684,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "11월 도쿄 여행 준비물을 추천드려요! 1) 여권·항공권·숙소 예약confirm 2) 해외결제 가능한 카드·엔화 약간의 현금 3) 11월 도쿄는 아침저녁 쌀쌀하니(평균 10~18도) 가벼운 겉옷·니트 준비 4) 변환 어댑터(일본은 A타입 콘센트, 110V) 5) 보조배터리·우산(여행용 접이식) 6) 상비약·멀미약 7) 유심/이심 또는 포켓와이파이 8) 교통카드(Suica/Pasmo)는 공항이나 편의점에서 구매 가능해요. 더 구체적으로 필요한 항목 있으면 말씀해 주세요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "ms": 5732,
+      "batch": "initial8",
+      "call_id": 7,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 8,
+      "case": "packing",
+      "group": "general",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "eb9bd2999ec809d9d342db465bf15ecb630b4f5bc7e8b4004948e568ace435aa",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 398,
+        "output_tokens": 568,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 6635,
+        "thinking_tokens": 43,
+        "total_input_tokens": 7033,
+        "total_tokens": 7601
+      },
+      "estimated_usd": 0.007803,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "도쿄 11월 여행 준비물을 정리해드릴게요! 1) 옷: 낮 기온 15~18도, 아침저녁 선선하니 얇은 니트·가디건·바람막이 등 겹쳐 입을 옷과 경량 패딩을 챙기세요. 2) 전자기기: 일본은 100V, 콘센트가 한국과 모양이 같아 변환 어댑터는 필요 없지만 전압 차이 때문에 민감한 기기는 확인이 필요해요. 보조배터리와 멀티탭도 유용합니다. 3) 서류: 여권(유효기간 6개월 이상 권장), 왕복 항공권, 숙소 예약 확인서를 준비하세요. 4) 결제: 일본은 현금 결제 비중이 높은 편이니 엔화 환전과 교통카드(Suica/Pasmo) 준비, 해외결제 가능한 카드도 챙기면 좋아요. 5) 기타: 우산(겨울철 비 소식 있을 수 있음), 상비약, 편한 신발(걷는 일정이 많아요)도 필수입니다. 출국 전 최신 입국 규정이나 세관 정보는 공식 사이트에서 한 번 더 확인하시는 걸 추천드려요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "ms": 7824,
+      "batch": "initial8",
+      "call_id": 8,
+      "integrity_passed": true,
+      "integrity_errors": []
+    },
+    {
+      "call": 1,
+      "cumulative_call": 9,
+      "case": "mixed",
+      "fixture": "mixed",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "61487c6937e8ea6707713b08218d52f14c9d67e98dc7e54fb3862262f99f7523",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 1429,
+        "cache_creation_input_tokens": 7300,
+        "cache_read_input_tokens": 0,
+        "thinking_tokens": 1041,
+        "total_input_tokens": 8028,
+        "total_tokens": 9457
+      },
+      "estimated_usd": 0.033996,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 1일차(11/11)에는 아사쿠사의 센소지와 시부야의 하치코 동상이 섞여 있고, 2일차(11/12)에는 시부야 스카이와 아사쿠사 쪽 도쿄 스카이트리가 섞여 있어 동선이 비효율적이에요. 예약 시간이 있는 센소지와 시부야 스카이는 그대로 두고, 가까운 지역끼리 묶이도록 도쿄 스카이트리는 11/11(아사쿠사 묶음)로, 하치코 동상은 11/12(시부야 묶음)로 옮길게요. 이렇게 하면 하루는 아사쿠사 권역, 다른 하루는 시부야 권역으로 깔끔하게 나뉩니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "ms": 14490,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "manual_notes": [
+        "Previously reviewed: natural-language day number mismatch; continue under revised criterion."
+      ],
+      "batch": "supplement32",
+      "batch_call": 1,
+      "call_id": 9
+    },
+    {
+      "call": 2,
+      "cumulative_call": 10,
+      "case": "mixed",
+      "fixture": "mixed",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "df54f1fefe391d6553abd5a9cede092060f064825ac6ac4a8c6d4a0df51388f7",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 1164,
+        "cache_creation_input_tokens": 7151,
+        "cache_read_input_tokens": 0,
+        "thinking_tokens": 807,
+        "total_input_tokens": 7681,
+        "total_tokens": 8845
+      },
+      "estimated_usd": 0.0305775,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정은 2일차에 아사쿠사(센소지)와 시부야(하치코)가 섞여 있고, 3일차에도 시부야(시부야 스카이)와 아사쿠사 근처(스카이트리)가 나뉘어 있어 동선이 비효율적이에요. 예약 시간이 있는 센소지와 시부야 스카이는 그대로 두고, 시간이 정해지지 않은 스카이트리를 2일차(아사쿠사 권역)로, 하치코 동상을 3일차(시부야 권역)로 옮겨 묶었습니다. 이렇게 하면 같은 지역끼리 모여 이동이 훨씬 수월해져요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 12207,
+      "batch": "supplement32",
+      "batch_call": 2,
+      "call_id": 10
+    },
+    {
+      "call": 3,
+      "cumulative_call": 11,
+      "case": "grouped",
+      "fixture": "grouped",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "23d4b48cab3990e4c21ff8aa4d9cc6aed3caeffd81e713005b228788594ed31e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 471,
+        "cache_creation_input_tokens": 7300,
+        "cache_read_input_tokens": 0,
+        "thinking_tokens": 210,
+        "total_input_tokens": 8028,
+        "total_tokens": 8499
+      },
+      "estimated_usd": 0.024416,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "지금 일정을 보니 2일차(11/11)는 센소지·스카이트리가 있는 아사쿠사·스미다 권역으로, 3일차(11/12)는 시부야 스카이·하치코 동상이 있는 시부야 권역으로 이미 깔끗하게 묶여 있어요. 좌표상으로도 각 날짜 안 장소들이 가까워서 지역 동선 기준으로는 옮길 필요가 없어 보입니다. 항공·숙소 일정은 그대로 유지했어요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5483,
+      "batch": "supplement32",
+      "batch_call": 3,
+      "call_id": 11
+    },
+    {
+      "call": 4,
+      "cumulative_call": 12,
+      "case": "grouped",
+      "fixture": "grouped",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "e56656a9821f7379497b4abec1f38ecf92ec2c21f67cbcbfb4b51fabcd7286f9",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 491,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 257,
+        "total_input_tokens": 7681,
+        "total_tokens": 8172
+      },
+      "estimated_usd": 0.0074002,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정을 보니 2일차는 아사쿠사·스카이트리 권역, 3일차는 시부야 권역으로 이미 가까운 장소끼리 잘 묶여 있어요. 예약 시간이 있는 센소지와 시부야 스카이는 그대로 두는 게 좋고, 별도로 재배치할 필요는 없어 보입니다. 혹시 추가하고 싶은 장소가 있으면 알려주세요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5604,
+      "batch": "supplement32",
+      "batch_call": 4,
+      "call_id": 12
+    },
+    {
+      "call": 5,
+      "cumulative_call": 13,
+      "case": "missing",
+      "fixture": "missing",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "59882805ab21ec9a1cda5bb05396fe5909279ec33cefa100d7efb6ad06372311",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 714,
+        "output_tokens": 1084,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 811,
+        "total_input_tokens": 8014,
+        "total_tokens": 9098
+      },
+      "estimated_usd": 0.013728,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정을 좌표로 확인해보니 1일차엔 아사쿠사 권역(센소지), 2일차엔 시부야 권역(시부야 스카이)으로 이미 지역별로 잘 나뉘어 있어요. 하치코 동상과 스카이트리는 좌표 정보가 없어서 위치를 추정해 옮기기보다는 지금 날짜 그대로 두는 게 안전할 것 같아요. 그래서 이번엔 동선을 바꾸지 않고 현재 배치를 유지하는 걸 추천드려요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 11803,
+      "batch": "supplement32",
+      "batch_call": 5,
+      "call_id": 13
+    },
+    {
+      "call": 6,
+      "cumulative_call": 14,
+      "case": "missing",
+      "fixture": "missing",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "374db0dd1162749ab59d3b59ed6b0c9d1573aa2f9c26f0951e9c80e5f781aff4",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 1091,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 805,
+        "total_input_tokens": 7669,
+        "total_tokens": 8760
+      },
+      "estimated_usd": 0.013376200000000001,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "확인해보니 2일차의 센소지(10시 예약)와 3일차의 시부야 스카이(10시 예약)는 예약 시간이 정해져 있어 날짜를 바꾸기 어렵고, 하치코 동상과 도쿄 스카이트리는 위치 정보가 확인되지 않아 임의로 묶어 이동시키기 어려워요. 그래서 이번엔 동선을 다시 짜기보다는 현재 일정을 그대로 유지하는 게 좋아 보여요. 위치 정보가 추가되면 그때 다시 동선을 정리해드릴게요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 11562,
+      "batch": "supplement32",
+      "batch_call": 6,
+      "call_id": 14
+    },
+    {
+      "call": 7,
+      "cumulative_call": 15,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "29b8c544f0d9763aafc14b2765cdc7af3399cb6b1ba38191c2185048bf987b9f",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 710,
+        "output_tokens": 625,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 320,
+        "total_input_tokens": 8010,
+        "total_tokens": 8635
+      },
+      "estimated_usd": 0.00913,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소 근처라면 'Streamer Coffee Company Shinjuku'를 추천드려요! 바리스타 챔피언이 운영하는 곳으로 라떼 아트가 예쁘고 분위기도 아늑해서 잠깐 쉬어가기 좋아요. 일정에 추가해드릴까요? 날짜나 시간을 말씀해주시면 반영해드릴게요.",
+        "additions": [
+          {
+            "name": "스트리머 커피 컴퍼니 신주쿠",
+            "search_query": "Streamer Coffee Company Shinjuku, Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 7167,
+      "batch": "supplement32",
+      "batch_call": 7,
+      "call_id": 15
+    },
+    {
+      "call": 8,
+      "cumulative_call": 16,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "11f243d356aeaf2972ba185c6344f2fe5c289f1d03954a093235b1ca63c032c3",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 512,
+        "output_tokens": 838,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 6635,
+        "thinking_tokens": 565,
+        "total_input_tokens": 7147,
+        "total_tokens": 7985
+      },
+      "estimated_usd": 0.010731,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소에서 가까운 카페로 사루타히코 커피 신주쿠점을 추천드려요. 핸드드립 커피로 유명하고 숙소와 가까워 가볍게 들르기 좋습니다. 날짜나 시간을 말씀해주시면 일정에 맞춰 넣어드릴게요!",
+        "additions": [
+          {
+            "name": "사루타히코 커피 신주쿠점",
+            "search_query": "Sarutahiko Coffee Shinjuku Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 10313,
+      "batch": "supplement32",
+      "batch_call": 8,
+      "call_id": 16
+    },
+    {
+      "call": 9,
+      "cumulative_call": 17,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "S",
+      "repeat": 1,
+      "request_sha256": "20b88a4f81f93e259d969a8117f3c8f07a7a10e8051fb6f340e3eea80f558a85",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 512,
+        "output_tokens": 804,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 545,
+        "total_input_tokens": 7663,
+        "total_tokens": 8467
+      },
+      "estimated_usd": 0.0104942,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소 근처라면 '스타벅스 신주쿠산초메점'을 추천드려요. 호텔에서 가깝고 가볍게 쉬어가기 좋은 카페라 일정에 추가해볼게요. 특정 날짜를 원하시면 말씀해 주세요!",
+        "additions": [
+          {
+            "name": "스타벅스 신주쿠산초메점",
+            "search_query": "스타벅스 신주쿠산초메점 도쿄",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 10840,
+      "batch": "supplement32",
+      "batch_call": 9,
+      "call_id": 17
+    },
+    {
+      "call": 10,
+      "cumulative_call": 18,
+      "case": "followup",
+      "fixture": "mixed",
+      "group": "followup",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "3f55e2f31e63610d159f79b43f34b6d2f20cbe8c3884f4e274a99108dc0bba3e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 835,
+        "output_tokens": 1245,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 898,
+        "total_input_tokens": 8135,
+        "total_tokens": 9380
+      },
+      "estimated_usd": 0.01558,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 센소지(아사쿠사)와 하치코 동상(시부야)이 같은 날, 시부야 스카이와 스카이트리(아사쿠사)가 같은 날로 묶여 있어 동선이 겹쳐요. 좌표를 보니 센소지와 스카이트리가 아사쿠사 인근, 시부야 스카이와 하치코 동상이 시부야 인근으로 가까워서, 11/11에는 센소지+스카이트리를, 11/12에는 시부야 스카이+하치코 동상을 묶는 게 좋겠어요. 예약 시간과 항공·숙소 일정은 그대로 유지했습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 13063,
+      "batch": "supplement32",
+      "batch_call": 10,
+      "call_id": 18
+    },
+    {
+      "call": 11,
+      "cumulative_call": 19,
+      "case": "followup",
+      "fixture": "mixed",
+      "group": "followup",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "786071592dc37e4e3926c988d21036312e3dc89f88a78fb9501c0c1355a56e03",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 637,
+        "output_tokens": 979,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 725,
+        "total_input_tokens": 7788,
+        "total_tokens": 8767
+      },
+      "estimated_usd": 0.0124942,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "아사쿠사 권역인 센소지와 도쿄 스카이트리를 2일차로, 시부야 권역인 시부야 스카이와 하치코 동상을 3일차로 묶어서 동선을 깔끔하게 정리했어요. 예약된 센소지·시부야 스카이 시간은 그대로 유지했고, 항공·숙소 일정도 손대지 않았습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          },
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 10729,
+      "batch": "supplement32",
+      "batch_call": 11,
+      "call_id": 19
+    },
+    {
+      "call": 12,
+      "cumulative_call": 20,
+      "case": "compound",
+      "fixture": "mixed",
+      "group": "compound",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "3a127c38c3fb2ba950e8fc354471dc3d360378212cfb78ffbd2034cb605e0748",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 747,
+        "output_tokens": 1204,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 848,
+        "total_input_tokens": 8047,
+        "total_tokens": 9251
+      },
+      "estimated_usd": 0.014994,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "환전은 보통 공항보다 시내 은행이나 '환율우대' 앱(트래블월렛, 트래블로그 등)을 이용하면 수수료가 적고, 일본은 소액 결제도 현금을 많이 쓰니 공항 도착 전에 엔화를 조금 환전해 가는 게 편해요. 일정은 예약된 센소지(2026-11-11)와 시부야 스카이(2026-11-12)는 그대로 두고, 가까운 지역끼리 묶기 위해 하치코 동상은 시부야 스카이와 같은 3일차(11/12)로, 스카이트리는 센소지와 같은 2일차(11/11)로 옮길게요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          },
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 13589,
+      "batch": "supplement32",
+      "batch_call": 12,
+      "call_id": 20
+    },
+    {
+      "call": 13,
+      "cumulative_call": 21,
+      "case": "compound",
+      "fixture": "mixed",
+      "group": "compound",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "64bd5886dc68477f9c35d729ed7f8f5fbac0490f104a33241087a021a8cc455c",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 549,
+        "output_tokens": 1158,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 729,
+        "total_input_tokens": 7700,
+        "total_tokens": 8858
+      },
+      "estimated_usd": 0.014108200000000001,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "환전 팁부터 알려드릴게요! 일본은 카드보다 현금 사용 빈도가 높으니 출국 전 국내 은행이나 환전 앱에서 엔화를 미리 환전해두는 게 좋고, 공항 환전소는 환율이 불리한 편이라 추천하지 않아요. 소액권(1000엔, 5000엔)을 섞어 준비하면 자판기·소규모 가게에서 편리합니다. 환율은 변동이 크니 출발 직전에 다시 확인하시길 권해드려요. 일정은 예약된 센소지(2일차)와 시부야 스카이(3일차)는 그대로 두고, 같은 지역끼리 묶기 위해 도쿄 스카이트리를 센소지와 같은 2일차로, 하치코 동상을 시부야 스카이와 같은 3일차로 옮기는 걸 제안드려요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 11863,
+      "batch": "supplement32",
+      "batch_call": 13,
+      "call_id": 21
+    },
+    {
+      "call": 14,
+      "cumulative_call": 22,
+      "case": "packing",
+      "fixture": "packing",
+      "group": "general",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "eb9bd2999ec809d9d342db465bf15ecb630b4f5bc7e8b4004948e568ace435aa",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 398,
+        "output_tokens": 434,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 6635,
+        "thinking_tokens": 41,
+        "total_input_tokens": 7033,
+        "total_tokens": 7467
+      },
+      "estimated_usd": 0.006463,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "11월 도쿄 여행 준비물을 정리해드릴게요! 1) 필수 서류: 여권(유효기간 6개월 이상), 항공권·숙소 예약 확인서. 2) 전자기기: 일본은 100V 콘센트(한국과 다른 모양일 수 있어 멀티어댑터 추천), 보조배터리, 휴대폰 유심이나 포켓와이파이. 3) 의류: 11월 도쿄는 평균 10~17도로 쌀쌀하니 가벼운 패딩이나 코트, 니트 등 레이어드 옷차림이 좋아요. 4) 기타: 상비약, 우산(겨울에도 비가 종종 옴), 엔화 약간의 현금(IC카드 충전·소규모 상점용)과 신용카드, 편한 신발(걷는 일정이 많을 때 유용)을 챙기시면 좋습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 6160,
+      "batch": "supplement32",
+      "batch_call": 14,
+      "call_id": 22
+    },
+    {
+      "call": 15,
+      "cumulative_call": 23,
+      "case": "packing",
+      "fixture": "packing",
+      "group": "general",
+      "version": "S",
+      "repeat": 2,
+      "request_sha256": "0947a3829ee63032a9e0db1bd4481c9a7586fc4574ae292ebab3a9e131c706a3",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 514,
+        "output_tokens": 481,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 45,
+        "total_input_tokens": 7665,
+        "total_tokens": 8146
+      },
+      "estimated_usd": 0.0072682,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "도쿄 여행 준비물 체크리스트 알려드릴게요! 1) 서류: 여권(유효기간 6개월 이상), 항공권·숙소 예약 확인서, 여행자보험 2) 금전: 엔화 현금(소액권 위주), 해외결제 가능 카드, 트래블월렛 등 환전 카드 3) 전자기기: 멀티 어댑터(일본은 콘센트가 한국과 모양 같지만 전압은 100V라 변압기 필요할 수 있어요), 보조배터리, 포켓와이파이나 유심 4) 의류: 11월 도쿄는 쌀쌀하니 가벼운 패딩이나 코트, 겹쳐 입을 옷 5) 상비약과 세면도구, 교통카드(스이카·파스모)도 챙기면 편해요. 혹시 일정에 쇼핑이나 온천 방문처럼 챙길 게 더 필요한 활동이 있으면 알려주시면 맞춰서 더 안내해드릴게요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 7195,
+      "batch": "supplement32",
+      "batch_call": 15,
+      "call_id": 23
+    },
+    {
+      "call": 16,
+      "cumulative_call": 24,
+      "case": "packing",
+      "fixture": "packing",
+      "group": "general",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "a39da9573f4f24bd72a58f15884a4bba5f88b434813a168ce3404ddb8479bc8e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 712,
+        "output_tokens": 525,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 239,
+        "total_input_tokens": 8012,
+        "total_tokens": 8537
+      },
+      "estimated_usd": 0.008134,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "11월 중순 도쿄는 평균 10~18도로 선선하니 겉옷(자켓·가벼운 코트)과 레이어드할 옷, 편한 신발을 챙기시면 좋아요. 비 올 때를 대비해 접이식 우산도 추천드려요. 그 외 준비물로는 보조배터리, 멀티 어댑터(일본은 110V·A타입 콘센트), 여권·현금(엔화)·IC카드(Suica/Pasmo), 상비약 정도면 충분합니다. 일정 변경이 필요하면 언제든 말씀해 주세요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 6991,
+      "batch": "supplement32",
+      "batch_call": 16,
+      "call_id": 24
+    },
+    {
+      "call": 17,
+      "cumulative_call": 25,
+      "case": "currency",
+      "fixture": "currency",
+      "group": "general",
+      "version": "S",
+      "repeat": 1,
+      "request_sha256": "ef0c5477d08901babde497e0cc35f11e5c1427dc50aa6d306fd4c6f223319bc3",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 516,
+        "output_tokens": 441,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 45,
+        "total_input_tokens": 7667,
+        "total_tokens": 8108
+      },
+      "estimated_usd": 0.0068722,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "환전은 출국 전 국내 은행 앱이나 환전소에서 엔화로 미리 바꿔가는 게 환율이 유리한 편이에요. 공항 환전소는 환율이 불리하니 비상용 소액만 이용하고, 일본은 현금 결제 비중이 아직 높은 편이라 숙박비·교통비·식사비를 고려해 여유 있게 현금을 챙기는 걸 추천해요. 신용카드(비자/마스터 등)도 대부분 가맹점에서 사용 가능하니 현금과 카드를 적절히 섞어 쓰는 게 좋고, 편의점 ATM(세븐일레븐 등)에서도 해외카드로 엔화 인출이 가능합니다. 다만 환율과 수수료는 수시로 바뀌니 출국 전 은행 앱이나 환전 앱에서 최신 환율을 다시 확인해보세요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5965,
+      "batch": "supplement32",
+      "batch_call": 17,
+      "call_id": 25
+    },
+    {
+      "call": 18,
+      "cumulative_call": 26,
+      "case": "currency",
+      "fixture": "currency",
+      "group": "general",
+      "version": "A",
+      "repeat": 1,
+      "request_sha256": "ac2116cf0d5282436b2d3dfaae253b83d4c65973a218901b26f81c9f519f7de3",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 714,
+        "output_tokens": 365,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 56,
+        "total_input_tokens": 8014,
+        "total_tokens": 8379
+      },
+      "estimated_usd": 0.006538,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "일본은 카드보다 현금을 쓰는 곳이 아직 많아서 일정 금액은 미리 환전해 가시는 걸 추천드려요. 한국에서 출국 전에 은행 앱이나 공항 환전소에서 엔화로 환전하면 수수료가 더 저렴하고, 공항 도착 후 환전하면 환율이 불리한 경우가 많습니다. 소액 결제용으로 현금을 넉넉히 챙기고, 큰 지출은 신용카드나 교통카드(Suica, Pasmo)를 활용하면 편리해요. 환율은 출발 전 다시 확인해보시는 게 좋습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5200,
+      "batch": "supplement32",
+      "batch_call": 18,
+      "call_id": 26
+    },
+    {
+      "call": 19,
+      "cumulative_call": 27,
+      "case": "currency",
+      "fixture": "currency",
+      "group": "general",
+      "version": "B",
+      "repeat": 1,
+      "request_sha256": "f536eef9314d357cc3f1a84d7c163ff8f509c06253e7da85b261e2a42f819ff8",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 400,
+        "output_tokens": 366,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 6635,
+        "thinking_tokens": 55,
+        "total_input_tokens": 7035,
+        "total_tokens": 7401
+      },
+      "estimated_usd": 0.005787,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "일본은 카드보다 현금(엔화) 사용 빈도가 꽤 높아서 어느 정도 환전해 가시는 걸 추천드려요. 한국 은행 앱이나 공항 환전소보다는 시내 은행에서 미리 환전하면 환율 우대를 받을 수 있어 더 유리합니다. 소액은 현금으로, 큰 금액 결제는 신용카드나 교통카드(Suica, Pasmo 등) 충전으로 나눠 쓰는 걸 추천드리고, 출국 전에 최신 환율과 수수료는 이용하시는 은행 공지로 한 번 더 확인하시면 좋아요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5167,
+      "batch": "supplement32",
+      "batch_call": 19,
+      "call_id": 27
+    },
+    {
+      "call": 20,
+      "cumulative_call": 28,
+      "case": "mixed",
+      "fixture": "mixed",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 3,
+      "request_sha256": "df54f1fefe391d6553abd5a9cede092060f064825ac6ac4a8c6d4a0df51388f7",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 1301,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 976,
+        "total_input_tokens": 7681,
+        "total_tokens": 8982
+      },
+      "estimated_usd": 0.0155002,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "센소지와 스카이트리는 아사쿠사 쪽, 하치코 동상과 시부야 스카이는 시부야 쪽이라 동선이 겹치지 않게 묶었어요. 센소지 예약은 2일차(11/11)에 그대로 두고 스카이트리를 같은 날로 옮겼고, 시부야 스카이 예약은 3일차(11/12)에 두고 하치코 동상을 그날로 옮겼습니다. 이렇게 하면 하루는 아사쿠사, 하루는 시부야 권역으로 깔끔하게 나뉘어요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          },
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 12973,
+      "batch": "supplement32",
+      "batch_call": 20,
+      "call_id": 28
+    },
+    {
+      "call": 21,
+      "cumulative_call": 29,
+      "case": "mixed",
+      "fixture": "mixed",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 3,
+      "request_sha256": "61487c6937e8ea6707713b08218d52f14c9d67e98dc7e54fb3862262f99f7523",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 972,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 668,
+        "total_input_tokens": 8028,
+        "total_tokens": 9000
+      },
+      "estimated_usd": 0.012636,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재는 아사쿠사 쪽(센소지)과 시부야 쪽(하치코)이 서로 다른 날에 섞여 있어서 동선이 꼬여 있어요. 예약 시간이 있는 센소지(11/11)와 시부야 스카이(11/12)는 그대로 두고, 가까운 도쿄 스카이트리는 센소지가 있는 11/11로, 하치코 동상은 시부야 스카이가 있는 11/12로 옮겨서 같은 지역끼리 묶어드릴게요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 9706,
+      "batch": "supplement32",
+      "batch_call": 21,
+      "call_id": 29
+    },
+    {
+      "call": 22,
+      "cumulative_call": 30,
+      "case": "grouped",
+      "fixture": "grouped",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 3,
+      "request_sha256": "e56656a9821f7379497b4abec1f38ecf92ec2c21f67cbcbfb4b51fabcd7286f9",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 488,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 251,
+        "total_input_tokens": 7681,
+        "total_tokens": 8169
+      },
+      "estimated_usd": 0.0073701999999999995,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "지금 일정을 보니 2일차는 아사쿠사 권역(센소지+스카이트리), 3일차는 시부야 권역(시부야 스카이+하치코 동상)으로 이미 동선이 잘 묶여 있어요. 예약 시간이 있는 센소지·시부야 스카이도 그대로 유지하는 게 좋겠습니다. 따로 옮길 장소가 없어서 현재 구성을 그대로 추천드려요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5701,
+      "batch": "supplement32",
+      "batch_call": 22,
+      "call_id": 30
+    },
+    {
+      "call": 23,
+      "cumulative_call": 31,
+      "case": "grouped",
+      "fixture": "grouped",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 3,
+      "request_sha256": "23d4b48cab3990e4c21ff8aa4d9cc6aed3caeffd81e713005b228788594ed31e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 417,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 164,
+        "total_input_tokens": 8028,
+        "total_tokens": 8445
+      },
+      "estimated_usd": 0.007086,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정을 확인해보니 이미 동선이 잘 짜여 있어요! 2일차는 센소지와 스카이트리가 아사쿠사 인근으로 가깝게 묶여 있고, 3일차는 시부야 스카이와 하치코 동상이 시부야역 바로 앞이라 도보로 이동 가능할 정도로 가까워요. 숙소(신주쿠)와도 각각 무리 없는 거리라 별도로 옮길 일정은 없어 보입니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 5345,
+      "batch": "supplement32",
+      "batch_call": 23,
+      "call_id": 31
+    },
+    {
+      "call": 24,
+      "cumulative_call": 32,
+      "case": "missing",
+      "fixture": "missing",
+      "group": "reorganization",
+      "version": "B",
+      "repeat": 3,
+      "request_sha256": "374db0dd1162749ab59d3b59ed6b0c9d1573aa2f9c26f0951e9c80e5f781aff4",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 1197,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 906,
+        "total_input_tokens": 7669,
+        "total_tokens": 8866
+      },
+      "estimated_usd": 0.014436200000000001,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "확인해보니 2일차 센소지, 3일차 시부야 스카이는 예약 시간이 정해져 있어 날짜를 그대로 유지해야 해요. 하치코 동상과 도쿄 스카이트리는 좌표 정보가 없어서 추측으로 묶어 옮기기 어렵습니다. 그래서 현재 일정은 이미 고정된 요소들로 구성되어 있어 동선을 더 조정하기 어려운 상태예요. 혹시 하치코나 스카이트리의 정확한 위치를 알려주시면 그에 맞춰 다시 배치해드릴게요!",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 13366,
+      "batch": "supplement32",
+      "batch_call": 24,
+      "call_id": 32
+    },
+    {
+      "call": 25,
+      "cumulative_call": 33,
+      "case": "missing",
+      "fixture": "missing",
+      "group": "reorganization",
+      "version": "A",
+      "repeat": 3,
+      "request_sha256": "59882805ab21ec9a1cda5bb05396fe5909279ec33cefa100d7efb6ad06372311",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 714,
+        "output_tokens": 1069,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 780,
+        "total_input_tokens": 8014,
+        "total_tokens": 9083
+      },
+      "estimated_usd": 0.013578,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "현재 일정을 보니 이미 지역별로 잘 나뉘어 있어요! 2일차는 아사쿠사 쪽인 센소지(#3) 중심, 3일차는 숙소와 가까운 시부야 스카이(#4) 중심으로 묶여 있고, 하치코 동상(#6)과 스카이트리(#5)는 좌표 정보가 없어서 위치를 추측해 옮기지 않고 그대로 두는 게 안전할 것 같아요. 그래서 이번엔 동선상 큰 변경 없이 현재 배치를 유지하는 걸 추천드려요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [],
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 12163,
+      "batch": "supplement32",
+      "batch_call": 25,
+      "call_id": 33
+    },
+    {
+      "call": 26,
+      "cumulative_call": 34,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "S",
+      "repeat": 2,
+      "request_sha256": "20b88a4f81f93e259d969a8117f3c8f07a7a10e8051fb6f340e3eea80f558a85",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 512,
+        "output_tokens": 558,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 287,
+        "total_input_tokens": 7663,
+        "total_tokens": 8221
+      },
+      "estimated_usd": 0.0080342,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소 근처에 있는 'Streamer Coffee Company 신주쿠점'을 추천드려요. 커피 맛있기로 유명하고 숙소에서 가까워 편하게 들르실 수 있어요. 날짜나 시간을 정해주시면 일정에 맞게 배치해드릴게요!",
+        "additions": [
+          {
+            "name": "Streamer Coffee Company 신주쿠점",
+            "search_query": "Streamer Coffee Company Shinjuku Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 6685,
+      "batch": "supplement32",
+      "batch_call": 26,
+      "call_id": 34
+    },
+    {
+      "call": 27,
+      "cumulative_call": 35,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "11f243d356aeaf2972ba185c6344f2fe5c289f1d03954a093235b1ca63c032c3",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 512,
+        "output_tokens": 793,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 6635,
+        "thinking_tokens": 417,
+        "total_input_tokens": 7147,
+        "total_tokens": 7940
+      },
+      "estimated_usd": 0.010281,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소 근처 카페 두 곳을 추천드려요! 스트리머 커피 컴퍼니 신주쿠점은 라떼 아트로 유명한 곳이고, 베르그 신주쿠역점은 간단한 커피와 빵을 즐기기 좋은 현지인 맛집이에요. 날짜나 시간은 아직 정하지 않았으니, 원하시면 알려주세요!",
+        "additions": [
+          {
+            "name": "스트리머 커피 컴퍼니 신주쿠점",
+            "search_query": "Streamer Coffee Company Shinjuku Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          },
+          {
+            "name": "베르그 신주쿠역점",
+            "search_query": "BERG Shinjuku Station Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 8911,
+      "batch": "supplement32",
+      "batch_call": 27,
+      "call_id": 35
+    },
+    {
+      "call": 28,
+      "cumulative_call": 36,
+      "case": "nearby",
+      "fixture": "nearby",
+      "group": "location",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "29b8c544f0d9763aafc14b2765cdc7af3399cb6b1ba38191c2185048bf987b9f",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 710,
+        "output_tokens": 618,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 356,
+        "total_input_tokens": 8010,
+        "total_tokens": 8628
+      },
+      "estimated_usd": 0.00906,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "신주쿠 숙소 근처라면 '사루타히코 커피 신주쿠점'을 추천드려요. 핸드드립 커피로 유명하고 숙소에서 가까워 짬 날 때 들르기 좋아요. 날짜나 시간을 정하고 싶으시면 알려주세요!",
+        "additions": [
+          {
+            "name": "사루타히코 커피 신주쿠점",
+            "search_query": "Sarutahiko Coffee Shinjuku Tokyo",
+            "kind": "cafe",
+            "day_index": null,
+            "time": null,
+            "stay_minutes": 30
+          }
+        ],
+        "remove_item_ids": [],
+        "moves": [],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "move_count": 0,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 6961,
+      "batch": "supplement32",
+      "batch_call": 28,
+      "call_id": 36
+    },
+    {
+      "call": 29,
+      "cumulative_call": 37,
+      "case": "followup",
+      "fixture": "mixed",
+      "group": "followup",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "786071592dc37e4e3926c988d21036312e3dc89f88a78fb9501c0c1355a56e03",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 637,
+        "output_tokens": 912,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 664,
+        "total_input_tokens": 7788,
+        "total_tokens": 8700
+      },
+      "estimated_usd": 0.0118242,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "예약 시간은 그대로 두고 동선만 정리했어요. 하치코 동상을 3일차(시부야 스카이와 같은 날)로, 도쿄 스카이트리를 2일차(센소지와 같은 날)로 옮겨 신주쿠 숙소 기준으로 아사쿠사권과 시부야권을 각각 하루씩 묶었습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          },
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 9806,
+      "batch": "supplement32",
+      "batch_call": 29,
+      "call_id": 37
+    },
+    {
+      "call": 30,
+      "cumulative_call": 38,
+      "case": "followup",
+      "fixture": "mixed",
+      "group": "followup",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "3f55e2f31e63610d159f79b43f34b6d2f20cbe8c3884f4e274a99108dc0bba3e",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 835,
+        "output_tokens": 810,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 490,
+        "total_input_tokens": 8135,
+        "total_tokens": 8945
+      },
+      "estimated_usd": 0.01123,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "동선 기준으로 보니 센소지(#3)와 스카이트리(#5)는 아사쿠사 인근이라 가깝고, 하치코 동상(#6)과 시부야 스카이(#4)도 시부야 인근이라 가까워요. 예약 시간이 있는 센소지·시부야 스카이는 날짜를 그대로 두고, 스카이트리는 2일차(11/11)로, 하치코 동상은 3일차(11/12)로 옮겨서 같은 지역끼리 묶을게요. 항공·숙소 일정은 그대로 유지했습니다.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 8609,
+      "batch": "supplement32",
+      "batch_call": 30,
+      "call_id": 38
+    },
+    {
+      "call": 31,
+      "cumulative_call": 39,
+      "case": "compound",
+      "fixture": "mixed",
+      "group": "compound",
+      "version": "B",
+      "repeat": 2,
+      "request_sha256": "64bd5886dc68477f9c35d729ed7f8f5fbac0490f104a33241087a021a8cc455c",
+      "system_blocks": 2,
+      "usage": {
+        "input_tokens": 549,
+        "output_tokens": 1287,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7151,
+        "thinking_tokens": 839,
+        "total_input_tokens": 7700,
+        "total_tokens": 8987
+      },
+      "estimated_usd": 0.0153982,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "환전은 일본 엔화(JPY) 기준으로, 공항 환전소보다 시내 환전소나 출국 전 은행 환전이 환율상 유리한 경우가 많아요. 소액 현금은 꼭 준비하시고(현지 소규모 식당·상점은 카드 미지원인 곳이 있어요), 나머지는 해외 결제 가능한 체크카드나 트래블카드로 ATM 인출하는 방법도 편리합니다. 다만 환율과 수수료는 수시로 바뀌니 출발 전 최신 정보로 다시 확인해보세요. 일정은 예약된 센소지(2일차)와 시부야 스카이(3일차)는 그대로 두고, 하치코 동상은 시부야 스카이와 같은 3일차로, 도쿄 스카이트리는 센소지와 같은 2일차(아사쿠사 권역)로 옮겨서 동선을 가깝게 묶었어요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          },
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 13376,
+      "batch": "supplement32",
+      "batch_call": 31,
+      "call_id": 39
+    },
+    {
+      "call": 32,
+      "cumulative_call": 40,
+      "case": "compound",
+      "fixture": "mixed",
+      "group": "compound",
+      "version": "A",
+      "repeat": 2,
+      "request_sha256": "3a127c38c3fb2ba950e8fc354471dc3d360378212cfb78ffbd2034cb605e0748",
+      "system_blocks": 1,
+      "usage": {
+        "input_tokens": 747,
+        "output_tokens": 1898,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 7300,
+        "thinking_tokens": 1458,
+        "total_input_tokens": 8047,
+        "total_tokens": 9945
+      },
+      "estimated_usd": 0.021934,
+      "response_model": "claude-sonnet-5",
+      "stop_reason": "end_turn",
+      "plan": {
+        "reply": "환전은 한국에서 출국 전에 미리 엔화로 환전해두시는 게 환율·수수료 면에서 유리한 경우가 많아요. 주거래은행 앱의 환전 우대 쿠폰이나 공항 환전소를 이용하면 되고, 도쿄 현지에서도 시내 환전소나 ATM(세븐은행 등)에서 엔화 인출이 가능합니다. 다만 환율과 수수료 조건은 수시로 바뀌니 출발 전에 은행 공지로 다시 확인해보세요. 일정은 예약이 있는 센소지(11/11)와 시부야 스카이(11/12)는 그대로 두고, 위치가 가까운 장소끼리 묶었어요. 도쿄 스카이트리는 센소지와 가까우니 11/11로 옮기고, 하치코 동상은 시부야 스카이와 가까우니 11/12로 옮길게요.",
+        "additions": [],
+        "remove_item_ids": [],
+        "moves": [
+          {
+            "item_id": 5,
+            "day_index": 1,
+            "time": null
+          },
+          {
+            "item_id": 6,
+            "day_index": 2,
+            "time": null
+          }
+        ],
+        "form": null,
+        "confirm": null,
+        "flight": null,
+        "hotel_change": null,
+        "off_topic": false,
+        "source_ids": []
+      },
+      "passed": true,
+      "preserved": true,
+      "valid_moves": true,
+      "moves": [
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          2
+        ]
+      ],
+      "move_count": 2,
+      "integrity_passed": true,
+      "integrity_errors": [],
+      "ms": 19179,
+      "batch": "supplement32",
+      "batch_call": 32,
+      "call_id": 40
+    }
+  ]
+}
