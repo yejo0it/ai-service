@@ -123,6 +123,7 @@ class ConversationLengthLogTests(APITestCase):
         self.assertEqual([m["content"] for m in sent[:-1]], [m["content"] for m in messages[-20:-1]])
         # 캐시 지점·응답 형식은 그대로
         self.assertEqual(model.sent[0]["system"], ai_planner.SYSTEM_BLOCKS)
+        self.assertTrue(all("cache_control" in block for block in model.sent[0]["system"]))
         self.assertEqual(set(response.data), {"reply", "choices", "redacted", "proposal", "preview", "registration",
                                               "removed", "unresolved", "route", "sources"})
 

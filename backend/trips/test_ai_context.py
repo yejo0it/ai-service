@@ -1,7 +1,7 @@
 """
-'AI와 함께 만들기' 여행 컨텍스트(trip_context) 형식 압축
+'AI와 함께 만들기' 여행 컨텍스트(trip_context)의 일정 정보 보존
 
-- 줄마다 반복되던 표기만 줄였고, 날짜·day_index·방문 순서·일정 id·이름·시간·시간 표기는 모두 그대로 보낸다
+- 일정 id는 #으로 줄이고, day_index는 일차와 구분한다. 날짜·방문 순서·일정 id·이름·시간·시간 표기는 모두 보낸다
   (압축한 문자열에서 모든 값을 다시 읽어 낼 수 있다).
 - 표시한 id(#숫자)로 모델이 삭제·이동을 고르면 서버가 기존과 같이 이 여행의 일정 id만 받아들인다.
 - 매 요청 DB에서 최신 일정을 읽어 보내므로 채팅 밖에서 바뀐 일정(직접 수정·일행)도 다음 요청에 반영된다.
@@ -26,7 +26,7 @@ from .models import Hotel, ItineraryItem, Trip
 User = get_user_model()
 
 KEY = {"ANTHROPIC_API_KEY": "sk-ant-TEST-CONTEXT"}
-DAY_LINE = re.compile(r"^(\d+) (\d{4}-\d{2}-\d{2}): (.*)$")
+DAY_LINE = re.compile(r"^day_index=(\d+) \(\d+일차, (\d{4}-\d{2}-\d{2})\): (.*)$")
 ENTRY = re.compile(r"^#(\d+) (.+?)(?: (\d{2}:\d{2}))?(?: \(([^()]*)\))?$")
 
 
@@ -41,6 +41,7 @@ def parse_schedule(context):
         entries = []
         if body != "없음":
             for part in body.split(", "):
+                part = part.rsplit(" [", 1)[0]  # 종류·위치 메타데이터를 분리하고 원래 일정 필드를 복원한다.
                 entry = ENTRY.match(part)
                 assert entry, part
                 card_id, title, time, label = entry.groups()
@@ -108,7 +109,7 @@ class TripContextFormatTests(APITestCase):
                 for item in ItineraryItem.objects.filter(trip=self.trip, day=day).order_by("order", "id")
             ])
         self.assertEqual(parse_schedule(context), expected)
-        self.assertIn("1 2026-11-11: 없음", context)  # 일정이 없는 날도 날짜와 함께 보낸다
+        self.assertIn("day_index=1 (2일차, 2026-11-11): 없음", context)  # 빈 날짜도 인덱스·일차를 구분한다
 
     def test_registration_lines_are_unchanged(self):
         context = self.context()
@@ -125,18 +126,12 @@ class TripContextFormatTests(APITestCase):
         self.assertIn("숙소 등록 정보 (이번 대화에서 제안한 내용 포함, 아직 적용 전):", context)
         self.assertIn("[새 숙소] 시부야 스트림 엑셀 호텔 (2026-11-11~2026-11-12)", context)
 
-    def test_compressed_context_is_shorter_than_before(self):
-        """같은 일정의 예전 형식('- day_index N (날짜): [id=N] ...')보다 짧다."""
-        self.trip.refresh_from_db()
-        days = days_map(self.trip)
-        old_lines = [
-            f"- day_index {index} ({day}): " + (", ".join(
-                f"[id={c['id']}] {c['title']}" + (f" {c['time']}" if c.get("time") else "")
-                + (f" ({c['time_label']})" if c.get("time_label") else "") for c in days[day]) or "없음")
-            for index, day in enumerate(sorted(days))
-        ]
-        new_lines = self.context().split("\n")[5:]
-        self.assertLess(len("\n".join(new_lines)), len("\n".join(old_lines)))
+    def test_metadata_does_not_duplicate_ids_or_date_mapping(self):
+        context = self.context()
+        for item in self.items:
+            self.assertEqual(len(re.findall(rf"#{item.id}\b", context)), 1)
+        self.assertNotIn("날짜 대응:", context)
+        self.assertNotIn("배치 정보 (", context)
 
     def test_system_prompt_explains_the_id_mark(self):
         self.assertIn("id(#뒤의 숫자)", ai_planner.SYSTEM_PROMPT)

@@ -1,7 +1,7 @@
 """
 'AI와 함께 만들기' 프롬프트 캐싱 (ai_planner.SYSTEM_BLOCKS)
 
-- 시스템 프롬프트 블록 하나에만 캐시 지점(cache_control, 기본 5분)을 두고, 내용은 매 요청 똑같다.
+- 공통·재구성 상세 프롬프트의 고정 캐시 지점(cache_control, 기본 5분)은 모든 요청에서 유지한다.
 - 대화·여행 정보·질문은 캐시 지점 뒤(messages)에 그대로 있어 매 요청 최신 DB 내용으로 새로 보낸다.
 - 캐시 생성·적중·미적중의 usage가 그대로 기록되고, 미적중이어도 응답은 같다.
 - 캐시와 관련한 API 오류는 기존 오류 응답으로 처리하고 다시 보내지 않는다(같은 옵션으로 반복 호출하지 않는다).
@@ -76,16 +76,18 @@ class PromptCacheTests(APITestCase):
             return self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
                                     {"messages": [{"role": "user", "content": text}]}, format="json")
 
-    def test_request_puts_a_single_cache_point_on_the_fixed_system_prompt(self):
+    def test_request_keeps_both_fixed_system_cache_points(self):
         model = FakeMessages(usage(), usage())
-        self.post(model)
-        self.post(model, "둘째 날은?")
+        self.post(model, "환전 방법 알려줘")
+        self.post(model, "준비물 알려줘")
         first, second = model.sent
-        self.assertEqual(first["system"], [{"type": "text", "text": ai_planner.SYSTEM_PROMPT,
-                                            "cache_control": {"type": "ephemeral"}}])  # ttl 없음 = 기본 5분
+        self.assertEqual(first["system"], [
+            {"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}
+            for prompt in (ai_planner.SYSTEM_PROMPT, ai_planner.REORGANIZATION_PROMPT)
+        ])  # ttl 없음 = 기본 5분
         self.assertEqual(first["system"], second["system"])  # 고정 부분은 요청마다 똑같다
         self.assertIs(first["output_format"], ai_planner.PlanResponse)
-        # 동적인 내용은 캐시 지점 뒤(messages)에만 있고, 캐시 지점은 시스템 프롬프트 하나뿐이다
+        # 동적인 내용은 두 고정 시스템 블록 뒤(messages)에만 둔다.
         self.assertNotIn("센소지", first["system"][0]["text"])  # 여행 데이터는 캐시하는 블록에 없다
         for message in first["messages"]:
             self.assertIsInstance(message["content"], str)
