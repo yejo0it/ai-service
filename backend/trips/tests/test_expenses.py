@@ -16,8 +16,8 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Profile
 
-from . import travel_info
-from .models import Expense, Trip, TripBudget, TripMember
+from .. import travel_info
+from ..models import Expense, Trip, TripBudget, TripMember
 
 User = get_user_model()
 

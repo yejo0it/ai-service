@@ -17,7 +17,7 @@
 - **떠나기 전 필요한 정보**: 여행지 날씨 예보와 현지 통화 환율을 홈에서 바로 확인
 - **간편한 계정**: 이메일 가입(휴대폰 인증)과 카카오·네이버 로그인 지원
 
-> 숙소를 기준으로 한 일별 동선 최적화는 개발 중입니다.
+> AI가 날짜별 장소 묶음을 제안하고, 서버가 숙소·고정 일정을 고려해 방문 순서와 이동 경로를 계산합니다. 외부 교통 API의 설정·지원 지역·호출 한도에 따라 실제 이동 시간 제공 여부가 달라집니다.
 
 ## Tech Stack
 
@@ -43,7 +43,7 @@
 3. **숙소**: Google Places로 숙소 검색, 도시별 배정, 숙박 기간이 겹치지 않게 선택 (건너뛰기 가능)
 
 ### 🗺️ 여행 상세
-- **일별 일정**: 항공편·숙소 카드를 바탕으로 장소를 추가하고 순서 변경, 메모·시간 수정
+- **일별 일정**: 항공편·숙소 카드를 바탕으로 장소를 추가하고 순서 변경, 장소·시간 수정
 - **지도**: 하루 동선을 지도에서 확인
 - **AI와 함께 만들기**: 대화로 일정 제안을 받아 미리 보고 적용 (Claude)
 - **일행 초대**: 초대 링크로 일행과 함께 일정 편집
@@ -60,8 +60,8 @@
 **필요한 것**: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 ```bash
-git clone https://github.com/yejo0it/ai-service.git
-cd ai-service
+git clone https://github.com/yejo0it/pinroute-app.git
+cd pinroute-app
 cp .env.example .env          # 필요한 키만 채우기 (아래 표 참고)
 docker compose up -d --build
 ```
@@ -87,6 +87,8 @@ docker compose up -d --build
 
 **DB 마이그레이션 (필수)**
 
+아래 실행 방법과 Compose 기본 설정은 개발 환경용입니다. 운영 배포 설정은 별도로 준비해야 합니다.
+
 DB 테이블은 마이그레이션으로 만들어집니다. 마이그레이션이 적용되지 않으면 API가 오류를 돌려주니 꼭 확인하세요.
 
 - 컨테이너를 처음 띄우거나 다시 시작하면 백엔드가 시작하면서 자동으로 적용합니다.
@@ -103,6 +105,34 @@ docker compose exec backend python manage.py migrate
 ```bash
 docker compose exec backend python manage.py ingest_guides
 ```
+
+**로그 확인**
+
+백엔드 로그는 모두 컨테이너 표준 출력으로 나가며 `docker compose logs`로 봅니다.
+
+```bash
+docker compose logs -f --tail 100 backend                       # 실시간 확인
+docker compose logs --since 1h backend | grep -E "WARNING|ERROR"  # 최근 1시간 경고·오류
+docker compose logs backend | grep '"event":"ai_request"'       # AI 요청 사용량(JSON 한 줄)
+```
+
+| 로그 | 형식 | 내용 |
+| --- | --- | --- |
+| 앱·Django | `시각 수준 로거: 메시지` | 앱 로그(`DJANGO_LOG_LEVEL`, 기본 `INFO`), 4xx 경고, 5xx 오류와 traceback |
+| 요청 줄 | `[시각] "요청" 상태 크기` | 개발 서버(runserver)의 요청 기록. 정상 헬스체크(`/api/v1/health/`, 15초 간격, 서버 응답·DB 연결 확인)는 남기지 않음 |
+| AI 사용량 | JSON 한 줄 | 'AI와 함께 만들기' 토큰·응답 시간(숫자만, `AI_USAGE_LOG_ENABLED`) |
+| 번역하지 못한 역 이름 | 파일 | `backend/logs/untranslated_names.jsonl` (`python manage.py untranslated_names`) |
+
+- 외부 라이브러리는 경고 이상만 남깁니다. 앱은 대화 내용·API 키·인증 토큰을 기록하지 않습니다.
+- 앱·Django 로그와 요청 줄은 traceback까지 포함한 출력 전체에서 초대 링크 토큰, URL 쿼리의 인증 값, `Authorization` 값, API 키, `password`·`secret`·`api_key` 같은 키의 값, DB 제약 위반 메시지의 값, 이메일 주소를 `***`로 가립니다(`backend/config/log_masking.py`). 키·컬럼 이름과 예외 종류·파일·줄 번호는 남습니다.
+- 휴대폰 인증번호는 로그에 남기지 않습니다(SMS 미연동 안내 한 줄만 남고, 개발 서버는 인증번호를 화면에 표시합니다).
+- **가려지지 않는 출력**: 아래는 로그 설정을 거치지 않아 위의 가림이 적용되지 않습니다.
+  - 개발용 메일 출력: `EMAIL_HOST`가 비어 있으면 이메일 변경 인증 메일 전문(받는 사람 이메일, 인증 링크 토큰 포함)이 백엔드 로그에 그대로 찍힙니다. 개발에서만 쓰고, 운영은 `EMAIL_HOST`가 없으면 메일을 보내지 않습니다(503).
+  - 관리 명령(`python manage.py ...`)의 터미널 출력
+- **운영 배포 시 주의**
+  - `DJANGO_DEBUG=0`으로 실행합니다. `docker-compose.yml`의 기본값은 개발용 `1`이며, `DEBUG=1`이면 오류 화면에 요청 정보가 보이고 개발용 출력이 켜집니다.
+  - 기본 실행 명령은 개발 서버(runserver)입니다. 운영에서 다른 WSGI 서버를 쓰면 그 서버의 접근 로그(요청 URL·쿼리)는 위의 가림이 적용되지 않으므로 따로 설정해야 합니다.
+- 컨테이너 로그는 서비스마다 10MB 파일 3개까지 보존합니다(`docker-compose.yml`의 `x-logging`). 바꾼 설정은 `docker compose up -d`로 컨테이너를 다시 만들어야 반영됩니다.
 
 ## Notes
 

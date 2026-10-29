@@ -16,9 +16,9 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Profile
 
-from . import ai_planner, chat_guard
-from .itinerary_views import days_map
-from .models import Hotel, ItineraryItem, Trip
+from .. import ai_planner, chat_guard
+from ..itinerary_views import days_map
+from ..models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 

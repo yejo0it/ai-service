@@ -44,7 +44,8 @@ def _hash(phone, code):
 
 def _send_sms(phone, text):
     if settings.DEBUG:
-        logger.warning("[SMS 미연동] %s <- %s", phone, text)
+        # 개발 서버는 인증번호를 화면(응답의 debug_code)으로 보여 준다. 로그에는 휴대폰 번호·인증번호·문자 내용을 남기지 않는다.
+        logger.warning("[SMS 미연동] 인증번호 문자를 보내지 않았어요(개발 서버는 화면에 인증번호를 표시합니다).")
         return
     raise PhoneVerificationError("인증번호를 보낼 수 없어요. 잠시 후 다시 시도해 주세요.", 503)
 

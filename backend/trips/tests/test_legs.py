@@ -13,8 +13,8 @@ from django.test import SimpleTestCase, TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import legs, routes
-from .models import ItineraryItem, Trip
+from .. import legs, routes
+from ..models import ItineraryItem, Trip
 
 User = get_user_model()
 
@@ -309,7 +309,7 @@ class DayLegsApiTests(APITestCase):
 
 class KoreanLineNameTests(SimpleTestCase):
     def test_major_lines(self):
-        from .line_names import korean_line_name as ko
+        from ..line_names import korean_line_name as ko
         cases = {
             "ＪＲ山手線": "JR야마노테선",  # 전각 ＪＲ도 처리
             "JR中央・総武線": "JR주오·소부선",
@@ -334,13 +334,13 @@ class KoreanLineNameTests(SimpleTestCase):
             self.assertEqual(ko(japanese), korean, japanese)
 
     def test_buses(self):
-        from .line_names import korean_line_name as ko
+        from ..line_names import korean_line_name as ko
         self.assertEqual(ko("都営バス 渋88"), "도에이버스 渋88")  # 노선 번호·행선지는 그대로
         self.assertEqual(ko("東急バス"), "도큐버스")
         self.assertEqual(ko("名もなきバス"), "名もなき버스")
 
     def test_unknown_names_stay_as_is_and_empty_is_empty(self):
-        from .line_names import korean_line_name as ko
+        from ..line_names import korean_line_name as ko
         self.assertEqual(ko("ＪＲ謎線"), "JR謎線")  # 사전에 없으면 원문(전각만 정리)
         self.assertEqual(ko("未知鉄道ほげ線"), "未知鉄道ほげ線")
         self.assertEqual(ko(""), "")
@@ -349,7 +349,7 @@ class KoreanLineNameTests(SimpleTestCase):
 
 class TrainTypeAndNormalizationTests(SimpleTestCase):
     def test_train_types_are_separated_from_line_names(self):
-        from .line_names import korean_line_and_type as split
+        from ..line_names import korean_line_and_type as split
 
         cases = {
             ("ＪＲ京都線新快速", "快速"): ("JR교토선", "JR京都線", "신쾌속", "新快速"),
@@ -367,13 +367,13 @@ class TrainTypeAndNormalizationTests(SimpleTestCase):
             self.assertEqual((result["train_type"], result["train_type_ja"]), (type_ko, type_ja), name)
 
     def test_unknown_line_keeps_original_and_only_known_type(self):
-        from .line_names import korean_line_and_type as split
+        from ..line_names import korean_line_and_type as split
 
         result = split("ＪＲ謎線快速", "快速")
         self.assertEqual((result["line_name"], result["train_type"]), ("JR謎線", "쾌속"))  # 노선은 원어, 종별은 확정된 값
 
     def test_compound_lines_need_every_part(self):
-        from .line_names import korean_line_name as ko
+        from ..line_names import korean_line_name as ko
 
         self.assertEqual(ko("ＪＲ京浜東北線・根岸線"), "JR게이힌도호쿠선·네기시선")
         self.assertEqual(ko("ＪＲ京浜東北線・謎線"), "JR京浜東北線・謎線")  # 하나라도 모르면 원어 전체

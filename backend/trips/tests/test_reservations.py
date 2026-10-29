@@ -24,9 +24,9 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Hotel, ItineraryItem, Trip
-from .reservations import extract, files, validate
-from .reservations.schemas import FlightDocument, FlightItinerary, FlightSegment, HotelDocument, HotelStay
+from ..models import Hotel, ItineraryItem, Trip
+from ..reservations import extract, files, validate
+from ..reservations.schemas import FlightDocument, FlightItinerary, FlightSegment, HotelDocument, HotelStay
 
 User = get_user_model()
 

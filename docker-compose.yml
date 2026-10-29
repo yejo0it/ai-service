@@ -1,3 +1,10 @@
+# 컨테이너 로그(docker compose logs) 보존 상한: 서비스마다 10MB 파일 3개까지 두고 오래된 것부터 지운다.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     # postgres:16-alpine + pgvector (db/Dockerfile)
@@ -19,6 +26,7 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
 
   backend:
     build: ./backend
@@ -49,6 +57,10 @@ services:
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
       # 여행 상세 'AI와 함께 만들기'(Claude). 비어 있으면 AI API가 503을 돌려준다.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 토큰 사용량·응답 시간 로그(숫자만, docker compose logs backend). 0이면 끈다.
+      AI_USAGE_LOG_ENABLED: ${AI_USAGE_LOG_ENABLED:-1}
+      # 앱 로그 레벨(DEBUG·INFO·WARNING·ERROR·CRITICAL). Django 오류와 외부 라이브러리 경고는 레벨과 관계없이 남는다.
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
       # AI 일정 제안의 실제 이동 시간 계산(Google Routes API). 비어 있으면 직선거리 기준으로 동작한다.
       GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
       # 대중교통 이동 시간(NAVITIME Route, RapidAPI). 비어 있으면 대중교통 시간은 표시하지 않는다.
@@ -87,7 +99,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # 서버가 요청에 응답하는지 확인한다. 응답만 오면 정상으로 보므로(로그인 전 401 포함) 연결이 안 될 때만 unhealthy가 된다.
+    # 로그인이 필요 없는 헬스체크 엔드포인트(/api/v1/health/)가 200을 돌려주면 정상이다(서버 응답 + DB 연결 확인).
+    # 연결이 안 되거나 오류 응답(4xx·5xx, DB 연결 실패 시 503)이면 unhealthy가 된다. 정상 헬스체크는 요청 로그에 남지 않는다.
     # 시작 직후 마이그레이션 시간을 고려해 start_period를 둔다. 상태는 `docker compose ps`로 확인한다.
     healthcheck:
       test:
@@ -95,16 +108,14 @@ services:
         - python
         - -c
         - |
-          import urllib.request, urllib.error
-          try:
-              urllib.request.urlopen("http://127.0.0.1:8000/api/v1/auth/me/", timeout=3)
-          except urllib.error.HTTPError:
-              pass
+          import urllib.request
+          urllib.request.urlopen("http://127.0.0.1:8000/api/v1/health/", timeout=3)
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 60s
     restart: unless-stopped
+    logging: *default-logging
 
   frontend:
     build: ./frontend
@@ -128,6 +139,7 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   pgdata:

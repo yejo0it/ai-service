@@ -15,6 +15,7 @@
 import json
 import re
 from datetime import date, time as dtime
+from time import perf_counter
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -26,7 +27,7 @@ from rest_framework.views import APIView
 
 from guides import search as guide_search
 
-from . import ai_planner, chat_guard, legs, places, registration, route_planner
+from . import ai_planner, ai_usage, chat_guard, legs, places, rag_policy, registration, route_planner
 from .cities import normalize_key, trip_center
 from .itinerary_planner import day_anchor, place_cards, trip_days
 from .models import ItineraryItem, PackingItem, Trip
@@ -576,6 +577,7 @@ class ConversationSerializer(serializers.Serializer):
     def validate_messages(self, value):
         if value[-1]["role"] != "user":
             raise serializers.ValidationError("마지막 메시지는 사용자 메시지여야 해요.")
+        self.received_count = len(value)  # 최근 메시지만 남기기 전의 실제 수(대화 길이 기록용, trips.ai_usage)
         return value[-20:]
 
 
@@ -667,6 +669,8 @@ class AiProposeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        started = perf_counter()  # 요청 처리 전체 시간(모델 호출 시간은 ai_planner가 따로 잰다)
+        request_id = ai_usage.new_request_id()  # 이 요청의 모델 호출 기록과 처리 기록을 잇는 무작위 id
         trip = accessible_trip(request, pk)
         serializer = ConversationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -687,18 +691,39 @@ class AiProposeView(APIView):
             safe_messages.append({**turn, "content": content})
             redacted += [label for label in found if label not in redacted]
         messages = safe_messages
+        # 대화 길이 기록(숫자만): 가린 뒤 모델에 실제로 보내는 이전 대화 기준. ai_planner와 같은 정리(strip_trip_tags)를 거친 글자 수다.
+        conversation = {
+            "messages_received": serializer.received_count,
+            "messages_sent": len(messages),
+            "history_truncated": serializer.received_count > len(messages),
+            "history_chars": sum(len(chat_guard.strip_trip_tags(turn["content"])) for turn in messages[:-1]),
+        }
 
         days = days_map(trip)
         ordered_days = sorted(days)
         draft = _validated_draft(request.data.get("draft"))
         # 여행 정보 질문의 근거: 여행지 안내 문서에서 마지막 질문과 관련된 발췌를 찾는다(없으면 빈 목록).
-        references = guide_search.search_for_trip(trip, messages[-1]["content"])
+        # 분명한 수정·등록 요청은 문서가 도움이 되지 않아 검색하지 않는다(rag_policy, 애매하면 검색).
+        use_guides, rag_reason = rag_policy.guide_search_decision(messages[-1]["content"])
+        rag_started = perf_counter()
+        references = guide_search.search_for_trip(trip, messages[-1]["content"]) if use_guides else []
+        rag = {
+            "rag_used": use_guides,
+            "rag_reason": rag_reason,
+            "rag_hits": len(references),
+            "rag_chars": len(ai_planner.reference_context(references)) if references else 0,
+            "rag_ms": round((perf_counter() - rag_started) * 1000) if use_guides else None,
+        }
         try:
-            plan = ai_planner.propose(trip, ordered_days, days, messages, draft, references)
+            plan = ai_planner.propose(
+                trip, ordered_days, days, messages, draft, references, source=ai_usage.SOURCE_USER, request_id=request_id
+            )
         except ai_planner.PlannerError as exc:
+            _record_request(request_id, "planner_error", exc.status_code, started, conversation, rag)
             return Response({"detail": str(exc)}, status=exc.status_code)
         # 여행과 관계없는 요청: 정해진 문구로 거절하고 아무것도 바꾸지 않는다.
         if plan.off_topic:
+            _record_request(request_id, "off_topic", status.HTTP_200_OK, started, conversation, rag)
             return _refusal_response()
 
         additions, unresolved = [], []
@@ -715,7 +740,6 @@ class AiProposeView(APIView):
             time = addition.time if addition.time and TIME_PATTERN.match(addition.time) else ""
             card = place_card(detail, addition.kind, time)
             card["day"] = day
-            card["reason"] = addition.reason
             if addition.stay_minutes:  # AI가 정한 값만 저장한다(없으면 모르는 것으로 두고 계산에서만 기본값을 쓴다)
                 card["stay_minutes"] = max(route_planner.MIN_STAY, min(route_planner.MAX_STAY, int(addition.stay_minutes)))
             additions.append(card)
@@ -799,6 +823,7 @@ class AiProposeView(APIView):
             }
             for day in ordered_days
         ]
+        _record_request(request_id, "ok", status.HTTP_200_OK, started, conversation, rag)
         return Response(
             {
                 "reply": reply,
@@ -822,6 +847,17 @@ class AiProposeView(APIView):
                 "sources": _cited_sources(references, plan.source_ids),
             }
         )
+
+
+def _record_request(request_id, outcome, status_code, started, conversation, rag):
+    """
+    모델을 부른 제안 요청의 처리 전체 시간과 대화 길이·여행 정보 검색 수치를 남긴다(trips.ai_usage).
+    대화 내용·사용자·여행 id는 남기지 않고, 모델 호출 기록과 잇는 무작위 request_id만 붙인다(사용자 채팅 요청이라 source=user).
+    """
+    ai_usage.record_request(
+        ai_planner.USAGE_FEATURE, ai_usage.SOURCE_USER, request_id, outcome, status_code, (perf_counter() - started) * 1000,
+        conversation, rag,
+    )
 
 
 def _eta_text(route_plan, day, card):

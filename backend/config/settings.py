@@ -166,6 +166,58 @@ STATION_NAMES_ENABLED = os.environ.get("STATION_NAMES_ENABLED", "1") == "1"
 # 한국어로 바꾸지 못한 역·노선 이름 수집(trips.untranslated). 사전을 보완할 때 `python manage.py untranslated_names`로 본다.
 UNTRANSLATED_LOG_ENABLED = os.environ.get("UNTRANSLATED_LOG_ENABLED", "1") == "1"
 UNTRANSLATED_LOG_PATH = os.environ.get("UNTRANSLATED_LOG_PATH", str(BASE_DIR / "logs" / "untranslated_names.jsonl"))
+# 'AI와 함께 만들기' 토큰 사용량·응답 시간 기록(trips.ai_usage). 한 줄에 JSON 하나로 표준 출력(docker compose logs backend)에 남긴다.
+# 숫자·모델명·결과 종류만 남기고 대화·여행 정보·id는 남기지 않는다. 0으로 끌 수 있고, 테스트 실행 중에는 출력하지 않는다.
+AI_USAGE_LOG_ENABLED = os.environ.get("AI_USAGE_LOG_ENABLED", "1") == "1"
+# 서버 로그. 모두 컨테이너 표준 출력·오류로 내보내고 `docker compose logs backend`로 본다(파일로 쌓지 않는다).
+# - 앱 로거(accounts·trips·guides): DJANGO_LOG_LEVEL 이상(기본 INFO). 형식은 "시각 수준 로거: 메시지"
+# - Django(django.request의 4xx 경고·5xx 오류와 traceback 등): 개발·운영 모두 남긴다(기본 설정은 운영에서 출력하지 않았다).
+# - 그 밖의 라이브러리(httpx·anthropic 등): WARNING 이상만 남겨 호출마다 찍히는 INFO 로그를 막는다.
+# - 정상 헬스체크(/api/v1/health/) 요청 줄은 15초마다 쌓이지 않게 뺀다(config.health).
+# - 요청 줄(django.server)은 기존 형식 그대로 두고, AI 사용량(JSON 한 줄)·번역 못 한 이름(파일)은 각자 출력해
+#   일반 로그에 중복으로 찍히지 않는다(propagate=False).
+# - 일반 로그·요청 줄은 출력 전체(메시지·traceback·stack_info)에서 비밀 값·개인정보를 가린다(config.log_masking).
+#   각 모듈도 개인정보·대화·키를 직접 기록하지 않는다.
+# - 테스트 실행 중에는 일반 로그를 출력하지 않는다(assertLogs로 확인하는 테스트는 그대로 동작한다).
+LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").strip().upper()
+if LOG_LEVEL not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+    raise ImproperlyConfigured("DJANGO_LOG_LEVEL은 DEBUG·INFO·WARNING·ERROR·CRITICAL 중 하나로 설정해 주세요.")
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {"quiet_health_check": {"()": "config.health.QuietHealthCheckFilter"}},
+    "formatters": {
+        "standard": {
+            "()": "config.log_masking.MaskingFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%S%z",
+        },
+        "message": {"format": "%(message)s"},
+        "django.server": {"()": "config.log_masking.MaskingServerFormatter", "format": "[{server_time}] {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "level": "CRITICAL" if TESTING else "DEBUG",
+        },
+        "django.server": {"class": "logging.StreamHandler", "formatter": "django.server", "filters": ["quiet_health_check"]},
+        "ai_usage": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "message"},
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "accounts": {"level": LOG_LEVEL},
+        "trips": {"level": LOG_LEVEL},
+        "guides": {"level": LOG_LEVEL},
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django.server": {"handlers": ["django.server"], "level": "INFO", "propagate": False},
+        "pinroute.ai_usage": {
+            "handlers": ["ai_usage"],
+            "level": "INFO" if AI_USAGE_LOG_ENABLED and not TESTING else "WARNING",
+            "propagate": False,
+        },
+    },
+}
 # Google 데이터는 DB에 저장하지 않고 이 시간 동안만 서버 메모리 캐시에 둔다(초).
 ROUTES_CACHE_TTL_SECONDS = int(os.environ.get("ROUTES_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
 ROUTES_TIMEOUT_SECONDS = int(os.environ.get("ROUTES_TIMEOUT_SECONDS", "8"))

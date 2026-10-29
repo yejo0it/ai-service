@@ -4,7 +4,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from . import station_names as sn
+from .. import station_names as sn
 
 INDEX = {
     "渋谷": [(35.6585, 139.7013, "시부야역")],

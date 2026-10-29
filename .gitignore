@@ -14,6 +14,8 @@ dist/
 .vite/
 # Windows에서 config를 읽을 때 생기는 임시 파일
 vite.config.*.timestamp-*
+# TypeScript 증분 빌드 메타데이터
+*.tsbuildinfo
 *.local
 
 # 업로드 파일 (프로필 사진)

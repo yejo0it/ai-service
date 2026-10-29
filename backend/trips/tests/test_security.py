@@ -20,8 +20,8 @@ from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner
-from .models import Hotel, ItineraryItem, Trip
+from .. import ai_planner
+from ..models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 
@@ -290,7 +290,7 @@ class AiInputSecurityTests(APITestCase):
 
     def test_model_output_is_limited_before_use(self):
         addition = ai_planner.PlanAddition(name="a", search_query="a", kind="sight", day_index=None, time=None,
-                                           reason="", stay_minutes=None)
+                                           stay_minutes=None)
         limited = ai_planner.limit_plan(plan(reply="가" * 5000, additions=[addition] * 100))
         self.assertEqual(len(limited.reply), ai_planner.MAX_REPLY_CHARS)
         self.assertEqual(len(limited.additions), ai_planner.MAX_ADDITIONS)
@@ -312,7 +312,8 @@ class AiInputSecurityTests(APITestCase):
             response = self.client.post(f"/api/v1/trips/{self.trip.pk}/ai/propose/",
                                         {"messages": [{"role": "user", "content": "일정 짜줘"}]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        sent = captured["system"] + "".join(message["content"] for message in captured["messages"])
+        system = "".join(block["text"] for block in captured["system"])  # 캐시 지점을 둔 텍스트 블록 목록
+        sent = system + "".join(message["content"] for message in captured["messages"])
         for secret in [*secrets.values(), settings.DATABASES["default"]["PASSWORD"], settings.SECRET_KEY]:
             self.assertNotIn(secret, sent)
         # 사용자 데이터가 여행 정보 경계를 깨지 못한다(서비스가 붙인 시작·끝 태그 한 쌍만 남는다).
@@ -357,7 +358,7 @@ class AiRateLimitTests(APITestCase):
         self.assertEqual(self.ask()[0].status_code, status.HTTP_200_OK)
 
     def test_day_limit(self):
-        from .itinerary_views import AiDayThrottle
+        from ..itinerary_views import AiDayThrottle
 
         # 100회를 실제로 보내지 않고, 하루 한도를 3회로 줄여 같은 동작을 확인한다.
         with mock.patch.object(AiDayThrottle, "get_rate", return_value="3/day"):

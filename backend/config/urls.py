@@ -3,8 +3,12 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from .health import health
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # 컨테이너 헬스체크(로그인 불필요, config.health)
+    path("api/v1/health/", health, name="health"),
     path("api/v1/auth/", include("accounts.urls")),
     path("api/v1/", include("trips.urls")),
 ]

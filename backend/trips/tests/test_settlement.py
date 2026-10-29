@@ -20,8 +20,8 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Profile
 
-from . import settlement
-from .models import Expense, ExpenseShare, Trip, TripMember
+from .. import settlement
+from ..models import Expense, ExpenseShare, Trip, TripMember
 
 User = get_user_model()
 

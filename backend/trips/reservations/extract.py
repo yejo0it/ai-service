@@ -13,10 +13,11 @@ import logging
 import os
 
 import anthropic
+from pydantic import ValidationError
 
 from ..ai_planner import MODEL
 from ..chat_guard import redact_sensitive, strip_trip_tags
-from .files import IMAGE, PDF_TEXT, PDF_VISUAL
+from .files import PDF_TEXT, PDF_VISUAL
 from .schemas import DOCUMENT_MODELS, FLIGHT
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,9 @@ def extract(kind, prepared):
         raise ReservationAiError("AI 응답을 받지 못했어요. 잠시 후 다시 시도해 주세요.") from exc
     except anthropic.APIConnectionError as exc:
         raise ReservationAiError("AI 서버에 연결하지 못했어요.") from exc
+    except ValidationError:
+        # 응답이 잘리거나 형식에 맞지 않아 검증에 실패했다. pydantic 오류 메시지에 예약 정보 일부가 들어 있어 이어 붙이지 않는다.
+        raise ReservationAiError("AI 응답을 이해하지 못했어요. 다시 시도하거나 직접 입력해 주세요.") from None
 
     if response.stop_reason == "refusal":
         raise ReservationAiError("이 문서는 분석하기 어려워요. 다른 파일을 올리거나 직접 입력해 주세요.", status_code=422)
