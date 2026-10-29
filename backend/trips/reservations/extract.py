@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from ..ai_planner import MODEL
 from ..chat_guard import redact_sensitive, strip_trip_tags
-from .files import IMAGE, PDF_TEXT, PDF_VISUAL
+from .files import PDF_TEXT, PDF_VISUAL
 from .schemas import DOCUMENT_MODELS, FLIGHT
 
 logger = logging.getLogger(__name__)

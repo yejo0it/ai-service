@@ -6,3 +6,6 @@ venv/
 db.sqlite3
 .git/
 media/
+# 실행 중 생성한 비공개 업로드와 사전 보완 로그는 이미지에 포함하지 않는다.
+private_media/
+logs/

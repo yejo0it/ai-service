@@ -13,7 +13,7 @@
 
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone as dt_timezone
+from datetime import datetime
 
 from django.conf import settings
 from django.core.cache import cache

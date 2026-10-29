@@ -21,11 +21,9 @@ from itertools import combinations, permutations
 from . import routes
 from . import transit as navitime
 from .itinerary_planner import (
-    DEFAULT_STAY,
     MAX_STAY,
     MIN_STAY,
     PLACE_KINDS,
-    START_LABELS,
     _bounds,
     day_anchor,
     distance_km,
