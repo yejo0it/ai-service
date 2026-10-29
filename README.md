@@ -17,7 +17,7 @@
 - **떠나기 전 필요한 정보**: 여행지 날씨 예보와 현지 통화 환율을 홈에서 바로 확인
 - **간편한 계정**: 이메일 가입(휴대폰 인증)과 카카오·네이버 로그인 지원
 
-> 숙소를 기준으로 한 일별 동선 최적화는 개발 중입니다.
+> AI가 날짜별 장소 묶음을 제안하고, 서버가 숙소·고정 일정을 고려해 방문 순서와 이동 경로를 계산합니다. 외부 교통 API의 설정·지원 지역·호출 한도에 따라 실제 이동 시간 제공 여부가 달라집니다.
 
 ## Tech Stack
 
@@ -43,7 +43,7 @@
 3. **숙소**: Google Places로 숙소 검색, 도시별 배정, 숙박 기간이 겹치지 않게 선택 (건너뛰기 가능)
 
 ### 🗺️ 여행 상세
-- **일별 일정**: 항공편·숙소 카드를 바탕으로 장소를 추가하고 순서 변경, 메모·시간 수정
+- **일별 일정**: 항공편·숙소 카드를 바탕으로 장소를 추가하고 순서 변경, 장소·시간 수정
 - **지도**: 하루 동선을 지도에서 확인
 - **AI와 함께 만들기**: 대화로 일정 제안을 받아 미리 보고 적용 (Claude)
 - **일행 초대**: 초대 링크로 일행과 함께 일정 편집
@@ -60,8 +60,8 @@
 **필요한 것**: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 ```bash
-git clone https://github.com/yejo0it/ai-service.git
-cd ai-service
+git clone https://github.com/yejo0it/pinroute-app.git
+cd pinroute-app
 cp .env.example .env          # 필요한 키만 채우기 (아래 표 참고)
 docker compose up -d --build
 ```
@@ -86,6 +86,8 @@ docker compose up -d --build
 | `NAVER_CLIENT_ID` · `NAVER_CLIENT_SECRET` | 네이버 로그인 |
 
 **DB 마이그레이션 (필수)**
+
+아래 실행 방법과 Compose 기본 설정은 개발 환경용입니다. 운영 배포 설정은 별도로 준비해야 합니다.
 
 DB 테이블은 마이그레이션으로 만들어집니다. 마이그레이션이 적용되지 않으면 API가 오류를 돌려주니 꼭 확인하세요.
 
