@@ -19,9 +19,9 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner
-from .itinerary_views import days_map
-from .models import Hotel, ItineraryItem, Trip
+from .. import ai_planner
+from ..itinerary_views import days_map
+from ..models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 

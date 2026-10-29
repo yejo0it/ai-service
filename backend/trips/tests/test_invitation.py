@@ -17,7 +17,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Profile
 from accounts.nickname import NICKNAME_PATTERN
 
-from .models import Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
+from ..models import Hotel, ItineraryItem, PackingItem, Trip, TripInvitation, TripMember
 
 User = get_user_model()
 

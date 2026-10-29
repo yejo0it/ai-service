@@ -18,8 +18,8 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner, ai_usage
-from .models import ItineraryItem, Trip
+from .. import ai_planner, ai_usage
+from ..models import ItineraryItem, Trip
 
 User = get_user_model()
 

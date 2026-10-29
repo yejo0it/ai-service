@@ -5,7 +5,7 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Trip
+from ..models import Trip
 
 User = get_user_model()
 
@@ -404,7 +404,7 @@ class CityDataTests(APITestCase):
     """도시 데이터(backend/data/cities.json): 자체 도시 id, 예전 IATA 도시 코드 호환, 나라별 통화"""
 
     def test_data_is_valid(self):
-        from . import cities
+        from .. import cities
 
         rows = cities.all_cities()
         ids = [row["id"] for row in rows]
@@ -419,7 +419,7 @@ class CityDataTests(APITestCase):
                 self.assertIn(row["country"], cities.country_currencies())
 
     def test_lookup_by_id_and_legacy_iata(self):
-        from . import cities
+        from .. import cities
 
         self.assertEqual(cities.get_city("tokyo")["name"], "도쿄")
         self.assertEqual(cities.get_city("TYO")["id"], "tokyo")
@@ -435,7 +435,7 @@ class CityDataTests(APITestCase):
         self.assertEqual(cities.city_currency("phnom-penh"), "USD")
 
     def test_korea_and_japan_coverage(self):
-        from . import cities
+        from .. import cities
 
         rows = cities.all_cities()
         korea = [row for row in rows if row["country"] == "KR"]
@@ -457,7 +457,7 @@ class CityDataTests(APITestCase):
         self.assertEqual(cities.get_city("niseko")["admin1"], "홋카이도")
 
     def test_currency_data(self):
-        from . import reference_data
+        from .. import reference_data
 
         data = reference_data.load("currencies.json")
         for country, currency in data["country_currency"].items():

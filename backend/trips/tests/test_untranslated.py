@@ -9,7 +9,7 @@ from unittest import mock
 from django.core.management import call_command
 from django.test import SimpleTestCase, override_settings
 
-from . import legs, untranslated
+from .. import legs, untranslated
 from .test_legs import NAVITIME_ROUTE, with_station_data
 
 

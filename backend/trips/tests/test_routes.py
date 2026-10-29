@@ -15,8 +15,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner, route_planner, routes, transit
-from .models import Hotel, ItineraryItem, Trip
+from .. import ai_planner, route_planner, routes, transit
+from ..models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 TOKYO_STATION = (35.6812, 139.7671)
@@ -324,7 +324,7 @@ class ProposeApplyFlowTests(APITestCase):
 
     def fake_tables(self, day, points, budget, country=None):
         # 이동 시간: 좌표 사이 거리(km) x 4분 (도보 불가), 대중교통만 사용
-        from .itinerary_planner import distance_km
+        from ..itinerary_planner import distance_km
         n = len(points)
         transit = {(i, j): routes.Leg("TRANSIT", int(distance_km(points[i], points[j]) * 240), 1000)
                    for i in range(n) for j in range(n)}
@@ -648,7 +648,7 @@ class NoFixedPlaceLimitTests(TestCase):
         self.days = {date(2030, 1, 7): [], date(2030, 1, 8): []}
 
     def add(self, count, day=None, stay=60):
-        from .itinerary_planner import place_cards
+        from ..itinerary_planner import place_cards
         cards = [card(f"장소{i}", (35.69 + i * 0.001, 139.70), stay_minutes=stay, day=day) for i in range(count)]
         return place_cards(self.trip, self.days, cards)
 

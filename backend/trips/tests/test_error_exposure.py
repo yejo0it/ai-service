@@ -21,10 +21,10 @@ from pydantic import TypeAdapter, ValidationError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner, ai_usage, place_photos, places
-from .models import Hotel, Trip
-from .reservations import extract, files
-from .reservations.schemas import HotelDocument
+from .. import ai_planner, ai_usage, place_photos, places
+from ..models import Hotel, Trip
+from ..reservations import extract, files
+from ..reservations.schemas import HotelDocument
 
 User = get_user_model()
 

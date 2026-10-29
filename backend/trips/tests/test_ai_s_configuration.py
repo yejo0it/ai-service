@@ -11,7 +11,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from . import ai_planner
+from .. import ai_planner
 
 
 class SimpleOptimizationTests(SimpleTestCase):
@@ -19,7 +19,7 @@ class SimpleOptimizationTests(SimpleTestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.fixture = json.loads(
-            Path(__file__).with_name("fixtures").joinpath("ai_planner_s_requests.json").read_text(encoding="utf-8")
+            (Path(__file__).resolve().parent.parent / "fixtures").joinpath("ai_planner_s_requests.json").read_text(encoding="utf-8")
         )
 
     def dataset(self, name):

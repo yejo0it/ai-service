@@ -68,7 +68,7 @@
 
 - RAG를 생략한 요청은 −40.6~−42.6%, 검색한 요청은 −32.1~−33.3%다.
 - 현재 버전 입력 중 6,307토큰은 캐시 대상이다. 캐시가 적중하면 입력 비용은 13개 평균 $0.0237 → 약 $0.0038(**약 −84%**, 계산값)이다.
-- 12(존재하지 않는 일정 id)·15(API 오류·비정상 응답)는 모델 해석과 무관해 실제 호출 대신 모킹 테스트로 검증한다(`trips/test_ai_context.py`, `trips/test_ai_usage.py`, `trips/test_error_exposure.py`).
+- 12(존재하지 않는 일정 id)·15(API 오류·비정상 응답)는 모델 해석과 무관해 실제 호출 대신 모킹 테스트로 검증한다(`trips/tests/test_ai_context.py`, `trips/tests/test_ai_usage.py`, `trips/tests/test_error_exposure.py`).
 - 7 전체 일정 생성은 일정이 이미 있는 같은 가짜 여행에서 셌다(빈 여행의 신규 생성과는 컨텍스트 길이가 다르다).
 
 ## 5. 실제 API 호출 비교: 핵심 6개 시나리오 (버전별 1회)

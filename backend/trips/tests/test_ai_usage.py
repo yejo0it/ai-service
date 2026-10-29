@@ -28,8 +28,8 @@ from rest_framework.test import APITestCase
 from guides.eval_queries import QUERIES
 from guides.management.commands.eval_guides import Command as EvalGuidesCommand
 
-from . import ai_planner, ai_usage
-from .models import Hotel, Trip
+from .. import ai_planner, ai_usage
+from ..models import Hotel, Trip
 
 User = get_user_model()
 

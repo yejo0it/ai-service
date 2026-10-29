@@ -21,7 +21,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Trip, TripMember, TripPhoto, TripSummary
+from ..models import Trip, TripMember, TripPhoto, TripSummary
 
 User = get_user_model()
 
@@ -319,7 +319,7 @@ class SummaryAccessTests(SummaryTestBase):
 
     def test_existing_schedule_stays_editable_during_and_after_the_trip(self):
         """여행 중·종료 후에도 기존 일정(경로 카드) 수정이 막히지 않는다."""
-        from .models import ItineraryItem
+        from ..models import ItineraryItem
 
         for start, end in ((-1, 1), (-10, -5)):
             trip = make_trip(self.owner, start, end)

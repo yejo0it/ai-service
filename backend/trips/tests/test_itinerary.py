@@ -6,9 +6,9 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner, chat_guard
-from .models import Hotel, ItineraryItem, Trip
-from .packing import DEFAULT_PACKING_ITEMS
+from .. import ai_planner, chat_guard
+from ..models import Hotel, ItineraryItem, Trip
+from ..packing import DEFAULT_PACKING_ITEMS
 
 User = get_user_model()
 
