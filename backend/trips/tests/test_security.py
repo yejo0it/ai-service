@@ -20,8 +20,8 @@ from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner
-from .models import Hotel, ItineraryItem, Trip
+from .. import ai_planner
+from ..models import Hotel, ItineraryItem, Trip
 
 User = get_user_model()
 
@@ -358,7 +358,7 @@ class AiRateLimitTests(APITestCase):
         self.assertEqual(self.ask()[0].status_code, status.HTTP_200_OK)
 
     def test_day_limit(self):
-        from .itinerary_views import AiDayThrottle
+        from ..itinerary_views import AiDayThrottle
 
         # 100회를 실제로 보내지 않고, 하루 한도를 3회로 줄여 같은 동작을 확인한다.
         with mock.patch.object(AiDayThrottle, "get_rate", return_value="3/day"):

@@ -20,9 +20,9 @@ from rest_framework.test import APITestCase
 
 from guides import search
 
-from . import ai_planner, ai_usage
-from .models import Trip
-from .rag_policy import guide_search_decision
+from .. import ai_planner, ai_usage
+from ..models import Trip
+from ..rag_policy import guide_search_decision
 
 User = get_user_model()
 

@@ -17,7 +17,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import FlightSegment, Hotel, ItineraryItem, Trip, TripMember
+from ..models import FlightSegment, Hotel, ItineraryItem, Trip, TripMember
 
 User = get_user_model()
 

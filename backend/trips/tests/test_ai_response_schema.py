@@ -15,7 +15,7 @@ from anthropic.lib._parse._transform import transform_schema
 from django.test import SimpleTestCase
 from pydantic import TypeAdapter, ValidationError
 
-from . import ai_planner
+from .. import ai_planner
 
 HANGUL = re.compile(r"[가-힣]")
 

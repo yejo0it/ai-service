@@ -27,17 +27,17 @@
 | --- | --- |
 | `backend/trips/ai_planner.py` | 분류 의존성과 선택 인수를 제거하고 고정 S 입력을 생성한다. 압축된 프롬프트·컨텍스트는 유지한다. |
 | `backend/trips/planner_policy.py`, `backend/trips/test_planner_policy.py` | 불필요해진 조건부 분류 구현과 전용 테스트를 제거한다. |
-| `backend/trips/test_ai_s_configuration.py` | 실제 평가 입력 8종과 서비스 입력의 동등성 및 필수 메타데이터 보존을 검증한다. |
+| `backend/trips/tests/test_ai_s_configuration.py` | 실제 평가 입력 8종과 서비스 입력의 동등성 및 필수 메타데이터 보존을 검증한다. |
 | `backend/trips/fixtures/ai_planner_s_requests.json` | 평가 당시 S 요청과 실제 호출 근거·해시·스키마를 고정한다. 테스트 전용 가상 여행 데이터다. |
-| `backend/trips/test_ai_prompt_cache.py` | 일반 질문에서도 두 고정 캐시 블록을 전달하는지 검증한다. |
-| `backend/trips/test_ai_conversation_length.py`, `backend/trips/test_rag_policy.py` | 대화 길이·RAG 여부에 관계없이 전체 고정 시스템 블록이 유지되는지 검증한다. |
+| `backend/trips/tests/test_ai_prompt_cache.py` | 일반 질문에서도 두 고정 캐시 블록을 전달하는지 검증한다. |
+| `backend/trips/tests/test_ai_conversation_length.py`, `backend/trips/tests/test_rag_policy.py` | 대화 길이·RAG 여부에 관계없이 전체 고정 시스템 블록이 유지되는지 검증한다. |
 | 이 문서와 최종 평가 JSON 2개 | S 채택·구현·검증 결과와 평가 근거를 통합한다. |
 
 AGENTS.md의 사용자 요청 보고 규칙과 재구성 구현·테스트를 함께 관리한다. 중복 보고서 4개, 중간 평가 JSON 5개, 일회성 스크립트 2개와 전용 A 입력 1개는 사용자 승인으로 정리했다. 테스트가 직접 사용하는 S fixture와 최종 40회 원본·집계 JSON은 유지하며 .gitignore는 변경하지 않았다.
 
 ## 5. 테스트 및 검증
 
-- 관련 테스트: `python manage.py test trips.test_ai_s_configuration trips.test_ai_context trips.test_ai_reorganization trips.test_ai_prompt_cache trips.test_ai_conversation_length trips.test_rag_policy --noinput` — 38개 통과했다. 스냅샷 8종과 컨텍스트 3종은 하위 사례로 포함한다.
+- 관련 테스트: `python manage.py test trips.tests.test_ai_s_configuration trips.tests.test_ai_context trips.tests.test_ai_reorganization trips.tests.test_ai_prompt_cache trips.tests.test_ai_conversation_length trips.tests.test_rag_policy --noinput` — 38개 통과했다. 스냅샷 8종과 컨텍스트 3종은 하위 사례로 포함한다.
 - 전체 백엔드 테스트: `docker compose exec -T backend python manage.py test --noinput` — 파일 정리 후 재실행한 651개가 45.216초에 모두 통과했다. AI 채팅·RAG·응답 스키마·보안·미리보기·적용 관련 기존 회귀 테스트를 포함한다. 이전 656개에서 분류 전용 7개를 제거하고 S 검증 2개를 추가해 651개가 됐다. 테스트 전용 DB만 생성·삭제했다.
 - 새 모델 호출은 0회, 추가 API 비용은 US$0이다. 테스트는 모델을 모킹하며 실제 응답 품질·운영 캐시 적중률을 새로 측정한 결과는 아니다.
 

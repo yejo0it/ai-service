@@ -18,9 +18,9 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner, ai_usage, chat_guard
-from .itinerary_views import ConversationSerializer
-from .models import Trip
+from .. import ai_planner, ai_usage, chat_guard
+from ..itinerary_views import ConversationSerializer
+from ..models import Trip
 
 User = get_user_model()
 

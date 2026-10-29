@@ -16,9 +16,9 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from . import ai_planner
-from .models import FlightSegment, Hotel, ItineraryItem, Trip, TripMember
-from .reservations import trips as reservation_trips
+from .. import ai_planner
+from ..models import FlightSegment, Hotel, ItineraryItem, Trip, TripMember
+from ..reservations import trips as reservation_trips
 
 User = get_user_model()
 URL = "/api/v1/trips/from-reservations/"
